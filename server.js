@@ -357,16 +357,39 @@ app.get("/api/chats", async (req, res) => {
 
     const body = page_id ? { page_id } : { filters, limit: 25 };
 
+    console.log('[chats] sending body:', JSON.stringify(body));
     const data = await lcPost("list_archives", body);
-    console.log('[chats] found_chats:', data.found_chats, '| total_chats:', data.total_chats, '| chats count:', (data.chats||[]).length);
+    console.log('[chats] found_chats:', data.found_chats, '| chats count:', (data.chats||[]).length);
+    const sample = (data.chats||[]).slice(0,3).map(c => {
+      const t = c.thread || (Array.isArray(c.threads) ? c.threads[0] : null) || {};
+      return t.created_at || c.id;
+    });
+    console.log('[chats] sample dates:', sample);
+    // Debug: check assignee & events in first chat
+    const first = (data.chats||[])[0];
+    if (first) {
+      const ft = first.thread || (Array.isArray(first.threads) ? first.threads[0] : null) || {};
+      console.log('[chats] first chat assignee:', ft.assignee, '| events count:', (ft.events||[]).length);
+    }
     const reviews = await loadReviews();
 
     const chats = (data.chats || []).map((c) => {
-      const thread = (c.threads || c.thread ? [c.thread] : [])[0] || {};
-      const agentUser = (c.users || []).find((u) => u.type === "agent");
-      const customerUser = (c.users || []).find((u) => u.type === "customer");
+      const thread = c.thread || (Array.isArray(c.threads) ? c.threads[0] : null) || {};
+      const users = c.users || [];
+      const assigneeId = thread?.assignee?.id;
+      // Find agent who actually sent messages in THIS thread (not historical users)
+      const events = thread.events || [];
+      const activeAgentId = events.find(e => {
+        const u = users.find(u2 => u2.id === e.author_id);
+        return u && u.type === "agent";
+      })?.author_id;
+      const agentUser = (assigneeId ? users.find(u => u.id === assigneeId) : null)
+        || (activeAgentId ? users.find(u => u.id === activeAgentId) : null)
+        || null;
+      const customerUser = users.find((u) => u.type === "customer");
       return {
         id: c.id,
+        thread_id: thread.id || null,
         agent: agentUser ? { id: agentUser.id, name: agentUser.name } : null,
         customer_name: customerUser?.name || null,
         started_at: thread.created_at || null,
@@ -384,8 +407,19 @@ app.get("/api/chats", async (req, res) => {
 // Get single chat with full transcript
 app.get("/api/chats/:chatId", async (req, res) => {
   try {
-    const data = await lcPost("get_chat", { chat_id: req.params.chatId });
-    const thread = data.thread || (data.threads || [])[0] || {};
+    const { thread_id } = req.query;
+    const gcBody = { chat_id: req.params.chatId };
+    if (thread_id) gcBody.thread_id = thread_id;
+    const data = await lcPost("get_chat", gcBody);
+
+    // If thread_id specified, find that specific thread
+    let thread;
+    if (thread_id && Array.isArray(data.threads)) {
+      thread = data.threads.find(t => t.id === thread_id) || data.threads[0] || {};
+    } else {
+      thread = data.thread || (data.threads || [])[0] || {};
+    }
+
     const users = data.users || [];
     const events = thread.events || [];
     const reviews = await loadReviews();
@@ -402,19 +436,25 @@ app.get("/api/chats/:chatId", async (req, res) => {
         };
       });
 
-    const agentUser = users.find((u) => u.type === "agent");
+    const assigneeId = thread?.assignee?.id;
+    const activeAgentId = events.find(e => {
+      const u = users.find(u2 => u2.id === e.author_id);
+      return u && u.type === "agent";
+    })?.author_id;
+    const agentUser = (assigneeId ? users.find(u => u.id === assigneeId) : null)
+      || (activeAgentId ? users.find(u => u.id === activeAgentId) : null)
+      || null;
     const customerUser = users.find((u) => u.type === "customer");
 
     res.json({
       id: data.id,
+      thread_id: thread.id || null,
       agent: agentUser ? { id: agentUser.id, name: agentUser.name, email: agentUser.email } : null,
       customer_name: customerUser?.name || null,
       started_at: thread.created_at || null,
       ended_at: thread.ended_at || null,
       messages,
       review: reviews[data.id] || null,
-      _users: users,
-      _events: events,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -427,10 +467,18 @@ app.post("/api/review/:chatId", async (req, res) => {
     const { chatId } = req.params;
     console.log(`[review] fetching chat ${chatId}`);
 
-    const data = await lcPost("get_chat", { chat_id: chatId });
+    const { thread_id } = req.query;
+    const gcBody = { chat_id: chatId };
+    if (thread_id) gcBody.thread_id = thread_id;
+    const data = await lcPost("get_chat", gcBody);
     console.log(`[review] get_chat keys:`, Object.keys(data));
 
-    const thread = data.thread || (data.threads || [])[0] || {};
+    let thread;
+    if (thread_id && Array.isArray(data.threads)) {
+      thread = data.threads.find(t => t.id === thread_id) || data.threads[0] || {};
+    } else {
+      thread = data.thread || (data.threads || [])[0] || {};
+    }
     const users = data.users || [];
     const events = thread.events || [];
     console.log(`[review] thread keys:`, Object.keys(thread));
@@ -496,6 +544,23 @@ app.get("/api/stats", async (req, res) => {
   }));
 
   res.json(result);
+});
+
+// Debug: show exact agent names from LiveChat
+app.get("/api/agent-names", async (req, res) => {
+  try {
+    const data = await lcPost("list_agents", {}, LC_CONFIG_API);
+    let list = Array.isArray(data) ? data : data?.agents || Object.values(data).find(v => Array.isArray(v)) || [];
+    res.json(list.map(a => ({ id: a.id, name: a.name, name_lower: (a.name||"").toLowerCase().trim() })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Agent shift mapping
+app.get("/api/agent-shifts", async (req, res) => {
+  try {
+    const data = await fs.readFile(path.join(DATA_DIR, "agent_shifts.json"), "utf8");
+    res.json(JSON.parse(data));
+  } catch { res.json({}); }
 });
 
 // Discover Telegram group IDs (call after adding bot to groups)

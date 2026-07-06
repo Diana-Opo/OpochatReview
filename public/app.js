@@ -2,10 +2,11 @@
 let chats = [];
 let agents = [];
 let nextPageId = null;
-let pageHistory = [null]; // stack of page_ids for prev
+let pageHistory = [null];
 let currentPage = 0;
 let agentChart = null;
 let totalChats = 0;
+let agentShifts = {};
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
@@ -15,6 +16,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("dateTo").value = today.toISOString().slice(0, 10);
 
   await loadAgents();
+  try { const r = await fetch("/api/agent-shifts"); agentShifts = await r.json(); } catch {}
   loadKnowledgeStatus();
   document.getElementById("btnLoad").addEventListener("click", () => loadChats(null));
   document.getElementById("btnRefreshKb").addEventListener("click", refreshKnowledge);
@@ -103,8 +105,8 @@ async function loadChats(pageId) {
   const agentId = document.getElementById("agentFilter").value;
 
   const params = new URLSearchParams();
-  if (from) params.set("date_from", from + "T00:00:00.000000+00:00");
-  if (to)   params.set("date_to",   to   + "T23:59:59.999999+00:00");
+  if (from) params.set("date_from", iranDayToUtc(from, false));
+  if (to)   params.set("date_to",   iranDayToUtc(to, true));
   if (agentId) params.set("agent_id", agentId);
   if (pageId)  params.set("page_id", pageId);
 
@@ -148,22 +150,24 @@ function renderTable() {
       : `<span class="text-gray-300 text-xs">—</span>`;
     const langBadge = r?.language_detected ? `<span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">${r.language_detected.toUpperCase()}</span>` : "—";
     const shiftBadge = shiftLabel(chat.started_at);
+    const employeeName = getEmployee(chat.agent?.name, chat.started_at);
 
     const actionBtn = r
-      ? `<button onclick="openModal('${chat.id}')" class="text-xs text-blue-500 hover:underline">View</button>`
-      : `<button onclick="reviewChat('${chat.id}', this)" class="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded hover:bg-blue-100">Review</button>`;
+      ? `<button onclick="openModal('${chat.id}','${chat.thread_id||''}')" class="text-xs text-blue-500 hover:underline">View</button>`
+      : `<button onclick="reviewChat('${chat.id}','${chat.thread_id||''}',this)" class="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded hover:bg-blue-100">Review</button>`;
 
-    return `<tr class="chat-row border-b border-gray-50" id="row-${chat.id}" onclick="openModal('${chat.id}')">
+    return `<tr class="chat-row border-b border-gray-50" id="row-${chat.id}" onclick="openModal('${chat.id}','${chat.thread_id||""}')">
       <td class="px-4 py-3">
         <div class="flex items-center gap-1">
-          <span class="font-mono text-xs text-gray-400">${chat.id}</span>
-          <button onclick="event.stopPropagation();copyId('${chat.id}')" title="Copy ID" class="shrink-0 text-gray-300 hover:text-blue-500 px-1 text-sm leading-none">⎘</button>
+          <span class="font-mono text-xs text-gray-400">${chat.thread_id || chat.id}</span>
+          <button onclick="event.stopPropagation();copyId('${chat.thread_id || chat.id}')" title="Copy ID" class="shrink-0 text-gray-300 hover:text-blue-500 px-1 text-sm leading-none">⎘</button>
         </div>
       </td>
       <td class="px-4 py-3 font-medium text-gray-700">${chat.agent?.name || "—"}</td>
       <td class="px-4 py-3 text-gray-600">${chat.customer_name || "—"}</td>
       <td class="px-4 py-3 text-gray-500 text-xs">${date}</td>
       <td class="px-4 py-3">${shiftBadge}</td>
+      <td class="px-4 py-3 text-sm font-medium text-gray-700">${employeeName}</td>
       <td class="px-4 py-3">${langBadge}</td>
       <td class="px-4 py-3" id="score-${chat.id}">${scoreBadge}</td>
       <td class="px-4 py-3" id="status-${chat.id}">${statusBadge}</td>
@@ -173,12 +177,14 @@ function renderTable() {
 }
 
 // ── Review single chat ────────────────────────────────────────────────────────
-async function reviewChat(chatId, btn) {
+async function reviewChat(chatId, threadId, btn) {
+  if (!btn) { btn = threadId; threadId = ""; } // backward compat
   const actionCell = document.getElementById("action-" + chatId);
   actionCell.innerHTML = `<span class="spinner"></span>`;
 
   try {
-    const res = await fetch(`/api/review/${chatId}`, { method: "POST" });
+    const qs = threadId ? `?thread_id=${threadId}` : "";
+    const res = await fetch(`/api/review/${chatId}${qs}`, { method: "POST" });
     const review = await res.json();
     if (review.error) throw new Error(review.error);
 
@@ -189,7 +195,7 @@ async function reviewChat(chatId, btn) {
     document.getElementById("score-" + chatId).innerHTML = scorePill(review.overall_score);
     document.getElementById("status-" + chatId).innerHTML =
       `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "Resolved" : "Open"}</span>`;
-    actionCell.innerHTML = `<button onclick="openModal('${chatId}')" class="text-xs text-blue-500 hover:underline">View</button>`;
+    actionCell.innerHTML = `<button onclick="openModal('${chatId}','${threadId||''}')" class="text-xs text-blue-500 hover:underline">View</button>`;
 
     updateStats();
     updateChart();
@@ -235,7 +241,9 @@ async function reviewAllVisible() {
       const actionCell = document.getElementById("action-" + chat.id);
       if (actionCell) actionCell.innerHTML = `<span class="spinner"></span>`;
       try {
-        const res = await fetch(`/api/review/${chat.id}`, { method: "POST" });
+        const tid = chat.thread_id || "";
+        const qs = tid ? `?thread_id=${tid}` : "";
+        const res = await fetch(`/api/review/${chat.id}${qs}`, { method: "POST" });
         const review = await res.json();
         if (!review.error) {
           done++;
@@ -245,7 +253,7 @@ async function reviewAllVisible() {
             document.getElementById("score-" + chat.id).innerHTML = scorePill(review.overall_score);
             document.getElementById("status-" + chat.id).innerHTML =
               `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "Resolved" : "Open"}</span>`;
-            if (actionCell) actionCell.innerHTML = `<button onclick="openModal('${chat.id}')" class="text-xs text-blue-500 hover:underline">View</button>`;
+            if (actionCell) actionCell.innerHTML = `<button onclick="openModal('${chat.id}','${tid}')" class="text-xs text-blue-500 hover:underline">View</button>`;
           }
         } else {
           failed++;
@@ -268,14 +276,15 @@ async function reviewAllVisible() {
 }
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
-async function openModal(chatId) {
+async function openModal(chatId, threadId) {
   const modal = document.getElementById("modal");
   const content = document.getElementById("modalContent");
   content.innerHTML = `<div class="p-10 text-center text-gray-400">Loading…</div>`;
   modal.classList.remove("hidden");
 
   try {
-    const res = await fetch(`/api/chats/${chatId}`);
+    const qs = threadId ? `?thread_id=${threadId}` : "";
+    const res = await fetch(`/api/chats/${chatId}${qs}`);
     const chat = await res.json();
     if (chat.error) throw new Error(chat.error);
 
@@ -468,9 +477,39 @@ function scoreBar(label, value, notes) {
   </div>`;
 }
 
+// Istanbul = UTC+3 = 180 minutes (no DST since 2016)
+function iranDayToUtc(dateStr, isEnd) {
+  const offsetMs = 180 * 60 * 1000;
+  const time = isEnd ? "T23:59:59.999Z" : "T00:00:00.000Z";
+  const utc = new Date(new Date(dateStr + time).getTime() - offsetMs);
+  const iso = utc.toISOString();
+  return iso.replace(/\.\d{3}Z$/, (isEnd ? ".999999" : ".000000") + "+00:00");
+}
+
+function getTehranHour(dateStr) {
+  return parseInt(new Date(dateStr).toLocaleString("en-US", { timeZone: "Europe/Istanbul", hour: "numeric", hour12: false }));
+}
+
+function getEmployee(agentName, dateStr) {
+  if (!agentName || !dateStr) return `<span class="text-gray-300">—</span>`;
+  const full = agentName.toLowerCase().trim();
+  const first = full.split(" ")[0];
+  const mapping = agentShifts[full] || agentShifts[first];
+  const h = getTehranHour(dateStr);
+  const dayEnd = mapping?.dayEnd || 16;
+  const isDay = h >= 8 && h < dayEnd;
+  if (!mapping) {
+    console.log('[employee] no mapping for agent:', JSON.stringify(full), '| first:', JSON.stringify(first), '| keys:', Object.keys(agentShifts));
+    return `<span class="text-gray-300">—</span>`;
+  }
+  const name = isDay ? mapping.day : mapping.night;
+  console.log('[employee]', full, '| h:', h, '| isDay:', isDay, '| name:', name);
+  return name ? `<span class="font-medium text-gray-800">${name}</span>` : `<span class="text-gray-300">—</span>`;
+}
+
 function shiftLabel(dateStr) {
   if (!dateStr) return `<span class="text-gray-300 text-xs">—</span>`;
-  const h = new Date(dateStr).getHours();
+  const h = getTehranHour(dateStr);
   if (h >= 8 && h < 16)  return `<span class="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">☀ Day</span>`;
   if (h >= 16 && h < 24) return `<span class="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium">🌙 Night</span>`;
   return `<span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">Off</span>`;

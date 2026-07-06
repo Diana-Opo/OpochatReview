@@ -1,0 +1,13 @@
+{
+  "ana":      { "day": "Atena",    "night": "Alireza" },
+  "raha":     { "day": "Nazgol",   "night": "" },
+  "omid":     { "day": "Omid",     "night": "Mahyar" },
+  "nika":     { "day": "Mohadese", "night": "" },
+  "dayan":    { "day": "Ardalan",  "night": "Mahdi" },
+  "arsham":   { "day": "Farnoush", "night": "Amirali" },
+  "eleanor":  { "day": "Noor",     "night": "" },
+  "leo zirak":{ "day": "",         "night": "Bardia" },
+  "stark":    { "day": "",         "night": "Sadra" },
+  "selena":   { "day": "Ramina",   "night": "", "dayEnd": 18 },
+  "arta":     { "day": "Ramin",    "night": "" }
+}
