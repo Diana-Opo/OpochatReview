@@ -23,7 +23,9 @@ let kb = { knowledge: "", campaigns: "", telegram: "", protocol: "", lastFetched
 let telegramOffset = 0;
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
+app.get("/app.js", (req, res) => res.sendFile(path.join(__dirname, "app.js")));
+app.get("/style.css", (req, res) => res.sendFile(path.join(__dirname, "style.css")));
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -394,7 +396,7 @@ app.get("/api/chats", async (req, res) => {
         customer_name: customerUser?.name || null,
         started_at: thread.created_at || null,
         ended_at: thread.ended_at || null,
-        review: reviews[c.id] || null,
+        review: reviews[thread.id] || reviews[c.id] || null,
       };
     });
 
@@ -496,10 +498,11 @@ app.post("/api/review/:chatId", async (req, res) => {
     review.reviewed_at = new Date().toISOString();
 
     const reviews = await loadReviews();
-    reviews[chatId] = review;
+    const reviewKey = thread_id || chatId;
+    reviews[reviewKey] = review;
     await saveReviews(reviews);
 
-    console.log(`[review] done for ${chatId}, score: ${review.overall_score}`);
+    console.log(`[review] done for ${reviewKey}, score: ${review.overall_score}`);
     res.json(review);
   } catch (e) {
     console.log(`[review] ERROR:`, e.message);

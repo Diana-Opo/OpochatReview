@@ -7,6 +7,7 @@ let currentPage = 0;
 let agentChart = null;
 let totalChats = 0;
 let agentShifts = {};
+let allChats = []; // accumulates chats from all pages for stats
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
@@ -21,16 +22,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("btnLoad").addEventListener("click", () => loadChats(null));
   document.getElementById("btnRefreshKb").addEventListener("click", refreshKnowledge);
   document.getElementById("btnReviewAll").addEventListener("click", reviewAllVisible);
-  document.getElementById("btnNext").addEventListener("click", () => {
-    pageHistory.push(nextPageId);
-    currentPage++;
-    loadChats(nextPageId);
-  });
-  document.getElementById("btnPrev").addEventListener("click", () => {
-    currentPage--;
-    pageHistory.pop();
-    loadChats(pageHistory[pageHistory.length - 1]);
-  });
   document.getElementById("modal").addEventListener("click", (e) => {
     if (e.target === document.getElementById("modal")) closeModal();
   });
@@ -99,7 +90,7 @@ async function loadAgents() {
 
 // ── Chats ─────────────────────────────────────────────────────────────────────
 async function loadChats(pageId) {
-  showStatus("Loading chats...", "info");
+  document.getElementById("statusBar").classList.add("hidden");
   const from = document.getElementById("dateFrom").value;
   const to = document.getElementById("dateTo").value;
   const agentId = document.getElementById("agentFilter").value;
@@ -119,29 +110,94 @@ async function loadChats(pageId) {
     nextPageId = data.next_page_id || null;
     totalChats = data.total_chats || chats.length;
 
+    // Merge into allChats (reset on first page, accumulate on subsequent)
+    if (!pageId) {
+      allChats = [...chats];
+    } else {
+      const existingKeys = new Set(allChats.map(c => c.thread_id || c.id));
+      chats.forEach(c => {
+        const k = c.thread_id || c.id;
+        if (existingKeys.has(k)) {
+          const idx = allChats.findIndex(x => (x.thread_id || x.id) === k);
+          if (idx !== -1) allChats[idx] = c;
+        } else {
+          allChats.push(c);
+        }
+      });
+    }
+
     renderTable();
     updateStats();
-    updateChart();
     updatePagination();
-    showStatus(`Loaded ${chats.length} chats`, "success");
+    document.getElementById("statusBar").classList.add("hidden");
 
     if (chats.length > 0) {
       document.getElementById("btnReviewAll").classList.remove("hidden");
+    }
+
+    // Auto-fetch all remaining pages in background for complete stats
+    if (!pageId && data.next_page_id) {
+      setStatsLoading(true);
+      setChartLoading(true);
+      fetchAllPagesForStats(data.next_page_id, from, to, agentId).finally(() => {
+        setStatsLoading(false);
+        setChartLoading(false);
+        updateStats();
+        renderTable();
+        updateChart();
+      });
+    } else if (!pageId) {
+      updateChart();
     }
   } catch (e) {
     showStatus("Error: " + e.message, "error");
   }
 }
 
+function setStatsLoading(on) {
+  ["statReviewed","statAvg","statResolved"].forEach(id => {
+    const el = document.getElementById(id);
+    if (on) el.innerHTML = `<span class="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin align-middle"></span>`;
+  });
+}
+
+function setChartLoading(on) {
+  document.getElementById("chartLoading").classList.toggle("hidden", !on);
+  document.getElementById("agentChart").classList.toggle("hidden", on);
+}
+
+async function fetchAllPagesForStats(startPageId, from, to, agentId) {
+  let pid = startPageId;
+  while (pid) {
+    try {
+      const p = new URLSearchParams();
+      if (from) p.set("date_from", iranDayToUtc(from, false));
+      if (to)   p.set("date_to",   iranDayToUtc(to, true));
+      if (agentId) p.set("agent_id", agentId);
+      p.set("page_id", pid);
+      const res = await fetch("/api/chats?" + p);
+      const data = await res.json();
+      if (data.error || !data.chats) break;
+      // Merge into allChats
+      data.chats.forEach(c => {
+        const k = c.thread_id || c.id;
+        const idx = allChats.findIndex(x => (x.thread_id || x.id) === k);
+        if (idx !== -1) allChats[idx] = c; else allChats.push(c);
+      });
+      pid = data.next_page_id || null;
+    } catch { break; }
+  }
+}
+
 // ── Render Table ─────────────────────────────────────────────────────────────
 function renderTable() {
   const tbody = document.getElementById("chatTableBody");
-  if (chats.length === 0) {
+  if (allChats.length === 0) {
     tbody.innerHTML = `<tr><td colspan="8" class="text-center py-12 text-gray-400">No chats found for this period</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = chats.map(chat => {
+  tbody.innerHTML = allChats.map(chat => {
     const r = chat.review;
     const date = chat.started_at ? new Date(chat.started_at).toLocaleDateString("en-GB") : "—";
     const scoreBadge = r ? scorePill(r.overall_score) : `<span class="text-gray-300 text-xs">—</span>`;
@@ -153,10 +209,14 @@ function renderTable() {
     const employeeName = getEmployee(chat.agent?.name, chat.started_at);
 
     const actionBtn = r
-      ? `<button onclick="openModal('${chat.id}','${chat.thread_id||''}')" class="text-xs text-blue-500 hover:underline">View</button>`
+      ? `<div class="flex items-center gap-1" onclick="event.stopPropagation()">
+           <button onclick="openModal('${chat.id}','${chat.thread_id||''}')" class="text-xs text-blue-500 hover:underline">View</button>
+           <button onclick="reviewChat('${chat.id}','${chat.thread_id||''}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>
+         </div>`
       : `<button onclick="reviewChat('${chat.id}','${chat.thread_id||''}',this)" class="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded hover:bg-blue-100">Review</button>`;
 
-    return `<tr class="chat-row border-b border-gray-50" id="row-${chat.id}" onclick="openModal('${chat.id}','${chat.thread_id||""}')">
+    const rowKey = chat.thread_id || chat.id;
+    return `<tr class="chat-row border-b border-gray-50" id="row-${rowKey}" onclick="openModal('${chat.id}','${chat.thread_id||""}')">
       <td class="px-4 py-3">
         <div class="flex items-center gap-1">
           <span class="font-mono text-xs text-gray-400">${chat.thread_id || chat.id}</span>
@@ -169,9 +229,9 @@ function renderTable() {
       <td class="px-4 py-3">${shiftBadge}</td>
       <td class="px-4 py-3 text-sm font-medium text-gray-700">${employeeName}</td>
       <td class="px-4 py-3">${langBadge}</td>
-      <td class="px-4 py-3" id="score-${chat.id}">${scoreBadge}</td>
-      <td class="px-4 py-3" id="status-${chat.id}">${statusBadge}</td>
-      <td class="px-4 py-3" id="action-${chat.id}" onclick="event.stopPropagation()">${actionBtn}</td>
+      <td class="px-4 py-3" id="score-${rowKey}">${scoreBadge}</td>
+      <td class="px-4 py-3" id="status-${rowKey}">${statusBadge}</td>
+      <td class="px-4 py-3" id="action-${rowKey}" onclick="event.stopPropagation()">${actionBtn}</td>
     </tr>`;
   }).join("");
 }
@@ -179,8 +239,9 @@ function renderTable() {
 // ── Review single chat ────────────────────────────────────────────────────────
 async function reviewChat(chatId, threadId, btn) {
   if (!btn) { btn = threadId; threadId = ""; } // backward compat
-  const actionCell = document.getElementById("action-" + chatId);
-  actionCell.innerHTML = `<span class="spinner"></span>`;
+  const rowKey = threadId || chatId;
+  const actionCell = document.getElementById("action-" + rowKey);
+  if (actionCell) actionCell.innerHTML = `<span class="spinner"></span>`;
 
   try {
     const qs = threadId ? `?thread_id=${threadId}` : "";
@@ -189,13 +250,18 @@ async function reviewChat(chatId, threadId, btn) {
     if (review.error) throw new Error(review.error);
 
     // Update chat in local state
-    const chat = chats.find(c => c.id === chatId);
+    const chat = chats.find(c => (c.thread_id || c.id) === rowKey);
     if (chat) chat.review = review;
 
-    document.getElementById("score-" + chatId).innerHTML = scorePill(review.overall_score);
-    document.getElementById("status-" + chatId).innerHTML =
+    const scoreEl = document.getElementById("score-" + rowKey);
+    const statusEl = document.getElementById("status-" + rowKey);
+    if (scoreEl) scoreEl.innerHTML = scorePill(review.overall_score);
+    if (statusEl) statusEl.innerHTML =
       `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "Resolved" : "Open"}</span>`;
-    actionCell.innerHTML = `<button onclick="openModal('${chatId}','${threadId||''}')" class="text-xs text-blue-500 hover:underline">View</button>`;
+    if (actionCell) actionCell.innerHTML = `<div class="flex items-center gap-1">
+      <button onclick="openModal('${chatId}','${threadId||''}')" class="text-xs text-blue-500 hover:underline">View</button>
+      <button onclick="reviewChat('${chatId}','${threadId||''}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>
+    </div>`;
 
     updateStats();
     updateChart();
@@ -238,23 +304,27 @@ async function reviewAllVisible() {
 
     for (const chat of pageChats) {
       showStatus(`Reviewing... ${done + 1} done, ${failed} failed`, "info");
-      const actionCell = document.getElementById("action-" + chat.id);
+      const tid = chat.thread_id || "";
+      const rk = tid || chat.id;
+      const actionCell = document.getElementById("action-" + rk);
       if (actionCell) actionCell.innerHTML = `<span class="spinner"></span>`;
       try {
-        const tid = chat.thread_id || "";
         const qs = tid ? `?thread_id=${tid}` : "";
         const res = await fetch(`/api/review/${chat.id}${qs}`, { method: "POST" });
         const review = await res.json();
         if (!review.error) {
           done++;
-          const local = chats.find(c => c.id === chat.id);
+          const local = chats.find(c => (c.thread_id || c.id) === rk);
           if (local) local.review = review;
-          if (document.getElementById("score-" + chat.id)) {
-            document.getElementById("score-" + chat.id).innerHTML = scorePill(review.overall_score);
-            document.getElementById("status-" + chat.id).innerHTML =
-              `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "Resolved" : "Open"}</span>`;
-            if (actionCell) actionCell.innerHTML = `<button onclick="openModal('${chat.id}','${tid}')" class="text-xs text-blue-500 hover:underline">View</button>`;
-          }
+          const scoreEl = document.getElementById("score-" + rk);
+          const statusEl = document.getElementById("status-" + rk);
+          if (scoreEl) scoreEl.innerHTML = scorePill(review.overall_score);
+          if (statusEl) statusEl.innerHTML =
+            `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "Resolved" : "Open"}</span>`;
+          if (actionCell) actionCell.innerHTML = `<div class="flex items-center gap-1">
+            <button onclick="openModal('${chat.id}','${tid}')" class="text-xs text-blue-500 hover:underline">View</button>
+            <button onclick="reviewChat('${chat.id}','${tid}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>
+          </div>`;
         } else {
           failed++;
           if (actionCell) actionCell.innerHTML = `<span class="text-xs text-red-400">Failed</span>`;
@@ -396,7 +466,7 @@ function closeModal() {
 
 // ── Stats & Chart ─────────────────────────────────────────────────────────────
 function updateStats() {
-  const reviewed = chats.filter(c => c.review);
+  const reviewed = allChats.filter(c => c.review);
   const scores = reviewed.map(c => c.review.overall_score).filter(Boolean);
   const resolved = reviewed.filter(c => c.review.resolved).length;
 
@@ -406,17 +476,29 @@ function updateStats() {
   document.getElementById("statResolved").textContent = resolved || "—";
 }
 
+function getEmployeeName(agentName, dateStr) {
+  if (!agentName || !dateStr) return null;
+  const full = agentName.toLowerCase().trim();
+  const first = full.split(" ")[0];
+  const mapping = agentShifts[full] || agentShifts[first];
+  if (!mapping) return null;
+  const h = getTehranHour(dateStr);
+  const dayEnd = mapping.dayEnd || 16;
+  const isDay = h >= 8 && h < dayEnd;
+  return (isDay ? mapping.day : mapping.night) || null;
+}
+
 function updateChart() {
-  const byAgent = {};
-  for (const chat of chats) {
+  const byEmployee = {};
+  for (const chat of allChats) {
     if (!chat.review || !chat.agent) continue;
-    const name = chat.agent.name;
-    if (!byAgent[name]) byAgent[name] = [];
-    byAgent[name].push(chat.review.overall_score);
+    const emp = getEmployeeName(chat.agent.name, chat.started_at) || chat.agent.name;
+    if (!byEmployee[emp]) byEmployee[emp] = [];
+    byEmployee[emp].push(chat.review.overall_score);
   }
 
-  const labels = Object.keys(byAgent);
-  const data = labels.map(n => +(byAgent[n].reduce((a,b)=>a+b,0)/byAgent[n].length).toFixed(2));
+  const labels = Object.keys(byEmployee);
+  const data = labels.map(n => +(byEmployee[n].reduce((a,b)=>a+b,0)/byEmployee[n].length).toFixed(2));
   const colors = data.map(s => s >= 7 ? "#22c55e" : s >= 5 ? "#eab308" : "#ef4444");
 
   if (agentChart) agentChart.destroy();
@@ -443,15 +525,7 @@ function updateChart() {
 }
 
 function updatePagination() {
-  const pg = document.getElementById("pagination");
-  if (nextPageId || currentPage > 0) {
-    pg.classList.remove("hidden");
-    document.getElementById("pageInfo").textContent = `Page ${currentPage + 1}`;
-    document.getElementById("btnPrev").disabled = currentPage === 0;
-    document.getElementById("btnNext").disabled = !nextPageId;
-  } else {
-    pg.classList.add("hidden");
-  }
+  // Pagination hidden from UI — all pages load automatically in background
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
