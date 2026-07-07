@@ -28,11 +28,12 @@ const LC_CONFIG_API = "https://api.livechatinc.com/v3.6/configuration/action";
 const DATA_DIR = path.join(__dirname, "data");
 const GDOC_KNOWLEDGE_URL = "https://docs.google.com/document/d/14iBZtfOXkPTb_ZYM4zSIAZOqdZ_VZeoKW0zJiNHXSIs/export?format=txt";
 const GSHEET_CAMPAIGNS_URL = "https://docs.google.com/spreadsheets/d/1wp0FGyJe2LnMr2BMR42EiIQPrALrZcbNrN5qCg2q5X4/export?format=csv";
+const GSHEET_MACROS_URL = "https://docs.google.com/spreadsheets/d/1CSAi2ltdxaidKTrLipZxKhW3zdbf5QERgcyqmu_k-sI/export?format=csv";
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const TELEGRAM_CHAT_IDS = (process.env.TELEGRAM_CHAT_IDS || "").split(",").map(s => s.trim()).filter(Boolean);
 const PROTOCOL_DOC_IDS = (process.env.PROTOCOL_DOC_IDS || "").split(",").map(s => s.trim()).filter(Boolean);
 
-let kb = { knowledge: "", campaigns: "", telegram: "", protocol: "", lastFetched: null };
+let kb = { knowledge: "", campaigns: "", telegram: "", protocol: "", macros: "", lastFetched: null };
 let telegramOffset = 0;
 
 app.use(express.json());
@@ -127,6 +128,21 @@ async function loadKnowledge() {
     kb.campaigns = await fs.readFile(path.join(DATA_DIR, "campaigns.csv"), "utf8").catch(() => "");
   }
 
+  // Fetch macros sheet
+  try {
+    const res = await fetch(GSHEET_MACROS_URL, { headers });
+    if (res.ok) {
+      kb.macros = await res.text();
+      await fs.writeFile(path.join(DATA_DIR, "macros.csv"), kb.macros);
+      console.log("[kb] macros fetched from Google Sheets");
+    } else {
+      kb.macros = await fs.readFile(path.join(DATA_DIR, "macros.csv"), "utf8").catch(() => "");
+      console.log("[kb] macros Google Sheets failed, using cache");
+    }
+  } catch {
+    kb.macros = await fs.readFile(path.join(DATA_DIR, "macros.csv"), "utf8").catch(() => "");
+  }
+
   // Import historical Telegram exports (JSON files from Telegram Desktop)
   await importTelegramExport();
   // Load Telegram updates from file (auto-updated by pollTelegram)
@@ -136,7 +152,7 @@ async function loadKnowledge() {
   await fetchProtocolDocs();
 
   kb.lastFetched = new Date().toISOString();
-  console.log(`[kb] loaded — knowledge:${kb.knowledge.length}c campaigns:${kb.campaigns.length}c telegram:${kb.telegram.length}c protocol:${kb.protocol.length}c`);
+  console.log(`[kb] loaded — knowledge:${kb.knowledge.length}c campaigns:${kb.campaigns.length}c telegram:${kb.telegram.length}c protocol:${kb.protocol.length}c macros:${kb.macros.length}c`);
 }
 
 async function fetchProtocolDocs() {
@@ -273,10 +289,13 @@ async function reviewWithClaude(transcript, chatId, chatStartedAt) {
   const protocolSection = kb.protocol
     ? `\nRESPONSE PROTOCOL:\n${kb.protocol.slice(0, 1500)}\n`
     : "";
+  const macrosSection = kb.macros
+    ? `\nSTANDARD MACROS (pre-approved responses — check if agent used correct macro or deviated unnecessarily):\n${kb.macros.slice(0, 2000)}\n`
+    : "";
 
   const prompt = `You are a QA reviewer for a forex broker support team. Be concise.
 CHAT DATE: ${chatStartedAt || "unknown"}
-${knowledgeSection}${campaignsSection}${telegramSection}${protocolSection}
+${knowledgeSection}${campaignsSection}${telegramSection}${protocolSection}${macrosSection}
 Score the agent on 8 criteria. Write notes in SAME language as chat (FA/EN/AR). Keep each note to 1 sentence max.
 
 SLA: first response <15s=10, 15-30s=8, 30-60s=6, >60s=4. Between replies: <45s good, 45-90s warning, >90s bad.
@@ -599,7 +618,7 @@ app.get("/api/telegram-setup", async (req, res) => {
 app.post("/api/refresh-knowledge", async (req, res) => {
   try {
     await loadKnowledge();
-    res.json({ ok: true, lastFetched: kb.lastFetched, knowledge: kb.knowledge.length, campaigns: kb.campaigns.length, telegram: kb.telegram.length, protocol: kb.protocol.length });
+    res.json({ ok: true, lastFetched: kb.lastFetched, knowledge: kb.knowledge.length, campaigns: kb.campaigns.length, telegram: kb.telegram.length, protocol: kb.protocol.length, macros: kb.macros.length });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -607,7 +626,7 @@ app.post("/api/refresh-knowledge", async (req, res) => {
 
 // Knowledge status
 app.get("/api/knowledge-status", (req, res) => {
-  res.json({ lastFetched: kb.lastFetched, knowledge: kb.knowledge.length, campaigns: kb.campaigns.length, telegram: kb.telegram.length, protocol: kb.protocol.length });
+  res.json({ lastFetched: kb.lastFetched, knowledge: kb.knowledge.length, campaigns: kb.campaigns.length, telegram: kb.telegram.length, protocol: kb.protocol.length, macros: kb.macros.length });
 });
 
 // Start

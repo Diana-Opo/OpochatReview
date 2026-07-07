@@ -59,11 +59,13 @@ function updateKbStatus(data) {
   const hasCamp = data.campaigns > 0;
   const hasTg = data.telegram > 0;
   const hasProt = data.protocol > 0;
+  const hasMacros = data.macros > 0;
   const parts = [];
   if (hasKb) parts.push("KB✓");
   if (hasCamp) parts.push("Camp✓");
   if (hasTg) parts.push("TG✓");
   if (hasProt) parts.push("Proto✓");
+  if (hasMacros) parts.push("Macros✓");
   kb.textContent = parts.length ? parts.join(" ") : "No data";
   kb.title = `Last fetched: ${data.lastFetched || "never"}\nKnowledge: ${data.knowledge} chars\nCampaigns: ${data.campaigns} chars\nTelegram: ${data.telegram} chars\nProtocol: ${data.protocol} chars`;
 }
