@@ -265,9 +265,15 @@ function renderTable() {
     const rowKey = chat.thread_id || chat.id;
     return `<tr class="chat-row border-b border-gray-50" id="row-${rowKey}" onclick="openModal('${chat.id}','${chat.thread_id||""}')">
       <td class="px-4 py-3">
-        <div class="flex items-center gap-1">
-          <span class="font-mono text-xs text-gray-400">${chat.thread_id || chat.id}</span>
-          <button onclick="event.stopPropagation();copyId('${chat.thread_id || chat.id}')" title="Copy ID" class="shrink-0 text-gray-300 hover:text-blue-500 px-1 text-sm leading-none">⎘</button>
+        <div class="flex flex-col gap-0.5">
+          <div class="flex items-center gap-1">
+            <span class="font-mono text-xs text-gray-400">${chat.thread_id || chat.id}</span>
+            <button onclick="event.stopPropagation();copyId('${chat.thread_id || chat.id}')" title="Copy thread ID" class="shrink-0 text-gray-300 hover:text-blue-500 px-1 text-sm leading-none">⎘</button>
+          </div>
+          ${chat.id !== chat.thread_id ? `<div class="flex items-center gap-1">
+            <span class="font-mono text-xs text-gray-300">${chat.id}</span>
+            <button onclick="event.stopPropagation();copyId('${chat.id}')" title="Copy container ID" class="shrink-0 text-gray-200 hover:text-gray-400 px-1 text-xs leading-none">⎘</button>
+          </div>` : ""}
         </div>
       </td>
       <td class="px-4 py-3 font-medium text-gray-700 text-xs">${agentNames}</td>

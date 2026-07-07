@@ -455,9 +455,10 @@ app.get("/api/debug-chat/:threadId", async (req, res) => {
     }
     if (!foundChat) return res.json({ error: "Thread not found in recent 100 chats", threadId });
 
-    const data = await lcPost("get_chat", { chat_id: foundChat.id, thread_id: threadId });
+    const data = await lcPost("get_chat", { chat_id: foundChat.id });
     let thread = foundThread;
-    if (Array.isArray(data.threads)) thread = data.threads.find(t => t.id === threadId) || thread;
+    if (Array.isArray(data.threads)) thread = data.threads.find(t => t.id === threadId) || data.threads[0] || thread;
+    else if (data.thread) thread = data.thread;
     const events = thread.events || [];
     res.json({
       container_chat_id: foundChat.id,
