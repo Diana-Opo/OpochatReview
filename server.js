@@ -452,6 +452,11 @@ IMPORTANT RULES FOR ACCURACY SCORING:
 SPECIAL RULE — ACCOUNT TYPES:
 - Whenever a customer asks about account types, account options, or account comparison, the agent MUST send BOTH: (1) the general account types macro (covering MT4/MT5/cTrader/OpoTrade) AND (2) the TradingView account types macro. If either one is missing, flag it as an issue in the resolution or accuracy notes.
 
+DEPARTMENT ROUTING RULE:
+- Customers self-select their department (e.g. General, Social Trade, cTrader, etc.) when starting a chat. The agent has NO control over which department the customer chose.
+- If an agent receives a chat in their department but the customer's question belongs to a DIFFERENT department, and the agent correctly identifies this and transfers the chat → this is CORRECT and professional behavior. Do NOT penalize the agent for the transfer, wrong department choice, or lack of resolution. Score resolution and compliance positively for correct triage.
+- Only penalize a transfer if the agent transferred a chat they clearly should have handled themselves.
+
 SUPERVISOR NOTES RULE:
 - Lines marked [SUPERVISOR NOTE] in the transcript are private internal messages from supervisors (not visible to customer).
 - If a supervisor note contains a correction, warning, or instruction directed at the agent's behavior in this chat, set "supervisor_warning" to true and quote the note in "supervisor_warning_text".
