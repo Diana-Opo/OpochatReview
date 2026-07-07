@@ -819,6 +819,20 @@ function renderShiftsTable() {
   tbody.innerHTML = (Array.isArray(agentShifts) ? agentShifts : []).map(s => shiftRowHtml(s)).join("");
 }
 
+const ALL_GROUPS = ["General", "Social Trade", "KYC"];
+
+function groupCheckboxesHtml(selected) {
+  const sel = selected || [];
+  return ALL_GROUPS.map(g => {
+    const checked = sel.includes(g) ? "checked" : "";
+    const color = g === "General" ? "text-blue-600" : g === "Social Trade" ? "text-green-600" : "text-purple-600";
+    return `<label class="flex items-center gap-1 cursor-pointer whitespace-nowrap">
+      <input type="checkbox" class="sr-group" value="${g}" ${checked} />
+      <span class="text-xs ${color}">${g}</span>
+    </label>`;
+  }).join("");
+}
+
 function shiftRowHtml(s) {
   return `<tr class="border-b border-gray-100 shift-row">
     <td class="py-2 pr-3"><input class="sr-employee w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm" value="${escHtml(s.employee || "")}" placeholder="Employee name" /></td>
@@ -829,6 +843,7 @@ function shiftRowHtml(s) {
     </td>
     <td class="py-2 pr-3"><input class="sr-start w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23" value="${s.start ?? 8}" /></td>
     <td class="py-2 pr-3"><input class="sr-end w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" value="${s.end ?? 16}" /></td>
+    <td class="py-2 pr-3"><div class="flex flex-col gap-1">${groupCheckboxesHtml(s.groups)}</div></td>
     <td class="py-2"><button onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-600 text-lg leading-none px-1">×</button></td>
   </tr>`;
 }
@@ -846,6 +861,7 @@ function addShiftRow() {
     </td>
     <td class="py-2 pr-3"><input class="sr-start w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23" value="8" /></td>
     <td class="py-2 pr-3"><input class="sr-end w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" value="16" /></td>
+    <td class="py-2 pr-3"><div class="flex flex-col gap-1">${groupCheckboxesHtml([])}</div></td>
     <td class="py-2"><button onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-600 text-lg leading-none px-1">×</button></td>
   `;
   tbody.appendChild(tr);
@@ -859,8 +875,9 @@ async function saveSettings() {
     const agentKey = row.querySelector(".sr-agent").value.trim();
     const start = parseInt(row.querySelector(".sr-start").value) || 0;
     const end = parseInt(row.querySelector(".sr-end").value) || 24;
+    const groups = [...row.querySelectorAll(".sr-group:checked")].map(cb => cb.value);
     if (!employee || !agentKey) return;
-    newShifts.push({ employee, agentKey, start, end });
+    newShifts.push({ employee, agentKey, start, end, groups });
   });
 
   try {
