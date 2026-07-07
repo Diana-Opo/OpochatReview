@@ -523,7 +523,8 @@ SPECIAL RULE — ACCOUNT TYPES:
 - Whenever a customer asks about account types, account options, or account comparison, the agent MUST send BOTH: (1) the general account types macro (covering MT4/MT5/cTrader/OpoTrade) AND (2) the TradingView account types macro. If either one is missing, flag it as an issue in the resolution or accuracy notes.
 
 DEPARTMENT ROUTING RULE:
-- The transcript may begin with a [PRE-CHAT FORM] block showing which department the customer selected and their initial question. Use this to understand the routing context — BUT the customer's actual question may differ from their form selection (e.g. they selected "Social Trade" but ask about account activation).
+- The transcript may begin with a [PRE-CHAT FORM] block showing which department the customer selected and their initial question/complaint. ALWAYS read this block first — it establishes the customer's topic before the live chat begins.
+- CRITICAL: Short or seemingly ambiguous in-chat customer messages (e.g. "why?", "what's the reason?", "دلیلش چیه") must be interpreted IN CONTEXT of the pre-chat form. If the form already stated the customer's problem (e.g. "every position I open gets closed"), then an in-chat message like "what's the reason?" is NOT ambiguous — it clearly refers to the form question. Do NOT penalize an agent for routing based on the pre-chat form context.
 - Each department handles ONLY its own topics:
   • Social Trade / CopyTrade: ONLY questions about the Social Trade or CopyTrade platform (providers, followers, copy strategies).
   • General: account issues, deposits, withdrawals, platform problems, buy/sell errors, KYC/activation, and everything NOT specific to Social Trade or KYC.
