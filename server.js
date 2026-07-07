@@ -5,6 +5,7 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import pg from "pg";
+import cron from "node-cron";
 const { Pool } = pg;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1067,6 +1068,80 @@ if (TELEGRAM_BOT_TOKEN) {
 // Auto-refresh knowledge base every 6 hours
 setInterval(loadKnowledge, 6 * 60 * 60 * 1000);
 console.log("[kb] auto-refresh every 6 hours");
+
+// Nightly auto-review: every day at 00:00 Tehran time (UTC+3:30 → 20:30 UTC)
+async function runNightlyReview() {
+  console.log("[nightly] Starting nightly auto-review...");
+  try {
+    const tehranNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tehran" }));
+    const today = tehranNow.toISOString().slice(0, 10);
+    const from = today + "T00:00:00.000000+00:00";
+    const to   = today + "T23:59:59.999999+00:00";
+
+    const [reviews, shifts] = await Promise.all([loadReviews(), loadShifts()]);
+    let done = 0, skipped = 0, failed = 0;
+    let pageId = null;
+
+    do {
+      const params = new URLSearchParams({ date_from: from, date_to: to });
+      if (pageId) params.set("page_id", pageId);
+
+      const res = await fetch(`https://api.livechatinc.com/v3.6/agent/action/list_archives`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Basic ${Buffer.from(`${process.env.LIVECHAT_ACCOUNT_ID}:${process.env.LIVECHAT_PAT}`).toString("base64")}`,
+        },
+        body: JSON.stringify({
+          filters: { from, to },
+          ...(pageId ? { page_id: pageId } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) { console.error("[nightly] list_archives error:", data); break; }
+
+      pageId = data.next_page_id || null;
+      const chats = data.chats || [];
+
+      for (const c of chats) {
+        const thread = c.thread || (Array.isArray(c.threads) ? c.threads[0] : null) || {};
+        const chatId = c.id;
+        const thread_id = thread.id || null;
+        const reviewKey = thread_id || chatId;
+        const existing = reviews[reviewKey];
+
+        // Skip if already reviewed successfully (no errors)
+        const hasError = existing?.per_agent_reviews &&
+          Object.values(existing.per_agent_reviews).some(r => r && r._error);
+        if (existing && !hasError) { skipped++; continue; }
+
+        try {
+          // Re-use review endpoint logic by calling our own API
+          const qs = thread_id ? `?thread_id=${thread_id}` : "";
+          const reviewRes = await fetch(`http://localhost:${PORT}/api/review/${chatId}${qs}`, {
+            method: "POST",
+          });
+          if (reviewRes.ok) { done++; }
+          else { failed++; console.warn("[nightly] review failed for", chatId); }
+          // Small pause to avoid Claude rate limits
+          await new Promise(r => setTimeout(r, 1000));
+        } catch (e) {
+          failed++;
+          console.error("[nightly] error reviewing", chatId, e.message);
+        }
+      }
+    } while (pageId);
+
+    console.log(`[nightly] Done — reviewed: ${done}, skipped: ${skipped}, failed: ${failed}`);
+  } catch (e) {
+    console.error("[nightly] Fatal error:", e.message);
+  }
+}
+
+// 20:30 UTC = 00:00 Tehran (UTC+3:30)
+cron.schedule("30 20 * * *", runNightlyReview, { timezone: "UTC" });
+console.log("[nightly] Scheduled auto-review at 00:00 Tehran time (20:30 UTC)");
+
 app.listen(PORT, () => {
   console.log(`\n✓ Chat Review running at http://localhost:${PORT}\n`);
 });
