@@ -391,7 +391,13 @@ async function reviewAllVisible() {
     } catch { break; }
 
     pageId = pageData.next_page_id || null;
-    const pageChats = (pageData.chats || []).filter(c => !c.review);
+    const needsReview = (c) => {
+      if (!c.review) return true;
+      const pa = c.review.per_agent_reviews;
+      if (pa && Object.values(pa).some(r => r && r._error)) return true;
+      return false;
+    };
+    const pageChats = (pageData.chats || []).filter(needsReview);
 
     for (const chat of pageChats) {
       showStatus(`Reviewing... ${done + 1} done, ${failed} failed`, "info");
