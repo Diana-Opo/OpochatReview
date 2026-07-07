@@ -316,7 +316,7 @@ function renderTable() {
       <td class="px-4 py-3 text-gray-600">${chat.customer_name || "—"}</td>
       <td class="px-4 py-3 text-gray-500 text-xs">${date}</td>
       <td class="px-4 py-3">${shiftBadge}</td>
-      <td class="px-4 py-3 text-sm font-medium text-gray-700">${employeeName}</td>
+      <td class="px-4 py-3 text-sm font-medium text-gray-700">${employeeNameHtml}</td>
       <td class="px-4 py-3">${langBadge}</td>
       <td class="px-4 py-3" id="score-${rowKey}">${scoreBadge}</td>
       <td class="px-4 py-3" id="status-${rowKey}">${statusBadge}</td>
