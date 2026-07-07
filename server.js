@@ -457,7 +457,7 @@ app.get("/api/chats/:chatId", async (req, res) => {
       started_at: thread.created_at || null,
       ended_at: thread.ended_at || null,
       messages,
-      review: reviews[data.id] || null,
+      review: reviews[thread.id] || reviews[data.id] || null,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
