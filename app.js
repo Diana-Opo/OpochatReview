@@ -7,7 +7,8 @@ let currentPage = 0;
 let agentChart = null;
 let totalChats = 0;
 let agentShifts = [];
-let allChats = []; // accumulates chats from all pages for stats
+let allChats = [];
+let activeEmployeeShift = null; // { employee, agentKey, start, end } when employee filter is on
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
@@ -18,6 +19,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   await loadAgents();
   try { const r = await fetch("/api/agent-shifts"); agentShifts = await r.json(); } catch {}
+  renderAgentFilter();
   loadKnowledgeStatus();
   document.getElementById("btnLoad").addEventListener("click", () => loadChats(null));
   document.getElementById("btnRefreshKb").addEventListener("click", refreshKnowledge);
@@ -76,16 +78,45 @@ async function loadAgents() {
       return;
     }
     agents = Array.isArray(data) ? data : [];
-    const sel = document.getElementById("agentFilter");
-    agents.forEach(a => {
-      const opt = document.createElement("option");
-      opt.value = a.id;
-      opt.textContent = a.name;
-      sel.appendChild(opt);
-    });
+    renderAgentFilter();
   } catch (e) {
     showStatus("Could not load agents: " + e.message, "error");
   }
+}
+
+function renderAgentFilter() {
+  const sel = document.getElementById("agentFilter");
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">All Employees</option>';
+  const employees = Array.isArray(agentShifts) ? agentShifts : [];
+  employees.forEach(s => {
+    const opt = document.createElement("option");
+    opt.value = s.employee;
+    opt.textContent = s.employee;
+    sel.appendChild(opt);
+  });
+  if (prev) sel.value = prev;
+}
+
+function resolveEmployeeFilter() {
+  const empName = document.getElementById("agentFilter").value;
+  if (!empName) { activeEmployeeShift = null; return null; }
+  const shift = agentShifts.find(s => s.employee === empName);
+  if (!shift) { activeEmployeeShift = null; return null; }
+  activeEmployeeShift = shift;
+  const agent = agents.find(a => {
+    const k = a.name.toLowerCase().trim();
+    return k === shift.agentKey || k.split(" ")[0] === shift.agentKey;
+  });
+  return agent?.id || null;
+}
+
+function applyEmployeeHourFilter(list) {
+  if (!activeEmployeeShift) return list;
+  return list.filter(c => {
+    const h = getTehranHour(c.started_at);
+    return h >= activeEmployeeShift.start && h < activeEmployeeShift.end;
+  });
 }
 
 // ── Chats ─────────────────────────────────────────────────────────────────────
@@ -93,7 +124,7 @@ async function loadChats(pageId) {
   document.getElementById("statusBar").classList.add("hidden");
   const from = document.getElementById("dateFrom").value;
   const to = document.getElementById("dateTo").value;
-  const agentId = document.getElementById("agentFilter").value;
+  const agentId = resolveEmployeeFilter();
 
   const params = new URLSearchParams();
   if (from) params.set("date_from", iranDayToUtc(from, false));
@@ -192,12 +223,13 @@ async function fetchAllPagesForStats(startPageId, from, to, agentId) {
 // ── Render Table ─────────────────────────────────────────────────────────────
 function renderTable() {
   const tbody = document.getElementById("chatTableBody");
-  if (allChats.length === 0) {
+  const displayChats = applyEmployeeHourFilter(allChats);
+  if (displayChats.length === 0) {
     tbody.innerHTML = `<tr><td colspan="8" class="text-center py-12 text-gray-400">No chats found for this period</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = allChats.map(chat => {
+  tbody.innerHTML = displayChats.map(chat => {
     const r = chat.review;
     const date = chat.started_at ? new Date(chat.started_at).toLocaleDateString("en-GB") : "—";
     const scoreBadge = r ? scorePill(r.overall_score) : `<span class="text-gray-300 text-xs">—</span>`;
@@ -466,11 +498,12 @@ function closeModal() {
 
 // ── Stats & Chart ─────────────────────────────────────────────────────────────
 function updateStats() {
-  const reviewed = allChats.filter(c => c.review);
+  const filtered = applyEmployeeHourFilter(allChats);
+  const reviewed = filtered.filter(c => c.review);
   const scores = reviewed.map(c => c.review.overall_score).filter(Boolean);
   const resolved = reviewed.filter(c => c.review.resolved).length;
 
-  document.getElementById("statTotal").textContent = totalChats;
+  document.getElementById("statTotal").textContent = filtered.length;
   document.getElementById("statReviewed").textContent = reviewed.length;
   document.getElementById("statAvg").textContent = scores.length ? (scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1) + "/10" : "—";
   document.getElementById("statResolved").textContent = resolved || "—";
@@ -487,7 +520,7 @@ function getEmployeeName(agentName, dateStr) {
 
 function updateChart() {
   const byEmployee = {};
-  for (const chat of allChats) {
+  for (const chat of applyEmployeeHourFilter(allChats)) {
     if (!chat.review || !chat.agent) continue;
     const emp = getEmployeeName(chat.agent.name, chat.started_at) || chat.agent.name;
     if (!byEmployee[emp]) byEmployee[emp] = [];
