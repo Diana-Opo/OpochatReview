@@ -22,21 +22,25 @@ if (process.env.DATABASE_URL) {
     updated_at TIMESTAMP DEFAULT NOW()
   )`).then(() => console.log("[db] reviews table ready")).catch(e => console.error("[db] init error:", e.message));
   pool.query(`CREATE TABLE IF NOT EXISTS agent_shifts (
-    id INTEGER PRIMARY KEY DEFAULT 1,
-    data JSONB NOT NULL,
-    updated_at TIMESTAMP DEFAULT NOW()
+    id SERIAL PRIMARY KEY,
+    employee VARCHAR(255) NOT NULL,
+    agent_key VARCHAR(255) NOT NULL,
+    start_hour INTEGER NOT NULL,
+    end_hour INTEGER NOT NULL
   )`).then(async () => {
     console.log("[db] agent_shifts table ready");
     // Seed from file if DB is empty
     try {
-      const existing = await pool.query("SELECT id FROM agent_shifts WHERE id = 1");
-      if (existing.rows.length === 0) {
+      const existing = await pool.query("SELECT COUNT(*) FROM agent_shifts");
+      if (parseInt(existing.rows[0].count) === 0) {
         const raw = await fs.readFile(path.join(__dirname, "data", "agent_shifts.json"), "utf8");
         const shifts = JSON.parse(raw);
-        await pool.query(
-          `INSERT INTO agent_shifts (id, data, updated_at) VALUES (1, $1, NOW())`,
-          [JSON.stringify(shifts)]
-        );
+        for (const s of shifts) {
+          await pool.query(
+            `INSERT INTO agent_shifts (employee, agent_key, start_hour, end_hour) VALUES ($1,$2,$3,$4)`,
+            [s.employee, s.agentKey, s.start, s.end]
+          );
+        }
         console.log("[db] agent_shifts seeded from file:", shifts.length, "rows");
       }
     } catch (e) { console.log("[db] shifts seed skipped:", e.message); }
@@ -821,8 +825,13 @@ app.get("/api/agent-names", async (req, res) => {
 async function loadShifts() {
   if (pool) {
     try {
-      const r = await pool.query("SELECT data FROM agent_shifts WHERE id = 1");
-      if (r.rows.length > 0) return r.rows[0].data;
+      const r = await pool.query("SELECT employee, agent_key, start_hour, end_hour FROM agent_shifts ORDER BY id");
+      if (r.rows.length > 0) return r.rows.map(row => ({
+        employee: row.employee,
+        agentKey: row.agent_key,
+        start: row.start_hour,
+        end: row.end_hour,
+      }));
     } catch {}
   }
   try {
@@ -833,11 +842,13 @@ async function loadShifts() {
 
 async function saveShifts(shifts) {
   if (pool) {
-    await pool.query(
-      `INSERT INTO agent_shifts (id, data, updated_at) VALUES (1, $1, NOW())
-       ON CONFLICT (id) DO UPDATE SET data = $1, updated_at = NOW()`,
-      [JSON.stringify(shifts)]
-    );
+    await pool.query("DELETE FROM agent_shifts");
+    for (const s of shifts) {
+      await pool.query(
+        `INSERT INTO agent_shifts (employee, agent_key, start_hour, end_hour) VALUES ($1,$2,$3,$4)`,
+        [s.employee, s.agentKey, s.start, s.end]
+      );
+    }
     return;
   }
   await fs.writeFile(path.join(DATA_DIR, "agent_shifts.json"), JSON.stringify(shifts, null, 2));
