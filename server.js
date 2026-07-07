@@ -37,9 +37,20 @@ if (process.env.DATABASE_URL) {
         agent_key VARCHAR(255) NOT NULL,
         start_hour INTEGER NOT NULL,
         end_hour INTEGER NOT NULL,
-        groups TEXT[] DEFAULT '{}'
+        groups JSONB DEFAULT '[]'
       )`);
-      await pool.query(`ALTER TABLE agent_shifts ADD COLUMN IF NOT EXISTS groups TEXT[] DEFAULT '{}'`);
+      // Migrate groups column type if it exists as TEXT[]
+      await pool.query(`
+        DO $$ BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='agent_shifts' AND column_name='groups' AND data_type='ARRAY'
+          ) THEN
+            ALTER TABLE agent_shifts DROP COLUMN groups;
+          END IF;
+        END $$;
+      `);
+      await pool.query(`ALTER TABLE agent_shifts ADD COLUMN IF NOT EXISTS groups JSONB DEFAULT '[]'`);
       console.log("[db] agent_shifts table ready");
       // Seed from file if empty
       const cnt = await pool.query("SELECT COUNT(*) FROM agent_shifts");
@@ -849,7 +860,7 @@ async function loadShifts() {
         agentKey: row.agent_key,
         start: row.start_hour,
         end: row.end_hour,
-        groups: row.groups || [],
+        groups: Array.isArray(row.groups) ? row.groups : [],
       }));
     } catch {}
   }
@@ -864,8 +875,8 @@ async function saveShifts(shifts) {
     await pool.query("TRUNCATE agent_shifts RESTART IDENTITY");
     for (const s of shifts) {
       await pool.query(
-        `INSERT INTO agent_shifts (employee, agent_key, start_hour, end_hour, groups) VALUES ($1,$2,$3,$4,$5)`,
-        [s.employee, s.agentKey, s.start, s.end, s.groups || []]
+        `INSERT INTO agent_shifts (employee, agent_key, start_hour, end_hour, groups) VALUES ($1,$2,$3,$4,$5::jsonb)`,
+        [s.employee, s.agentKey, s.start, s.end, JSON.stringify(Array.isArray(s.groups) ? s.groups : [])]
       );
     }
     return;
