@@ -25,7 +25,22 @@ if (process.env.DATABASE_URL) {
     id INTEGER PRIMARY KEY DEFAULT 1,
     data JSONB NOT NULL,
     updated_at TIMESTAMP DEFAULT NOW()
-  )`).then(() => console.log("[db] agent_shifts table ready")).catch(e => console.error("[db] shifts init error:", e.message));
+  )`).then(async () => {
+    console.log("[db] agent_shifts table ready");
+    // Seed from file if DB is empty
+    try {
+      const existing = await pool.query("SELECT id FROM agent_shifts WHERE id = 1");
+      if (existing.rows.length === 0) {
+        const raw = await fs.readFile(path.join(__dirname, "data", "agent_shifts.json"), "utf8");
+        const shifts = JSON.parse(raw);
+        await pool.query(
+          `INSERT INTO agent_shifts (id, data, updated_at) VALUES (1, $1, NOW())`,
+          [JSON.stringify(shifts)]
+        );
+        console.log("[db] agent_shifts seeded from file:", shifts.length, "rows");
+      }
+    } catch (e) { console.log("[db] shifts seed skipped:", e.message); }
+  }).catch(e => console.error("[db] shifts init error:", e.message));
 }
 const LC_API = "https://api.livechatinc.com/v3.6/agent/action";
 const LC_CONFIG_API = "https://api.livechatinc.com/v3.6/configuration/action";
