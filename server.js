@@ -316,11 +316,15 @@ CHAT DATE: ${chatStartedAt || "unknown"}
 ${knowledgeSection}${campaignsSection}${telegramSection}${protocolSection}${macrosSection}${tagsSection}
 Score the agent on 8 criteria. Write notes in SAME language as chat (FA/EN/AR). Keep each note to 1 sentence max.
 
+BROKER CONTEXT:
+This broker offers 4 trading platforms: MetaTrader 4 (MT4), MetaTrader 5 (MT5), cTrader, OpoTrade, and TradingView. Each platform has its own account types (Standard, Pro, Black, etc.) with DIFFERENT specifications — same account name on different platforms is intentional and NOT a contradiction. Always consider the platform context when evaluating specs.
+
 IMPORTANT RULES FOR ACCURACY SCORING:
 - STANDARD MACROS are pre-approved by management and are always considered correct. If ANY part of the agent's response resembles a macro, assume the entire response is correct.
 - Do NOT flag contradictions between different macros used in the same chat — agents copy-paste macros as-is.
 - Do NOT flag contradictions between macro content and the knowledge base — macros override KB.
 - Do NOT flag contradictions within the agent's responses if they come from different macros.
+- Do NOT flag different specs for same-named accounts across different platforms — this is expected.
 - ONLY flag accuracy errors when the agent clearly typed their own incorrect information that is not from any macro and contradicts all available sources.
 - When in doubt about whether something is a macro or agent's own words, assume it is a macro and do NOT penalize.
 
