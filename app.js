@@ -459,10 +459,13 @@ async function openModal(chatId, threadId) {
 
     function renderPerAgentCard(pr) {
       if (pr._error) {
-        return `<div class="mb-4 border border-red-200 rounded-xl p-4 bg-red-50">
-          <p class="text-sm font-bold text-red-700">${escHtml(pr.agent_name || "Agent")}</p>
-          <p class="text-xs text-red-500 mt-1">${escHtml(pr.notes || "Review failed")}</p>
-          </div>`;
+        return `<div class="mb-4 border border-red-200 rounded-xl p-4 bg-red-50 flex items-center justify-between">
+          <div>
+            <p class="text-sm font-bold text-red-700">${escHtml(pr.agent_name || "Agent")}</p>
+            <p class="text-xs text-red-500 mt-0.5">Review failed — click Retry</p>
+          </div>
+          <button onclick="reviewChatModal('${chatId}','${threadId||''}')" class="text-xs bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700">Retry</button>
+        </div>`;
       }
       return `<div class="mb-4 border border-gray-200 rounded-xl p-4">
         ${pr.supervisor_warning ? `<div class="mb-3 bg-orange-50 border border-orange-300 rounded-lg px-3 py-2 flex gap-2">

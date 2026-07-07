@@ -478,7 +478,20 @@ function allAgentsInThread(events, users, shifts, chatStartedAt) {
   return Object.values(seen);
 }
 
-async function reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes = [], agentName = null) {
+async function reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes = [], agentName = null, attempt = 1) {
+  try {
+    return await _reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes, agentName);
+  } catch (err) {
+    if (attempt < 3) {
+      console.warn(`[review] attempt ${attempt} failed for ${agentName || chatId}, retrying...`, err?.message);
+      await new Promise(r => setTimeout(r, 1500 * attempt));
+      return reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes, agentName, attempt + 1);
+    }
+    throw err;
+  }
+}
+
+async function _reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes = [], agentName = null) {
   const knowledgeSection = kb.knowledge
     ? `\nKNOWLEDGE BASE:\n${kb.knowledge.slice(0, 3000)}\n`
     : "";
