@@ -302,21 +302,40 @@ function extractSupervisorNotes(events, users) {
     });
 }
 
-// Split events into per-agent segments: each message belongs to whoever was
-// the last agent to send a message before it (i.e. who was "handling" at that point)
+// Split events into per-agent segments.
+// Also detects routing/assignment events to catch agents who were assigned but never responded.
 function buildAgentSegments(events, users) {
-  const segments = {}; // agentId -> { id, name, events[] }
+  const segments = {}; // agentId -> { id, name, events[], responded }
   let currentAgent = null;
 
   for (const e of events) {
-    if (!e.text) continue;
-    const user = users.find(u => u.id === e.author_id);
-    if (user?.type === "agent" && !(e.visibility === "agents" || e.type === "annotation")) {
-      currentAgent = { id: user.id, name: user.name };
+    const isPrivate = e.visibility === "agents" || e.type === "annotation";
+
+    // Routing assignment event: agent was assigned even if they never replied
+    if ((e.type === "routing.assigned" || e.type === "chat_transferred") && e.agent_id) {
+      const user = users.find(u => u.id === e.agent_id);
+      if (user) {
+        currentAgent = { id: user.id, name: user.name };
+        if (!segments[currentAgent.id]) {
+          segments[currentAgent.id] = { id: currentAgent.id, name: currentAgent.name, events: [], responded: false };
+        }
+      }
     }
+
+    if (!e.text || isPrivate) continue;
+
+    const user = users.find(u => u.id === e.author_id);
+    if (user?.type === "agent") {
+      currentAgent = { id: user.id, name: user.name };
+      if (!segments[currentAgent.id]) {
+        segments[currentAgent.id] = { id: currentAgent.id, name: currentAgent.name, events: [], responded: false };
+      }
+      segments[currentAgent.id].responded = true;
+    }
+
     if (currentAgent) {
       if (!segments[currentAgent.id]) {
-        segments[currentAgent.id] = { id: currentAgent.id, name: currentAgent.name, events: [] };
+        segments[currentAgent.id] = { id: currentAgent.id, name: currentAgent.name, events: [], responded: false };
       }
       segments[currentAgent.id].events.push(e);
     }
@@ -336,7 +355,7 @@ function allAgentsInThread(events, users) {
   return Object.values(seen);
 }
 
-async function reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes = []) {
+async function reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes = [], agentName = null) {
   const knowledgeSection = kb.knowledge
     ? `\nKNOWLEDGE BASE:\n${kb.knowledge.slice(0, 3000)}\n`
     : "";
@@ -356,10 +375,17 @@ async function reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNot
     ? `\nAVAILABLE TAGS (assign ALL that apply — minimum 1 per chat. If referral was mentioned, always include "referred"):\n${kb.tags.slice(0, 2000)}\n`
     : "";
 
+  const isPerAgent = !!agentName;
+  const agentContext = isPerAgent
+    ? `\nPER-AGENT REVIEW MODE: You are ONLY reviewing the performance of "${agentName}" based on their assigned portion of the chat below. Do NOT factor in what other agents did. Score ONLY what "${agentName}" did or failed to do.\n`
+    : "";
+
   const prompt = `You are a QA reviewer for a forex broker support team. Be concise.
 CHAT DATE: ${chatStartedAt || "unknown"}
-${knowledgeSection}${campaignsSection}${telegramSection}${protocolSection}${macrosSection}${tagsSection}
+${agentContext}${knowledgeSection}${campaignsSection}${telegramSection}${protocolSection}${macrosSection}${tagsSection ? (isPerAgent ? "" : tagsSection) : ""}
 Score the agent on 8 criteria. Write notes in SAME language as chat (FA/EN/AR). Keep each note to 1 sentence max.
+
+LOST CHAT RULE: If the agent's assigned portion shows customer messages but ZERO responses from the agent, it means the agent lost/abandoned the chat. In this case: response_time_score = 0, overall_score must reflect this failure heavily, and notes must clearly state the agent did not respond and lost the chat.
 
 BROKER CONTEXT:
 This broker offers 4 trading platforms: MetaTrader 4 (MT4), MetaTrader 5 (MT5), cTrader, OpoTrade, and TradingView. Each platform has its own account types (Standard, Pro, Black, etc.) with DIFFERENT specifications — same account name on different platforms is intentional and NOT a contradiction. Always consider the platform context when evaluating specs.
@@ -608,15 +634,22 @@ app.post("/api/review/:chatId", async (req, res) => {
     const overallPromise = reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes);
     const agentPromises = agentCount > 1
       ? Object.fromEntries(
-          Object.entries(agentSegments).map(([agentId, seg]) => [
-            agentId,
-            reviewWithClaude(
-              buildTranscript(seg.events, users),
-              chatId,
-              chatStartedAt,
-              supervisorNotes
-            ).then(r => ({ ...r, agent_name: seg.name })).catch(() => null)
-          ])
+          Object.entries(agentSegments).map(([agentId, seg]) => {
+            const hasAgentMessages = seg.events.some(e => {
+              const u = users.find(u2 => u2.id === e.author_id);
+              return u?.type === "agent";
+            });
+            // If agent was assigned but never responded, send a special transcript
+            const segTranscript = hasAgentMessages
+              ? buildTranscript(seg.events, users)
+              : `[SYSTEM] ${seg.name} was assigned this chat but sent ZERO responses. Customer messages were waiting with no reply. Agent lost/abandoned the chat.`;
+            return [
+              agentId,
+              reviewWithClaude(segTranscript, chatId, chatStartedAt, supervisorNotes, seg.name)
+                .then(r => ({ ...r, agent_name: seg.name }))
+                .catch(() => null)
+            ];
+          })
         )
       : {};
 
