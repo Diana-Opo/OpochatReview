@@ -453,9 +453,11 @@ SPECIAL RULE — ACCOUNT TYPES:
 - Whenever a customer asks about account types, account options, or account comparison, the agent MUST send BOTH: (1) the general account types macro (covering MT4/MT5/cTrader/OpoTrade) AND (2) the TradingView account types macro. If either one is missing, flag it as an issue in the resolution or accuracy notes.
 
 DEPARTMENT ROUTING RULE:
-- Customers self-select their department (e.g. General, Social Trade, cTrader, etc.) when starting a chat. The agent has NO control over which department the customer chose.
-- If an agent receives a chat in their department but the customer's question belongs to a DIFFERENT department, and the agent correctly identifies this and transfers the chat → this is CORRECT and professional behavior. Do NOT penalize the agent for the transfer, wrong department choice, or lack of resolution. Score resolution and compliance positively for correct triage.
-- Only penalize a transfer if the agent transferred a chat they clearly should have handled themselves.
+- This broker has separate departments: General, Social Trade (CopyTrade), cTrader, etc. Customers self-select their department when starting a chat — the agent has NO control over which department the customer chose.
+- The Social Trade department ONLY handles questions about the Social Trade / CopyTrade platform. Any other topic (account types, deposits, general questions, etc.) must be transferred to the General department.
+- CORRECT transfer procedure: agent must first INFORM the customer they are being transferred (e.g. "I will transfer you to the General department"), THEN perform the transfer. If the agent did both steps → score positively, no penalty for the transfer or lack of resolution.
+- INCORRECT (penalize): agent transferred WITHOUT notifying the customer first, OR agent kept a chat they should have transferred.
+- Do NOT penalize the agent for the customer choosing the wrong department.
 
 SUPERVISOR NOTES RULE:
 - Lines marked [SUPERVISOR NOTE] in the transcript are private internal messages from supervisors (not visible to customer).
