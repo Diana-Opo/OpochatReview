@@ -851,7 +851,7 @@ async function loadShifts() {
 
 async function saveShifts(shifts) {
   if (pool) {
-    await pool.query("DELETE FROM agent_shifts");
+    await pool.query("TRUNCATE agent_shifts RESTART IDENTITY");
     for (const s of shifts) {
       await pool.query(
         `INSERT INTO agent_shifts (employee, agent_key, start_hour, end_hour) VALUES ($1,$2,$3,$4)`,
