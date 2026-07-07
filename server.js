@@ -442,6 +442,35 @@ ${transcript}`;
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 
+app.get("/api/debug-chat/:chatId", async (req, res) => {
+  try {
+    const { thread_id } = req.query;
+    const gcBody = { chat_id: req.params.chatId };
+    if (thread_id) gcBody.thread_id = thread_id;
+    const data = await lcPost("get_chat", gcBody);
+    let thread = data.thread || (data.threads || [])[0] || {};
+    if (thread_id && Array.isArray(data.threads)) {
+      thread = data.threads.find(t => t.id === thread_id) || thread;
+    }
+    const events = thread.events || [];
+    res.json({
+      thread_id: thread.id,
+      assignee: thread.assignee,
+      users: (data.users || []).map(u => ({ id: u.id, name: u.name, type: u.type })),
+      event_types: [...new Set(events.map(e => e.type))],
+      events_summary: events.map(e => ({
+        type: e.type,
+        author_id: e.author_id,
+        visibility: e.visibility,
+        has_text: !!e.text,
+        created_at: e.created_at,
+      })),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/api/debug-env", (req, res) => {
   res.json({
     account_id: process.env.LIVECHAT_ACCOUNT_ID || "NOT SET",
