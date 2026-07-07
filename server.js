@@ -305,10 +305,11 @@ function extractSupervisorNotes(events, users) {
 function buildAgentSegments(events, users) {
   const segments = {};
 
-  // Pre-populate all agents from users list so silent/transferred agents are included
-  for (const u of users) {
-    if (u.type === "agent") {
-      segments[u.id] = { id: u.id, name: u.name, events: [], responded: false };
+  // Pre-populate only agents who appear in ANY event of this thread (not ALL account agents)
+  for (const e of events) {
+    const user = users.find(u => u.id === e.author_id);
+    if (user?.type === "agent" && !segments[user.id]) {
+      segments[user.id] = { id: user.id, name: user.name, events: [], responded: false };
     }
   }
 
@@ -332,13 +333,8 @@ function buildAgentSegments(events, users) {
 
 function allAgentsInThread(events, users) {
   const seen = {};
-  // Include all agents from users list (covers assigned-but-silent agents like transfer recipients)
-  for (const u of users) {
-    if (u.type === "agent") seen[u.id] = { id: u.id, name: u.name };
-  }
-  // Also scan events as fallback in case users list is incomplete
+  // Check ALL event types (not just messages) — catches agents who sent any event (file, routing, etc.)
   for (const e of events) {
-    if (!e.text || e.visibility === "agents" || e.type === "annotation") continue;
     const user = users.find(u => u.id === e.author_id);
     if (user?.type === "agent" && !seen[user.id]) {
       seen[user.id] = { id: user.id, name: user.name };
