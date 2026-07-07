@@ -402,6 +402,10 @@ async function openModal(chatId, threadId) {
 
     const reviewHtml = r ? `
       <div>
+        ${r.supervisor_warning ? `<div class="mb-4 bg-orange-50 border border-orange-300 rounded-lg px-4 py-3 flex gap-2">
+          <span class="text-orange-500 font-bold text-sm shrink-0">⚠ Supervisor Warning</span>
+          <span class="text-sm text-orange-700">${escHtml(r.supervisor_warning_text || "")}</span>
+        </div>` : ""}
         <div class="flex items-center gap-3 mb-5">
           <div class="text-3xl font-black ${scoreColor(r.overall_score)}">${(r.overall_score||0).toFixed(1)}</div>
           <div class="flex flex-col gap-1">
@@ -454,7 +458,12 @@ async function openModal(chatId, threadId) {
       </button>
     `;
 
-    const messages = (chat.messages || []).map(m => `
+    const messages = (chat.messages || []).map(m => m.is_private ? `
+      <div class="flex justify-center mb-3">
+        <div class="max-w-[90%] rounded-lg px-3 py-2 text-xs bg-orange-50 border border-orange-200 text-orange-700 text-center">
+          <span class="font-semibold">⚠ ${escHtml(m.author_name)} (Supervisor Note):</span> ${escHtml(m.content)}
+        </div>
+      </div>` : `
       <div class="flex ${m.author_type === "agent" ? "justify-end" : "justify-start"} mb-3">
         <div class="max-w-[80%] rounded-xl px-3 py-2 text-sm ${m.author_type === "agent" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-800"}">
           <p class="font-semibold text-xs opacity-70 mb-1">${m.author_name || ""}</p>

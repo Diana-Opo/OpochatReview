@@ -281,17 +281,28 @@ async function pollTelegram() {
 
 function buildTranscript(events, users) {
   return events
-    .filter((e) => e.type === "message" && e.text)
+    .filter((e) => e.text && (e.type === "message" || e.type === "annotation"))
     .map((e) => {
       const user = users.find((u) => u.id === e.author_id);
       const role = user?.type || "unknown";
       const name = user?.name || e.author_id;
-      return `[${e.created_at || ""}] ${name} (${role}): ${e.text}`;
+      const isPrivate = e.visibility === "agents" || e.type === "annotation";
+      const prefix = isPrivate ? "[SUPERVISOR NOTE] " : "";
+      return `[${e.created_at || ""}] ${prefix}${name} (${role}): ${e.text}`;
     })
     .join("\n");
 }
 
-async function reviewWithClaude(transcript, chatId, chatStartedAt) {
+function extractSupervisorNotes(events, users) {
+  return events
+    .filter((e) => e.text && (e.visibility === "agents" || e.type === "annotation"))
+    .map((e) => {
+      const user = users.find((u) => u.id === e.author_id);
+      return { author: user?.name || e.author_id, text: e.text, created_at: e.created_at };
+    });
+}
+
+async function reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes = []) {
   const knowledgeSection = kb.knowledge
     ? `\nKNOWLEDGE BASE:\n${kb.knowledge.slice(0, 3000)}\n`
     : "";
@@ -328,11 +339,16 @@ IMPORTANT RULES FOR ACCURACY SCORING:
 SPECIAL RULE — ACCOUNT TYPES:
 - Whenever a customer asks about account types, account options, or account comparison, the agent MUST send BOTH: (1) the general account types macro (covering MT4/MT5/cTrader/OpoTrade) AND (2) the TradingView account types macro. If either one is missing, flag it as an issue in the resolution or accuracy notes.
 
+SUPERVISOR NOTES RULE:
+- Lines marked [SUPERVISOR NOTE] in the transcript are private internal messages from supervisors (not visible to customer).
+- If a supervisor note contains a correction, warning, or instruction directed at the agent's behavior in this chat, set "supervisor_warning" to true and quote the note in "supervisor_warning_text".
+- Supervisor warnings must be factored into the overall assessment and flagged clearly in issues.
+
 SLA: first response <15s=10, 15-30s=8, 30-60s=6, >60s=4. Between replies: <45s good, 45-90s warning, >90s bad.
 overall_score = weighted avg: accuracy 20%, resolution 20%, compliance 15%, tone 15%, response_time 15%, product_knowledge 10%, satisfaction 3%, language 2%
 
 Return ONLY valid JSON:
-{"overall_score":<1-10>,"response_time_score":<1-10>,"response_time_notes":"<1 sentence>","tone_score":<1-10>,"tone_notes":"<1 sentence>","accuracy_score":<1-10>,"accuracy_notes":"<1 sentence>","resolution_score":<1-10>,"resolution_notes":"<1 sentence>","compliance_score":<1-10>,"compliance_notes":"<1 sentence>","product_knowledge_score":<1-10>,"product_knowledge_notes":"<1 sentence>","satisfaction_score":<1-10>,"satisfaction_notes":"<1 sentence>","language_score":<1-10>,"language_notes":"<1 sentence>","resolved":<true/false>,"escalated":<true/false>,"language_detected":"<fa/en/ar/mixed>","suggested_tags":["<tag1>","<tag2>"],"issues":"<max 3 bullet points or null>","strengths":"<max 2 bullet points>","summary":"<1 sentence>"}
+{"overall_score":<1-10>,"response_time_score":<1-10>,"response_time_notes":"<1 sentence>","tone_score":<1-10>,"tone_notes":"<1 sentence>","accuracy_score":<1-10>,"accuracy_notes":"<1 sentence>","resolution_score":<1-10>,"resolution_notes":"<1 sentence>","compliance_score":<1-10>,"compliance_notes":"<1 sentence>","product_knowledge_score":<1-10>,"product_knowledge_notes":"<1 sentence>","satisfaction_score":<1-10>,"satisfaction_notes":"<1 sentence>","language_score":<1-10>,"language_notes":"<1 sentence>","resolved":<true/false>,"escalated":<true/false>,"language_detected":"<fa/en/ar/mixed>","supervisor_warning":<true/false>,"supervisor_warning_text":"<quote or null>","suggested_tags":["<tag1>","<tag2>"],"issues":"<max 3 bullet points or null>","strengths":"<max 2 bullet points>","summary":"<1 sentence>"}
 
 TRANSCRIPT:
 ${transcript}`;
@@ -478,14 +494,16 @@ app.get("/api/chats/:chatId", async (req, res) => {
     const reviews = await loadReviews();
 
     const messages = events
-      .filter((e) => e.type === "message" && e.text)
+      .filter((e) => e.text && (e.type === "message" || e.type === "annotation"))
       .map((e) => {
         const user = users.find((u) => u.id === e.author_id);
+        const isPrivate = e.visibility === "agents" || e.type === "annotation";
         return {
-          author_type: user?.type || "unknown",
+          author_type: isPrivate ? "supervisor" : (user?.type || "unknown"),
           author_name: user?.name || e.author_id,
           content: e.text,
           created_at: e.created_at || null,
+          is_private: isPrivate,
         };
       });
 
@@ -539,14 +557,15 @@ app.post("/api/review/:chatId", async (req, res) => {
     console.log(`[review] events: ${events.length}, users: ${users.length}`);
 
     const transcript = buildTranscript(events, users);
-    console.log(`[review] transcript length: ${transcript.length}`);
+    const supervisorNotes = extractSupervisorNotes(events, users);
+    console.log(`[review] transcript length: ${transcript.length}, supervisor notes: ${supervisorNotes.length}`);
 
     if (!transcript) {
       return res.status(400).json({ error: "No messages in this chat" });
     }
 
     const chatStartedAt = thread.created_at || null;
-    const review = await reviewWithClaude(transcript, chatId, chatStartedAt);
+    const review = await reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes);
     review.reviewed_at = new Date().toISOString();
 
     const reviews = await loadReviews();
