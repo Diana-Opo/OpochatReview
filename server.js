@@ -854,7 +854,17 @@ app.post("/api/review/:chatId", async (req, res) => {
               agentId,
               reviewWithClaude(agentTranscript, chatId, chatStartedAt, seg.supervisorNotes || [], seg.name)
                 .then(r => ({ ...r, agent_name: seg.name }))
-                .catch(() => null)
+                .catch(err => {
+                  console.error(`[per-agent review] FAILED for ${seg.name}:`, err?.message || err);
+                  return {
+                    agent_name: seg.name,
+                    overall_score: null,
+                    notes: `Review failed: ${err?.message || "unknown error"}`,
+                    issues: [],
+                    suggested_tags: [],
+                    _error: true,
+                  };
+                })
             ];
           })
         )
