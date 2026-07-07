@@ -316,6 +316,11 @@ CHAT DATE: ${chatStartedAt || "unknown"}
 ${knowledgeSection}${campaignsSection}${telegramSection}${protocolSection}${macrosSection}${tagsSection}
 Score the agent on 8 criteria. Write notes in SAME language as chat (FA/EN/AR). Keep each note to 1 sentence max.
 
+IMPORTANT RULES:
+- If agent's response matches or closely follows a STANDARD MACRO, treat it as CORRECT — do NOT penalize for KB contradictions or internal conflicts in the knowledge base. Macros are pre-approved by management.
+- Only flag accuracy issues when the agent clearly provided wrong information NOT covered by any macro.
+- Do NOT report contradictions between different sections of the knowledge base — those are KB issues, not agent issues.
+
 SLA: first response <15s=10, 15-30s=8, 30-60s=6, >60s=4. Between replies: <45s good, 45-90s warning, >90s bad.
 overall_score = weighted avg: accuracy 20%, resolution 20%, compliance 15%, tone 15%, response_time 15%, product_knowledge 10%, satisfaction 3%, language 2%
 
