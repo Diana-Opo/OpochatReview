@@ -304,12 +304,24 @@ function extractSupervisorNotes(events, users) {
 
 function buildAgentSegments(events, users) {
   const segments = {};
+  const agentUsers = users.filter(u => u.type === "agent");
 
-  // Pre-populate only agents who appear in ANY event of this thread (not ALL account agents)
+  // Pre-populate from public events + system_message text parsing (catches transferred-but-silent agents)
   for (const e of events) {
-    const user = users.find(u => u.id === e.author_id);
-    if (user?.type === "agent" && !segments[user.id]) {
-      segments[user.id] = { id: user.id, name: user.name, events: [], responded: false };
+    const isPrivate = e.visibility === "agents" || e.type === "annotation";
+    if (!isPrivate) {
+      const user = users.find(u => u.id === e.author_id);
+      if (user?.type === "agent" && !segments[user.id]) {
+        segments[user.id] = { id: user.id, name: user.name, events: [], responded: false };
+      }
+    }
+    if (e.type === "system_message" && e.text) {
+      const lower = e.text.toLowerCase();
+      for (const a of agentUsers) {
+        if (!segments[a.id] && lower.includes(a.name.toLowerCase())) {
+          segments[a.id] = { id: a.id, name: a.name, events: [], responded: false };
+        }
+      }
     }
   }
 
@@ -323,7 +335,6 @@ function buildAgentSegments(events, users) {
       currentAgent = { id: user.id, name: user.name };
       segments[user.id].responded = true;
     }
-
     if (currentAgent) {
       segments[currentAgent.id].events.push(e);
     }
@@ -333,11 +344,24 @@ function buildAgentSegments(events, users) {
 
 function allAgentsInThread(events, users) {
   const seen = {};
-  // Check ALL event types (not just messages) — catches agents who sent any event (file, routing, etc.)
+  const agentUsers = users.filter(u => u.type === "agent");
   for (const e of events) {
-    const user = users.find(u => u.id === e.author_id);
-    if (user?.type === "agent" && !seen[user.id]) {
-      seen[user.id] = { id: user.id, name: user.name };
+    const isPrivate = e.visibility === "agents" || e.type === "annotation";
+    // Detect agents from public events only (skip supervisor notes)
+    if (!isPrivate) {
+      const user = users.find(u => u.id === e.author_id);
+      if (user?.type === "agent" && !seen[user.id]) {
+        seen[user.id] = { id: user.id, name: user.name };
+      }
+    }
+    // Parse system_message text to detect routed/transferred agents (e.g. "Chat transferred to Arta")
+    if (e.type === "system_message" && e.text) {
+      const lower = e.text.toLowerCase();
+      for (const a of agentUsers) {
+        if (!seen[a.id] && lower.includes(a.name.toLowerCase())) {
+          seen[a.id] = { id: a.id, name: a.name };
+        }
+      }
     }
   }
   return Object.values(seen);
@@ -452,6 +476,7 @@ app.get("/api/debug-chat/:chatId", async (req, res) => {
         author_id: e.author_id,
         visibility: e.visibility,
         has_text: !!e.text,
+        text_preview: (e.type === "system_message" && e.text) ? e.text.slice(0, 120) : undefined,
         created_at: e.created_at,
       })),
     });
