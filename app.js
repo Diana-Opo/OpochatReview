@@ -348,7 +348,7 @@ async function reviewChat(chatId, threadId, btn) {
     const statusEl = document.getElementById("status-" + rowKey);
     if (scoreEl) scoreEl.innerHTML = scorePill(review.overall_score);
     if (statusEl) statusEl.innerHTML =
-      `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "Resolved" : "Open"}</span>`;
+      `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "✓" : "✗"}</span>`;
     if (actionCell) actionCell.innerHTML = `<div class="flex items-center gap-1">
       <button onclick="openModal('${chatId}','${threadId||''}')" class="text-xs text-blue-500 hover:underline">View</button>
       <button onclick="reviewChat('${chatId}','${threadId||''}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>
@@ -411,7 +411,7 @@ async function reviewAllVisible() {
           const statusEl = document.getElementById("status-" + rk);
           if (scoreEl) scoreEl.innerHTML = scorePill(review.overall_score);
           if (statusEl) statusEl.innerHTML =
-            `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "Resolved" : "Open"}</span>`;
+            `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "✓" : "✗"}</span>`;
           if (actionCell) actionCell.innerHTML = `<div class="flex items-center gap-1">
             <button onclick="openModal('${chat.id}','${tid}')" class="text-xs text-blue-500 hover:underline">View</button>
             <button onclick="reviewChat('${chat.id}','${tid}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>
