@@ -268,7 +268,6 @@ function renderTable() {
       <td class="px-4 py-3">${shiftBadge}</td>
       <td class="px-4 py-3 text-sm font-medium text-gray-700">${employeeName}</td>
       <td class="px-4 py-3">${langBadge}</td>
-      <td class="px-4 py-3" id="tags-${rowKey}">${r?.suggested_tags?.length ? r.suggested_tags.map(t => `<span class="inline-block text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100 mr-0.5 mb-0.5">#${t}</span>`).join("") : `<span class="text-gray-300 text-xs">—</span>`}</td>
       <td class="px-4 py-3" id="score-${rowKey}">${scoreBadge}</td>
       <td class="px-4 py-3" id="status-${rowKey}">${statusBadge}</td>
       <td class="px-4 py-3" id="action-${rowKey}" onclick="event.stopPropagation()">${actionBtn}</td>
@@ -295,13 +294,9 @@ async function reviewChat(chatId, threadId, btn) {
 
     const scoreEl = document.getElementById("score-" + rowKey);
     const statusEl = document.getElementById("status-" + rowKey);
-    const tagsEl = document.getElementById("tags-" + rowKey);
     if (scoreEl) scoreEl.innerHTML = scorePill(review.overall_score);
     if (statusEl) statusEl.innerHTML =
       `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "Resolved" : "Open"}</span>`;
-    if (tagsEl) tagsEl.innerHTML = review.suggested_tags?.length
-      ? review.suggested_tags.map(t => `<span class="inline-block text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100 mr-0.5 mb-0.5">#${t}</span>`).join("")
-      : `<span class="text-gray-300 text-xs">—</span>`;
     if (actionCell) actionCell.innerHTML = `<div class="flex items-center gap-1">
       <button onclick="openModal('${chatId}','${threadId||''}')" class="text-xs text-blue-500 hover:underline">View</button>
       <button onclick="reviewChat('${chatId}','${threadId||''}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>
@@ -427,13 +422,18 @@ async function openModal(chatId, threadId) {
         ${scoreBar("Product Knowledge", r.product_knowledge_score, r.product_knowledge_notes)}
         ${scoreBar("Customer Satisfaction", r.satisfaction_score, r.satisfaction_notes)}
         ${scoreBar("Language & Grammar", r.language_score, r.language_notes)}
-        ${r.suggested_tags?.length ? `
-        <div class="mt-4">
-          <p class="text-xs font-semibold text-gray-500 uppercase mb-2">Suggested Tags</p>
-          <div class="flex flex-wrap gap-1.5">
-            ${r.suggested_tags.map(t => `<span class="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-medium"># ${escHtml(t)}</span>`).join("")}
-          </div>
-        </div>` : ""}
+        ${r.suggested_tags?.length ? (() => {
+          const applied = (chat.applied_tags || []).map(t => t.toLowerCase());
+          const tagged = r.suggested_tags.filter(t => applied.includes(t.toLowerCase()));
+          const missing = r.suggested_tags.filter(t => !applied.includes(t.toLowerCase()));
+          return `<div class="mt-4">
+            <p class="text-xs font-semibold text-gray-500 uppercase mb-2">Tags</p>
+            <div class="flex flex-wrap gap-1.5">
+              ${tagged.map(t => `<span class="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-medium"># ${escHtml(t)}</span>`).join("")}
+              ${missing.map(t => `<span class="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200 font-medium">✗ ${escHtml(t)}</span>`).join("")}
+            </div>
+          </div>`;
+        })() : ""}
         <div class="mt-4">
           <p class="text-xs font-semibold text-gray-500 uppercase mb-1">Summary</p>
           <p class="text-sm text-gray-700 leading-relaxed">${escHtml(r.summary || "—")}</p>

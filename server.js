@@ -434,6 +434,7 @@ app.get("/api/chats", async (req, res) => {
         customer_name: customerUser?.name || null,
         started_at: thread.created_at || null,
         ended_at: thread.ended_at || null,
+        applied_tags: thread.tags || [],
         review: reviews[thread.id] || reviews[c.id] || null,
       };
     });
@@ -493,6 +494,7 @@ app.get("/api/chats/:chatId", async (req, res) => {
       customer_name: customerUser?.name || null,
       started_at: thread.created_at || null,
       ended_at: thread.ended_at || null,
+      applied_tags: thread.tags || [],
       messages,
       review: reviews[thread.id] || reviews[data.id] || null,
     });
