@@ -1,13 +1,17 @@
-{
-  "ana":      { "day": "Atena",    "night": "Alireza" },
-  "raha":     { "day": "Nazgol",   "night": "" },
-  "omid":     { "day": "Omid",     "night": "Mahyar" },
-  "nika":     { "day": "Mohadese", "night": "" },
-  "dayan":    { "day": "Ardalan",  "night": "Mahdi" },
-  "arsham":   { "day": "Farnoush", "night": "Amirali" },
-  "eleanor":  { "day": "Noor",     "night": "" },
-  "leo zirak":{ "day": "",         "night": "Bardia" },
-  "stark":    { "day": "",         "night": "Sadra" },
-  "selena":   { "day": "Ramina",   "night": "", "dayEnd": 18 },
-  "arta":     { "day": "Ramin",    "night": "" }
-}
+[
+  { "employee": "Atena",    "agentKey": "ana",       "start": 8,  "end": 16 },
+  { "employee": "Alireza",  "agentKey": "ana",       "start": 16, "end": 24 },
+  { "employee": "Nazgol",   "agentKey": "raha",      "start": 8,  "end": 16 },
+  { "employee": "Omid",     "agentKey": "omid",      "start": 8,  "end": 16 },
+  { "employee": "Mahyar",   "agentKey": "omid",      "start": 16, "end": 24 },
+  { "employee": "Mohadese", "agentKey": "nika",      "start": 8,  "end": 16 },
+  { "employee": "Ardalan",  "agentKey": "dayan",     "start": 8,  "end": 16 },
+  { "employee": "Mahdi",    "agentKey": "dayan",     "start": 16, "end": 24 },
+  { "employee": "Farnoush", "agentKey": "arsham",    "start": 8,  "end": 16 },
+  { "employee": "Amirali",  "agentKey": "arsham",    "start": 16, "end": 24 },
+  { "employee": "Noor",     "agentKey": "eleanor",   "start": 8,  "end": 16 },
+  { "employee": "Bardia",   "agentKey": "leo zirak", "start": 16, "end": 24 },
+  { "employee": "Sadra",    "agentKey": "stark",     "start": 16, "end": 24 },
+  { "employee": "Ramina",   "agentKey": "selena",    "start": 8,  "end": 18 },
+  { "employee": "Ramin",    "agentKey": "arta",      "start": 8,  "end": 16 }
+]

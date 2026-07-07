@@ -6,7 +6,7 @@ let pageHistory = [null];
 let currentPage = 0;
 let agentChart = null;
 let totalChats = 0;
-let agentShifts = {};
+let agentShifts = [];
 let allChats = []; // accumulates chats from all pages for stats
 
 // ── Init ─────────────────────────────────────────────────────────────────────
@@ -477,16 +477,12 @@ function updateStats() {
 }
 
 function getEmployeeName(agentName, dateStr) {
-  if (!agentName || !dateStr) return null;
+  if (!agentName || !dateStr) return agentName || null;
   const full = agentName.toLowerCase().trim();
   const first = full.split(" ")[0];
-  const mapping = agentShifts[full] || agentShifts[first];
-  if (!mapping) return agentName;
   const h = getTehranHour(dateStr);
-  const dayStart = mapping.dayStart || 8;
-  const dayEnd = mapping.dayEnd || 16;
-  const isDay = h >= dayStart && h < dayEnd;
-  return (isDay ? mapping.day : mapping.night) || agentName;
+  const match = agentShifts.find(s => (s.agentKey === full || s.agentKey === first) && h >= s.start && h < s.end);
+  return match ? match.employee : agentName;
 }
 
 function updateChart() {
@@ -567,16 +563,8 @@ function getTehranHour(dateStr) {
 
 function getEmployee(agentName, dateStr) {
   if (!agentName || !dateStr) return `<span class="text-gray-300">—</span>`;
-  const full = agentName.toLowerCase().trim();
-  const first = full.split(" ")[0];
-  const mapping = agentShifts[full] || agentShifts[first];
-  if (!mapping) return `<span class="font-medium text-gray-800">${agentName}</span>`;
-  const h = getTehranHour(dateStr);
-  const dayStart = mapping.dayStart || 8;
-  const dayEnd = mapping.dayEnd || 16;
-  const isDay = h >= dayStart && h < dayEnd;
-  const name = isDay ? mapping.day : mapping.night;
-  return name ? `<span class="font-medium text-gray-800">${name}</span>` : `<span class="font-medium text-gray-800">${agentName}</span>`;
+  const name = getEmployeeName(agentName, dateStr);
+  return `<span class="font-medium text-gray-800">${name}</span>`;
 }
 
 function shiftLabel(dateStr) {
@@ -622,11 +610,9 @@ function showStatus(msg, type) {
 
 // ── Settings Modal ────────────────────────────────────────────────────────────
 let settingsAgents = [];
-let settingsShifts = {};
 
 async function openSettings() {
   document.getElementById("settingsModal").classList.remove("hidden");
-  settingsShifts = { ...agentShifts };
   if (agents.length > 0) settingsAgents = agents;
   renderShiftsTable();
 }
@@ -654,32 +640,28 @@ async function refreshSettingsAgents() {
 function agentOptionsHtml(selectedKey) {
   const opts = settingsAgents.map(a => {
     const key = a.name.toLowerCase().trim();
-    const sel = key === selectedKey || a.name.toLowerCase().trim().split(" ")[0] === selectedKey ? "selected" : "";
+    const sel = key === selectedKey ? "selected" : "";
     return `<option value="${escHtml(key)}" ${sel}>${escHtml(a.name)}</option>`;
   });
-  return `<option value="">— Select Agent —</option>` + opts.join("");
+  return `<option value="">— Agent —</option>` + opts.join("");
 }
 
 function renderShiftsTable() {
   const tbody = document.getElementById("shiftsTableBody");
-  const rows = Object.entries(settingsShifts).map(([key, val]) => shiftRowHtml(key, val));
-  tbody.innerHTML = rows.join("");
+  tbody.innerHTML = (Array.isArray(agentShifts) ? agentShifts : []).map(s => shiftRowHtml(s)).join("");
 }
 
-function shiftRowHtml(agentKey, val) {
-  const dayStart = val.dayStart || 8;
-  const dayEnd = val.dayEnd || 16;
-  return `<tr class="border-b border-gray-100 shift-row" data-key="${escHtml(agentKey)}">
+function shiftRowHtml(s) {
+  return `<tr class="border-b border-gray-100 shift-row">
+    <td class="py-2 pr-3"><input class="sr-employee w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm" value="${escHtml(s.employee || "")}" placeholder="Employee name" /></td>
     <td class="py-2 pr-3">
       <select class="sr-agent w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
-        ${agentOptionsHtml(agentKey)}
+        ${agentOptionsHtml(s.agentKey || "")}
       </select>
     </td>
-    <td class="py-2 pr-3"><input class="sr-day w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm" value="${escHtml(val.day || "")}" placeholder="Day employee" /></td>
-    <td class="py-2 pr-3"><input class="sr-night w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm" value="${escHtml(val.night || "")}" placeholder="Night employee" /></td>
-    <td class="py-2 pr-3"><input class="sr-daystart w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" type="number" min="0" max="23" value="${dayStart}" /></td>
-    <td class="py-2 pr-3"><input class="sr-dayend w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" type="number" min="0" max="23" value="${dayEnd}" /></td>
-    <td class="py-2"><button onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-600 text-lg leading-none">×</button></td>
+    <td class="py-2 pr-3"><input class="sr-start w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23" value="${s.start ?? 8}" /></td>
+    <td class="py-2 pr-3"><input class="sr-end w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" value="${s.end ?? 16}" /></td>
+    <td class="py-2"><button onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-600 text-lg leading-none px-1">×</button></td>
   </tr>`;
 }
 
@@ -688,36 +670,29 @@ function addShiftRow() {
   const tr = document.createElement("tr");
   tr.className = "border-b border-gray-100 shift-row";
   tr.innerHTML = `
+    <td class="py-2 pr-3"><input class="sr-employee w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm" value="" placeholder="Employee name" /></td>
     <td class="py-2 pr-3">
       <select class="sr-agent w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
         ${agentOptionsHtml("")}
       </select>
     </td>
-    <td class="py-2 pr-3"><input class="sr-day w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm" value="" placeholder="Day employee" /></td>
-    <td class="py-2 pr-3"><input class="sr-night w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm" value="" placeholder="Night employee" /></td>
-    <td class="py-2 pr-3"><input class="sr-daystart w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" type="number" min="0" max="23" value="8" /></td>
-    <td class="py-2 pr-3"><input class="sr-dayend w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" type="number" min="0" max="23" value="16" /></td>
-    <td class="py-2"><button onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-600 text-lg leading-none">×</button></td>
+    <td class="py-2 pr-3"><input class="sr-start w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23" value="8" /></td>
+    <td class="py-2 pr-3"><input class="sr-end w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" value="16" /></td>
+    <td class="py-2"><button onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-600 text-lg leading-none px-1">×</button></td>
   `;
   tbody.appendChild(tr);
 }
 
 async function saveSettings() {
   const rows = document.querySelectorAll("#shiftsTableBody .shift-row");
-  const newShifts = {};
+  const newShifts = [];
   rows.forEach(row => {
-    const key = row.querySelector(".sr-agent").value.trim();
-    if (!key) return;
-    const firstKey = key.split(" ")[0];
-    const dayStart = parseInt(row.querySelector(".sr-daystart").value) || 8;
-    const dayEnd = parseInt(row.querySelector(".sr-dayend").value) || 16;
-    const entry = {
-      day: row.querySelector(".sr-day").value.trim(),
-      night: row.querySelector(".sr-night").value.trim(),
-    };
-    if (dayStart !== 8) entry.dayStart = dayStart;
-    if (dayEnd !== 16) entry.dayEnd = dayEnd;
-    newShifts[firstKey] = entry;
+    const employee = row.querySelector(".sr-employee").value.trim();
+    const agentKey = row.querySelector(".sr-agent").value.trim();
+    const start = parseInt(row.querySelector(".sr-start").value) || 0;
+    const end = parseInt(row.querySelector(".sr-end").value) || 24;
+    if (!employee || !agentKey) return;
+    newShifts.push({ employee, agentKey, start, end });
   });
 
   try {
@@ -729,7 +704,7 @@ async function saveSettings() {
     const data = await res.json();
     if (data.ok) {
       agentShifts = newShifts;
-      showStatus("Saved successfully", "success");
+      showStatus("Saved", "success");
       closeSettings();
       renderTable();
     } else {
