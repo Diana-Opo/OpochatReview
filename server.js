@@ -442,18 +442,25 @@ ${transcript}`;
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 
-app.get("/api/debug-chat/:chatId", async (req, res) => {
+app.get("/api/debug-chat/:threadId", async (req, res) => {
   try {
-    const { thread_id } = req.query;
-    const gcBody = { chat_id: req.params.chatId };
-    if (thread_id) gcBody.thread_id = thread_id;
-    const data = await lcPost("get_chat", gcBody);
-    let thread = data.thread || (data.threads || [])[0] || {};
-    if (thread_id && Array.isArray(data.threads)) {
-      thread = data.threads.find(t => t.id === thread_id) || thread;
+    const threadId = req.params.threadId;
+    // Search recent archives to find the container chat ID for this thread
+    const searchData = await lcPost("list_archives", { filters: {}, limit: 100 });
+    let foundChat = null, foundThread = null;
+    for (const c of (searchData.chats || [])) {
+      const threads = c.threads || (c.thread ? [c.thread] : []);
+      const t = threads.find(t => t.id === threadId);
+      if (t) { foundChat = c; foundThread = t; break; }
     }
+    if (!foundChat) return res.json({ error: "Thread not found in recent 100 chats", threadId });
+
+    const data = await lcPost("get_chat", { chat_id: foundChat.id, thread_id: threadId });
+    let thread = foundThread;
+    if (Array.isArray(data.threads)) thread = data.threads.find(t => t.id === threadId) || thread;
     const events = thread.events || [];
     res.json({
+      container_chat_id: foundChat.id,
       thread_id: thread.id,
       assignee: thread.assignee,
       users: (data.users || []).map(u => ({ id: u.id, name: u.name, type: u.type })),
