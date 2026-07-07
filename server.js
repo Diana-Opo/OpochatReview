@@ -595,6 +595,12 @@ app.get("/api/debug-chat/:chatId", async (req, res) => {
       all_threads: (data.threads || [data.thread]).filter(Boolean).map(t => ({ id: t.id, created_at: t.created_at, assignee: t.assignee })),
       users: (data.users || []).map(u => ({ id: u.id, name: u.name, type: u.type })),
       event_types: [...new Set(events.map(e => e.type))],
+      filled_forms: events.filter(e => e.type === "filled_form").map(e => ({
+        created_at: e.created_at,
+        fields: e.fields || null,
+        properties: e.properties || null,
+        raw_keys: Object.keys(e),
+      })),
       events_summary: events.map(e => ({
         type: e.type,
         author_id: e.author_id,
@@ -836,9 +842,17 @@ app.post("/api/review/:chatId", async (req, res) => {
               });
               return [agentId, result];
             }
+            // Prepend pre-chat form + system_messages from full event list so Claude has routing context
+            const contextEvents = events.filter(e =>
+              e.type === "filled_form" || e.type === "system_message"
+            );
+            const agentOnlyEvents = seg.events.filter(e =>
+              e.type !== "filled_form" && e.type !== "system_message"
+            );
+            const agentTranscript = buildTranscript([...contextEvents, ...agentOnlyEvents], users);
             return [
               agentId,
-              reviewWithClaude(buildTranscript(seg.events, users), chatId, chatStartedAt, seg.supervisorNotes || [], seg.name)
+              reviewWithClaude(agentTranscript, chatId, chatStartedAt, seg.supervisorNotes || [], seg.name)
                 .then(r => ({ ...r, agent_name: seg.name }))
                 .catch(() => null)
             ];
