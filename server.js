@@ -567,6 +567,16 @@ app.get("/api/agent-shifts", async (req, res) => {
   } catch { res.json({}); }
 });
 
+app.post("/api/agent-shifts", async (req, res) => {
+  try {
+    const shifts = req.body;
+    await fs.writeFile(path.join(DATA_DIR, "agent_shifts.json"), JSON.stringify(shifts, null, 2));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Discover Telegram group IDs (call after adding bot to groups)
 app.get("/api/telegram-setup", async (req, res) => {
   if (!TELEGRAM_BOT_TOKEN) return res.json({ error: "TELEGRAM_BOT_TOKEN not set in .env" });
