@@ -522,18 +522,29 @@ IMPORTANT RULES FOR ACCURACY SCORING:
 SPECIAL RULE — ACCOUNT TYPES:
 - Whenever a customer asks about account types, account options, or account comparison, the agent MUST send BOTH: (1) the general account types macro (covering MT4/MT5/cTrader/OpoTrade) AND (2) the TradingView account types macro. If either one is missing, flag it as an issue in the resolution or accuracy notes.
 
-DEPARTMENT ROUTING RULE:
-- The transcript may begin with a [PRE-CHAT FORM] block showing which department the customer selected and their initial question/complaint. ALWAYS read this block first — it establishes the customer's topic before the live chat begins.
-- CRITICAL: Short or seemingly ambiguous in-chat customer messages (e.g. "why?", "what's the reason?", "دلیلش چیه") must be interpreted IN CONTEXT of the pre-chat form. If the form already stated the customer's problem (e.g. "every position I open gets closed"), then an in-chat message like "what's the reason?" is NOT ambiguous — it clearly refers to the form question. Do NOT penalize an agent for routing based on the pre-chat form context.
-- Each department handles ONLY its own topics:
-  • Social Trade / CopyTrade: ONLY questions about the Social Trade or CopyTrade platform (providers, followers, copy strategies).
-  • General: account issues, deposits, withdrawals, platform problems, buy/sell errors, KYC/activation, and everything NOT specific to Social Trade or KYC.
-  • KYC: identity verification, document submission.
-- The customer's pre-chat department selection does NOT bind the agent — what matters is the ACTUAL question asked. If the customer selected "Social Trade" but their real question is about something else (e.g. account activation, greyed-out buttons, deposits), the Social Trade agent MUST transfer to the appropriate department.
-- CORRECT transfer procedure: agent first INFORMS the customer ("I will transfer you to General"), THEN transfers. If done correctly → for this agent's portion set "resolved": true, score resolution and compliance HIGH. The unsolved customer issue is now the next department's responsibility — do NOT count it as this agent's failure.
-- CRITICAL: Do NOT flag "unresolved issue" against an agent who correctly identified that a question was outside their scope and transferred appropriately. Their job was to route correctly.
-- INCORRECT (penalize): agent transferred WITHOUT first informing the customer, OR agent kept a chat with an out-of-scope question and tried to answer it themselves, OR agent ignored the question entirely without routing.
-- CRITICAL — DO NOT PENALIZE for "lack of clarification before transfer": Social Trade agents handle ONLY Social Trade / CopyTrade platform questions. Any question about account issues, positions, deposits, withdrawals, buy/sell errors, platform problems, or account activation is CLEARLY outside Social Trade scope. The agent does NOT need to investigate or clarify before transferring — recognizing that the topic is out-of-scope IS the correct action. Penalizing a Social Trade agent for "not clarifying" a General question is wrong.
+DEPARTMENT ROUTING RULES:
+
+Step 1 — Understand the customer's actual question:
+  Read the [PRE-CHAT FORM] block first. The form shows which department the customer chose AND what they wrote as their question. The department selection in the form is made by the customer and does NOT always match their real question. Always combine the form question + in-chat messages to determine what the customer truly needs. Short in-chat messages ("why?", "دلیلش چیه", "what's the reason?") are follow-ups to what the customer already wrote in the form — never treat them as ambiguous when the form question is clear.
+
+Step 2 — Determine if the question is in scope for this agent's department:
+  • Social Trade / CopyTrade department: handles ONLY questions about the Social Trade or CopyTrade platform itself — providers, followers, copy strategies, copy performance. Nothing else.
+  • General department: handles everything else — account issues, positions, deposits, withdrawals, buy/sell errors, greyed-out buttons, platform problems, account activation, login issues, etc.
+  • KYC department: handles identity verification and document submission only.
+  If a customer's actual question does not belong to the agent's department, it is out of scope — regardless of which department the customer selected in the pre-chat form.
+
+Step 3 — Evaluate the agent's routing decision:
+  CORRECT (full marks for resolution and compliance):
+    - Agent recognized the question is out of scope → informed the customer → transferred to the correct department. This is a complete and successful handling. Do NOT deduct for the customer's issue being "unresolved" — it is now the receiving department's responsibility.
+  INCORRECT (penalize resolution and compliance):
+    - Agent transferred WITHOUT informing the customer first.
+    - Agent kept an out-of-scope question and tried to answer it themselves.
+    - Agent ignored the question without routing.
+
+NEVER do the following — these are always wrong:
+  - Penalizing an agent for "not clarifying before transfer" when the customer's question is clearly outside the agent's department scope. If the topic is obviously out of scope, the agent does not need to investigate further before routing.
+  - Flagging "unresolved issue" against an agent who correctly transferred an out-of-scope question.
+  - Counting the receiving department's unresolved work as a failure of the transferring agent.
 
 SUPERVISOR NOTES RULE:
 - Lines marked [SUPERVISOR NOTE] in the transcript are private internal messages from supervisors (not visible to customer).
