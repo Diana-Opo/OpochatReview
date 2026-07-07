@@ -262,16 +262,16 @@ function buildTranscript(events, users) {
 
 async function reviewWithClaude(transcript, chatId, chatStartedAt) {
   const knowledgeSection = kb.knowledge
-    ? `\nKNOWLEDGE BASE (use this to verify agent's answers):\n${kb.knowledge.slice(0, 8000)}\n`
+    ? `\nKNOWLEDGE BASE:\n${kb.knowledge.slice(0, 3000)}\n`
     : "";
   const campaignsSection = kb.campaigns
-    ? `\nACTIVE CAMPAIGNS:\n${kb.campaigns.slice(0, 3000)}\n`
+    ? `\nACTIVE CAMPAIGNS:\n${kb.campaigns.slice(0, 1500)}\n`
     : "";
   const telegramSection = kb.telegram
-    ? `\nTELEGRAM UPDATES (each entry has a timestamp — only hold agent accountable for updates posted BEFORE the chat date):\n${kb.telegram.slice(0, 3000)}\n`
+    ? `\nTELEGRAM UPDATES (only before chat date):\n${kb.telegram.slice(-1500)}\n`
     : "";
   const protocolSection = kb.protocol
-    ? `\nRESPONSE PROTOCOL:\n${kb.protocol.slice(0, 3000)}\n`
+    ? `\nRESPONSE PROTOCOL:\n${kb.protocol.slice(0, 1500)}\n`
     : "";
 
   const prompt = `You are a quality reviewer for a forex/CFD broker's customer support team.
@@ -335,7 +335,7 @@ ${transcript}`;
     },
     body: JSON.stringify({
       model: "claude-haiku-4-5",
-      max_tokens: 2048,
+      max_tokens: 1200,
       messages: [{ role: "user", content: prompt }],
     }),
   });
