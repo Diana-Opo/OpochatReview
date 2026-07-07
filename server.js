@@ -348,11 +348,11 @@ function extractSupervisorNotes(events, users) {
     });
 }
 
-function buildAgentSegments(events, users) {
+function buildAgentSegments(events, users, shifts, chatStartedAt) {
   const segments = {};
   const agentUsers = users.filter(u => u.type === "agent");
 
-  // Pre-populate from public events + system_message text parsing (catches transferred-but-silent agents)
+  // Pre-populate from public events + system_message text/group parsing
   for (const e of events) {
     const isPrivate = e.visibility === "agents" || e.type === "annotation";
     if (!isPrivate) {
@@ -366,6 +366,14 @@ function buildAgentSegments(events, users) {
       for (const a of agentUsers) {
         if (!segments[a.id] && lower.includes(a.name.toLowerCase())) {
           segments[a.id] = { id: a.id, name: a.name, events: [], supervisorNotes: [], responded: false };
+        }
+      }
+      const group = extractTransferGroup(e.text);
+      if (group) {
+        for (const a of groupAgentsOnShift(group, users, shifts, chatStartedAt)) {
+          if (!segments[a.id]) {
+            segments[a.id] = { id: a.id, name: a.name, events: [], supervisorNotes: [], responded: false };
+          }
         }
       }
     }
@@ -396,24 +404,63 @@ function buildAgentSegments(events, users) {
   return segments;
 }
 
-function allAgentsInThread(events, users) {
+// Extract group name from "transferred to KYC (Farsi)" → "kyc"
+function extractTransferGroup(text) {
+  const m = text.match(/transferred\s+(?:the\s+chat\s+)?to\s+([A-Za-z][A-Za-z\s]*?)(?:\s*\(|$)/i);
+  return m ? m[1].trim().toLowerCase() : null;
+}
+
+// Find agents in users list who belong to a group and were on shift at chatStartedAt
+function groupAgentsOnShift(groupName, users, shifts, chatStartedAt) {
+  if (!groupName || !shifts?.length) return [];
+  const h = chatStartedAt ? getTehranHourFromIso(chatStartedAt) : -1;
+  return shifts
+    .filter(s => {
+      const inGroup = (s.groups || []).some(g => g.toLowerCase() === groupName);
+      const onShift = h < 0 || (h >= s.start && h < s.end);
+      return inGroup && onShift;
+    })
+    .map(s => {
+      // Match shift's agentKey to a user in this chat
+      const user = users.find(u => {
+        if (u.type !== "agent") return false;
+        const k = u.name.toLowerCase().trim();
+        return k === s.agentKey || k.split(" ")[0] === s.agentKey;
+      });
+      return user ? { id: user.id, name: user.name } : null;
+    })
+    .filter(Boolean);
+}
+
+function getTehranHourFromIso(iso) {
+  try { return new Date(new Date(iso).toLocaleString("en-US", { timeZone: "Europe/Istanbul" })).getHours(); }
+  catch { return -1; }
+}
+
+function allAgentsInThread(events, users, shifts, chatStartedAt) {
   const seen = {};
   const agentUsers = users.filter(u => u.type === "agent");
   for (const e of events) {
     const isPrivate = e.visibility === "agents" || e.type === "annotation";
-    // Detect agents from public events only (skip supervisor notes)
     if (!isPrivate) {
       const user = users.find(u => u.id === e.author_id);
       if (user?.type === "agent" && !seen[user.id]) {
         seen[user.id] = { id: user.id, name: user.name };
       }
     }
-    // Parse system_message text to detect routed/transferred agents (e.g. "Chat transferred to Arta")
     if (e.type === "system_message" && e.text) {
       const lower = e.text.toLowerCase();
+      // Detect agent by name in system_message (e.g. "because Arta hasn't replied")
       for (const a of agentUsers) {
         if (!seen[a.id] && lower.includes(a.name.toLowerCase())) {
           seen[a.id] = { id: a.id, name: a.name };
+        }
+      }
+      // Detect agent by group transfer (e.g. "transferred to KYC")
+      const group = extractTransferGroup(e.text);
+      if (group) {
+        for (const a of groupAgentsOnShift(group, users, shifts, chatStartedAt)) {
+          if (!seen[a.id]) seen[a.id] = { id: a.id, name: a.name };
         }
       }
     }
@@ -607,7 +654,7 @@ app.get("/api/chats", async (req, res) => {
       const ft = first.thread || (Array.isArray(first.threads) ? first.threads[0] : null) || {};
       console.log('[chats] first chat assignee:', ft.assignee, '| events count:', (ft.events||[]).length);
     }
-    const reviews = await loadReviews();
+    const [reviews, shifts] = await Promise.all([loadReviews(), loadShifts()]);
 
     const chats = (data.chats || []).map((c) => {
       const thread = c.thread || (Array.isArray(c.threads) ? c.threads[0] : null) || {};
@@ -623,7 +670,8 @@ app.get("/api/chats", async (req, res) => {
         || (activeAgentId ? users.find(u => u.id === activeAgentId) : null)
         || null;
       const customerUser = users.find((u) => u.type === "customer");
-      const allAgents = allAgentsInThread(events, users);
+      const chatStartedAt = thread.created_at || null;
+      const allAgents = allAgentsInThread(events, users, shifts, chatStartedAt);
       return {
         id: c.id,
         thread_id: thread.id || null,
@@ -661,10 +709,11 @@ app.get("/api/chats/:chatId", async (req, res) => {
 
     const users = data.users || [];
     const events = thread.events || [];
-    const reviews = await loadReviews();
+    const chatStartedAt2 = thread.created_at || null;
+    const [reviews, shifts2] = await Promise.all([loadReviews(), loadShifts()]);
 
     // Build segment map: event created_at -> agent responsible at that moment
-    const agentSegments = buildAgentSegments(events, users);
+    const agentSegments = buildAgentSegments(events, users, shifts2, chatStartedAt2);
     const eventSegmentMap = {};
     for (const [, seg] of Object.entries(agentSegments)) {
       for (const ev of seg.events) {
@@ -689,7 +738,7 @@ app.get("/api/chats/:chatId", async (req, res) => {
         };
       });
 
-    const allAgents = allAgentsInThread(events, users);
+    const allAgents = allAgentsInThread(events, users, shifts2, chatStartedAt2);
     const assigneeId = thread?.assignee?.id;
     const activeAgentId = events.find(e => {
       const u = users.find(u2 => u2.id === e.author_id);
@@ -740,9 +789,12 @@ app.post("/api/review/:chatId", async (req, res) => {
     console.log(`[review] thread keys:`, Object.keys(thread));
     console.log(`[review] events: ${events.length}, users: ${users.length}`);
 
+    const chatStartedAt3 = thread.created_at || null;
+    const shifts3 = await loadShifts();
+
     const transcript = buildTranscript(events, users);
     const supervisorNotes = extractSupervisorNotes(events, users);
-    const agentSegments = buildAgentSegments(events, users);
+    const agentSegments = buildAgentSegments(events, users, shifts3, chatStartedAt3);
     const agentCount = Object.keys(agentSegments).length;
     console.log(`[review] transcript: ${transcript.length}c, agents: ${agentCount}, supervisor notes: ${supervisorNotes.length}`);
 
