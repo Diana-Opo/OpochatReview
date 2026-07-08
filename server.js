@@ -486,6 +486,60 @@ async function pollTelegram() {
   }
 }
 
+function detectPrechatLanguage(events) {
+  const form = events.find(e => e.type === "filled_form" && Array.isArray(e.fields));
+  if (!form) return null;
+  for (const f of form.fields) {
+    const val = (f.answer?.label ?? f.answer?.value ?? f.answer ?? "").toString().trim().toLowerCase();
+    if (!val) continue;
+    if (val.includes("english") || val === "en") return "english";
+    if (val.includes("arabic") || val.includes("عربي") || val.includes("عربى") || val === "ar") return "arabic";
+    if (val.includes("farsi") || val.includes("persian") || val.includes("فارسی") || val.includes("فارسي") || val === "fa") return "farsi";
+  }
+  return null;
+}
+
+function detectTextLanguage(text) {
+  if (!text) return null;
+  const arabicFarsiChars = (text.match(/[؀-ۿ]/g) || []).length;
+  const latinChars = (text.match(/[a-zA-Z]/g) || []).length;
+  const total = arabicFarsiChars + latinChars;
+  if (total === 0) return null;
+  if (arabicFarsiChars / total > 0.5) return "farsi_or_arabic";
+  if (latinChars / total > 0.5) return "latin";
+  return null;
+}
+
+function buildLanguageViolationNote(events, users) {
+  const prechatLang = detectPrechatLanguage(events);
+  if (!prechatLang) return "";
+
+  // Check first few agent messages for language
+  const agentMessages = events.filter(e =>
+    e.type === "message" && e.visibility !== "agents" && e.text
+    && users.find(u => u.id === e.author_id)?.type === "agent"
+  ).slice(0, 5);
+
+  if (agentMessages.length === 0) return "";
+
+  for (const msg of agentMessages) {
+    const agentLang = detectTextLanguage(msg.text);
+    const agent = users.find(u => u.id === msg.author_id);
+    const agentName = agent?.name || msg.author_id;
+
+    const mismatch = (
+      (prechatLang === "english" && agentLang === "farsi_or_arabic") ||
+      (prechatLang === "arabic" && agentLang === "farsi_or_arabic" === false) ||
+      (prechatLang === "farsi" && agentLang === "latin")
+    );
+
+    if (mismatch) {
+      return `\n⚠ LANGUAGE VIOLATION DETECTED BY SYSTEM: The Pre-Chat Form shows the customer selected "${prechatLang.toUpperCase()}" as their language. However, agent ${agentName} responded in a DIFFERENT language. This is a MANDATORY CRITICAL VIOLATION — you MUST set overall_score=1, language_score=1, compliance_score=1, resolution_score=1, tone_score=1. Do NOT override this regardless of anything else in the chat.\n`;
+    }
+  }
+  return "";
+}
+
 function buildTranscript(events, users) {
   const lines = [];
   for (const e of events) {
@@ -1124,7 +1178,8 @@ app.post("/api/review/:chatId", authMiddleware, async (req, res) => {
       return res.json(skippedReview);
     }
 
-    const transcript = buildTranscript(events, users);
+    const langViolationNote = buildLanguageViolationNote(events, users);
+    const transcript = langViolationNote + buildTranscript(events, users);
     const supervisorNotes = extractSupervisorNotes(events, users);
     const agentSegments = buildAgentSegments(events, users, shifts3, chatStartedAt3);
     const agentCount = Object.keys(agentSegments).length;
