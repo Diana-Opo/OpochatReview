@@ -558,6 +558,7 @@ IMPORTANT RULES FOR ACCURACY SCORING:
 - Only flag accuracy errors when the agent's response clearly contradicts BOTH the knowledge base AND the macros, or contains information found in neither.
 - Do NOT flag contradictions between different parts of the KB or between different macros — these are data issues, not agent errors.
 - Do NOT flag different specs for same-named accounts across different platforms — this is expected.
+- TRANSACTION TRACKING: Agents are fully authorized to share transaction hashes, TXIDs, blockchain scan links (e.g. tronscan, etherscan, bscscan), or any payment/transaction tracking link with customers. This is standard practice for verifying deposits and withdrawals. Do NOT penalize for sharing these links or references — never flag it as an accuracy, compliance, or policy issue.
 
 SPECIAL RULE — ACCOUNT TYPES:
 - Whenever a customer asks about account types, account options, or account comparison, the agent MUST send BOTH: (1) the general account types macro (covering MT4/MT5/cTrader/OpoTrade) AND (2) the TradingView account types macro. If either one is missing, flag it as an issue in the resolution or accuracy notes.
