@@ -525,7 +525,7 @@ TAG CLARIFICATIONS (commonly confused tags — follow these exactly):
   const prompt = `You are a QA reviewer for a forex broker support team. Be concise.
 CHAT DATE: ${chatStartedAt || "unknown"}
 ${agentContext}${knowledgeSection}${campaignsSection}${telegramSection}${protocolSection}${macrosSection}${tagsSection ? (isPerAgent ? "" : tagsSection) : ""}
-Score the agent on 8 criteria. Write notes in SAME language as chat (FA/EN/AR). Keep each note to 1 sentence max.
+Score the agent on 8 criteria. Write ALL notes, comments, issues, strengths, and summaries in ENGLISH only — regardless of what language the chat was in. Keep each note to 1 sentence max.
 
 LOST CHAT RULE: If the agent's assigned portion shows customer messages but ZERO responses from the agent, it means the agent lost/abandoned the chat. In this case: response_time_score = 0, overall_score must reflect this failure heavily, and notes must clearly state the agent did not respond and lost the chat.
 
