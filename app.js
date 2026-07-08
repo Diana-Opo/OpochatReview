@@ -916,7 +916,9 @@ function updateChart() {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: (ctx) => `Score: ${ctx.parsed.y.toFixed(1)}  |  Chats: ${counts[ctx.dataIndex]}`,
+            label: (ctx) => activeEmployeeShift
+              ? `Score: ${ctx.parsed.y.toFixed(1)}  |  Chats: ${counts[ctx.dataIndex]}`
+              : `Score: ${ctx.parsed.y.toFixed(1)}`,
           },
         },
         datalabels: {
@@ -925,7 +927,9 @@ function updateChart() {
           offset: 2,
           color: "#374151",
           font: { weight: "bold", size: 12 },
-          formatter: (v, ctx) => `${v.toFixed(1)}\n(${counts[ctx.dataIndex]})`,
+          formatter: (v, ctx) => activeEmployeeShift
+            ? `${v.toFixed(1)}\n(${counts[ctx.dataIndex]})`
+            : v.toFixed(1),
         },
       },
     },
