@@ -74,11 +74,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   initApp();
 });
 
+function localDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 async function initApp() {
   const today = new Date();
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  document.getElementById("dateFrom").value = firstOfMonth.toISOString().slice(0, 10);
-  document.getElementById("dateTo").value = today.toISOString().slice(0, 10);
+  document.getElementById("dateFrom").value = localDateStr(firstOfMonth);
+  document.getElementById("dateTo").value = localDateStr(today);
 
   // Show logout button and hide settings if not admin
   const header = document.querySelector("header .flex.flex-wrap.items-center");
