@@ -922,7 +922,7 @@ app.get("/api/chats", authMiddleware, async (req, res) => {
     if (date_to) filters.to = date_to;
     if (agent_id) filters.agents = { values: [agent_id] };
 
-    const body = page_id ? { page_id, limit: 100 } : { filters, limit: 100 };
+    const body = page_id ? { page_id } : { filters, limit: 100 };
 
     console.log('[chats] sending body:', JSON.stringify(body));
     const data = await lcPost("list_archives", body);
