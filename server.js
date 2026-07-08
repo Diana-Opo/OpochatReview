@@ -925,7 +925,7 @@ app.post("/api/review/:chatId", async (req, res) => {
     });
     if (customerMessages.length === 0) {
       const skippedReview = { skipped: true, reason: "Customer left without sending any message" };
-      await saveReview(thread.id || chatId, skippedReview);
+      await saveReviews({ [thread.id || chatId]: skippedReview });
       return res.json({ review: skippedReview });
     }
 
