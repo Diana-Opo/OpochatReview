@@ -1281,24 +1281,25 @@ app.post("/api/review/:chatId", authMiddleware, async (req, res) => {
     review.reviewed_at = new Date().toISOString();
 
     // Server-side language penalty override — do not rely on Claude to apply it
-    if (langViolations.size > 0) {
-      // Single agent: check if the only agent violated
-      if (agentCount <= 1) {
-        const agentName = Object.values(agentSegments)[0]?.name || "";
-        const v = langViolations.get(agentName.toLowerCase());
-        if (v) review = applyLanguagePenalty(review, agentName, v);
-      }
-    }
-
+    console.log(`[lang] prechatLang=${detectPrechatLanguage(events)} violations=${[...langViolations.entries()].map(([k,v])=>`${k}:${v.prechatLang}->${v.agentLang}`).join(',') || 'none'} agentCount=${agentCount}`);
     if (agentCount > 1) {
       const perAgent = {};
       for (const [agentId, promise] of Object.entries(agentPromises)) {
         let ar = await promise;
-        const v = langViolations.get((ar.agent_name || "").toLowerCase());
-        if (v) ar = applyLanguagePenalty(ar, ar.agent_name, v);
+        // Try exact name, then first-word match
+        const nameKey = (ar.agent_name || "").toLowerCase();
+        const v = langViolations.get(nameKey) || [...langViolations.entries()].find(([k]) => nameKey.startsWith(k) || k.startsWith(nameKey.split(" ")[0]))?.[1];
+        if (v) { ar = applyLanguagePenalty(ar, ar.agent_name, v); console.log(`[lang] penalty applied to ${ar.agent_name}`); }
         perAgent[agentId] = ar;
       }
       review.per_agent_reviews = perAgent;
+    } else {
+      // Single-agent: if ANY violation detected, apply to overall review
+      if (langViolations.size > 0) {
+        const [firstKey, firstV] = [...langViolations.entries()][0];
+        review = applyLanguagePenalty(review, firstKey, firstV);
+        console.log(`[lang] single-agent penalty applied, prechat=${firstV.prechatLang} agentLang=${firstV.agentLang}`);
+      }
     }
 
     const reviews = await loadReviews();
