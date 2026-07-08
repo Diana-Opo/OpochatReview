@@ -529,6 +529,12 @@ Score the agent on 8 criteria. Write notes in SAME language as chat (FA/EN/AR). 
 
 LOST CHAT RULE: If the agent's assigned portion shows customer messages but ZERO responses from the agent, it means the agent lost/abandoned the chat. In this case: response_time_score = 0, overall_score must reflect this failure heavily, and notes must clearly state the agent did not respond and lost the chat.
 
+CUSTOMER NO-RESPONSE RULE: If the transcript ends with the agent waiting for the customer (agent asked a question, requested a link/screenshot/info, or sent a follow-up) and then the customer stopped replying or left the chat (system_message: "X left the chat" or "Chat is idle due to inactivity"), the unresolved outcome is the CUSTOMER's fault — NOT the agent's. In this case:
+- Do NOT deduct from resolution_score for the issue being unresolved.
+- Do NOT deduct from compliance_score for not closing properly (customer left before agent could close).
+- Set "resolved": false (issue wasn't resolved) but make clear in notes that this was due to customer inactivity/departure.
+- Score the agent on what they DID do — if they were helpful up to the point the customer left, score accordingly.
+
 BROKER CONTEXT:
 This broker offers 4 trading platforms: MetaTrader 4 (MT4), MetaTrader 5 (MT5), cTrader, OpoTrade, and TradingView. Each platform has its own account types (Standard, Pro, Black, etc.) with DIFFERENT specifications — same account name on different platforms is intentional and NOT a contradiction. Always consider the platform context when evaluating specs.
 
