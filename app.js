@@ -108,8 +108,12 @@ async function initApp() {
   renderAgentFilter();
   loadKnowledgeStatus();
   document.getElementById("btnLoad").addEventListener("click", () => loadChats(null));
-  document.getElementById("btnRefreshKb").addEventListener("click", refreshKnowledge);
   document.getElementById("btnReviewAll").addEventListener("click", reviewAllVisible);
+  if (currentUser?.role !== "admin") {
+    document.getElementById("btnRefreshKb").style.display = "none";
+  } else {
+    document.getElementById("btnRefreshKb").addEventListener("click", refreshKnowledge);
+  }
   document.getElementById("modal").addEventListener("click", (e) => {
     if (e.target === document.getElementById("modal")) closeModal();
   });
@@ -261,7 +265,7 @@ async function loadChats(pageId) {
     updatePagination();
     document.getElementById("statusBar").classList.add("hidden");
 
-    if (chats.length > 0) {
+    if (chats.length > 0 && currentUser?.role === "admin") {
       document.getElementById("btnReviewAll").classList.remove("hidden");
     }
 
@@ -391,12 +395,16 @@ function renderTable() {
       employeeNameHtml = `<span class="font-medium text-gray-800">${empNames}</span>`;
     }
 
+    const isAdmin = currentUser?.role === "admin";
+    const reReviewBtn = isAdmin ? `<button onclick="reviewChat('${chat.id}','${chat.thread_id||''}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>` : "";
     const actionBtn = r
       ? `<div class="flex items-center gap-1" onclick="event.stopPropagation()">
            <button onclick="openModal('${chat.id}','${chat.thread_id||''}')" class="text-xs text-blue-500 hover:underline">View</button>
-           <button onclick="reviewChat('${chat.id}','${chat.thread_id||''}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>
+           ${reReviewBtn}
          </div>`
-      : `<button onclick="reviewChat('${chat.id}','${chat.thread_id||''}',this)" class="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded hover:bg-blue-100">Review</button>`;
+      : isAdmin
+        ? `<button onclick="reviewChat('${chat.id}','${chat.thread_id||''}',this)" class="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded hover:bg-blue-100">Review</button>`
+        : `<span class="text-gray-300 text-xs">—</span>`;
 
     const rowKey = chat.thread_id || chat.id;
     return `<tr class="chat-row border-b border-gray-50" id="row-${rowKey}" onclick="openModal('${chat.id}','${chat.thread_id||""}')">
@@ -455,18 +463,20 @@ async function reviewChat(chatId, threadId, btn) {
       if (scoreEl) scoreEl.innerHTML = scorePill(review.overall_score);
       if (statusEl) statusEl.innerHTML =
         `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "✓" : "✗"}</span>`;
+      const reBtn = currentUser?.role === "admin" ? `<button onclick="reviewChat('${chatId}','${threadId||''}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>` : "";
       if (actionCell) actionCell.innerHTML = `<div class="flex items-center gap-1">
         <button onclick="openModal('${chatId}','${threadId||''}')" class="text-xs text-blue-500 hover:underline">View</button>
-        <button onclick="reviewChat('${chatId}','${threadId||''}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>
+        ${reBtn}
       </div>`;
     }
 
     updateStats();
     updateChart();
   } catch (e) {
+    const retryBtn = currentUser?.role === "admin" ? `<button onclick="reviewChat('${chatId}','${threadId||''}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>` : "";
     actionCell.innerHTML = `<div class="flex items-center gap-1">
       <span class="text-xs text-red-500">Error</span>
-      <button onclick="reviewChat('${chatId}','${threadId||''}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>
+      ${retryBtn}
     </div>`;
     showStatus("Review failed: " + e.message, "error");
   }
@@ -529,23 +539,17 @@ async function reviewAllVisible() {
           if (scoreEl) scoreEl.innerHTML = scorePill(review.overall_score);
           if (statusEl) statusEl.innerHTML =
             `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "✓" : "✗"}</span>`;
+          const rr = `<button onclick="reviewChat('${chat.id}','${tid}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>`;
           if (actionCell) actionCell.innerHTML = `<div class="flex items-center gap-1">
             <button onclick="openModal('${chat.id}','${tid}')" class="text-xs text-blue-500 hover:underline">View</button>
-            <button onclick="reviewChat('${chat.id}','${tid}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>
           </div>`;
         } else {
           failed++;
-          if (actionCell) actionCell.innerHTML = `<div class="flex items-center gap-1">
-            <span class="text-xs text-red-400">Failed</span>
-            <button onclick="reviewChat('${chat.id}','${tid}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>
-          </div>`;
+          if (actionCell) actionCell.innerHTML = `<span class="text-xs text-red-400">Failed</span>`;
         }
       } catch {
         failed++;
-        if (actionCell) actionCell.innerHTML = `<div class="flex items-center gap-1">
-          <span class="text-xs text-red-400">Error</span>
-          <button onclick="reviewChat('${chat.id}','${tid}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>
-        </div>`;
+        if (actionCell) actionCell.innerHTML = `<span class="text-xs text-red-400">Error</span>`;
       }
       updateStats();
       updateChart();
