@@ -797,7 +797,8 @@ RESPONSE TIME SCORING:
 CHAT MANAGEMENT RULES (check these in compliance scoring):
 1. Follow-up check: After the agent sends a response and the customer does NOT write anything for ~60 seconds (visible as a long gap before the next customer message, or the chat ends without the customer responding), the agent SHOULD send a follow-up such as "سوال دیگه‌ای دارید؟" or "آیا مشکل دیگه‌ای هست؟". If the agent skips this and closes without asking, flag it as a minor compliance issue.
 2. Chat closing: At the end of the conversation the agent must send a proper closing message — either the standard closing macro OR a message explaining the chat is being closed due to customer inactivity. If the agent closes abruptly without a farewell or closing reason, flag it as a compliance issue.
-3. These are MINOR issues — deduct at most 1 point from compliance per missing item. Do not heavily penalize if the conversation was otherwise resolved well.
+3. IDLE PENALTY: If you see a system message containing "Chat is idle due to" or "inactivity" in the transcript, this means the agent left the chat unattended. Maximum allowed idle time is 2 minutes. Any idle event = deduct 2 points from compliance_score (this is a significant violation — do not treat it as minor). Mention it explicitly in compliance_notes.
+4. These other rules are MINOR issues — deduct at most 1 point from compliance per missing item. Do not heavily penalize if the conversation was otherwise resolved well.
 overall_score = weighted avg: accuracy 20%, resolution 20%, compliance 15%, tone 15%, response_time 15%, product_knowledge 10%, satisfaction 3%, language 2%
 
 Return ONLY valid JSON:
