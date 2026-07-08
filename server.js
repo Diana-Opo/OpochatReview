@@ -1144,9 +1144,9 @@ async function runNightlyReview() {
   }
 }
 
-// 20:30 UTC = 00:00 Tehran (UTC+3:30)
-cron.schedule("30 20 * * *", runNightlyReview, { timezone: "UTC" });
-console.log("[nightly] Scheduled auto-review at 00:00 Tehran time (20:30 UTC)");
+// Nightly auto-review disabled — enable by uncommenting below
+// cron.schedule("30 20 * * *", runNightlyReview, { timezone: "UTC" });
+// console.log("[nightly] Scheduled auto-review at 00:00 Tehran time (20:30 UTC)");
 
 app.listen(PORT, () => {
   console.log(`\n✓ Chat Review running at http://localhost:${PORT}\n`);
