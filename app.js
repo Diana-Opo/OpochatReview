@@ -370,7 +370,12 @@ function renderTable() {
     const isSkipped = r?.skipped === true;
     if (!isSkipped && activeEmployeeShift && filteredAgentName && r) {
       const pr = getPerAgentReview(r, filteredAgentName);
-      displayScore = pr ? pr.overall_score : null;
+      if (pr) {
+        displayScore = pr.overall_score;
+      } else {
+        // Single-agent chat: no per_agent_reviews — fall back to overall score
+        displayScore = r.overall_score ?? null;
+      }
       displayResolved = r.resolved;
     } else if (!isSkipped) {
       displayScore = r?.overall_score ?? null;
