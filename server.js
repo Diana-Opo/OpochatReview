@@ -534,6 +534,7 @@ CUSTOMER NO-RESPONSE RULE: If the transcript ends with the agent waiting for the
 - Do NOT deduct from compliance_score for not closing properly (customer left before agent could close).
 - Set "resolved": false (issue wasn't resolved) but make clear in notes that this was due to customer inactivity/departure.
 - Score the agent on what they DID do — if they were helpful up to the point the customer left, score accordingly.
+- CRITICAL: Do NOT penalize the agent for "not escalating", "not troubleshooting proactively", or "not taking next steps" when those next steps required information the customer was asked for but never provided. If the agent asked for a link, screenshot, account number, or any other required info and the customer didn't send it, the agent was BLOCKED — they could not proceed without that info. Any escalation or deeper troubleshooting without the required info would have been impossible or incorrect.
 
 BROKER CONTEXT:
 This broker offers 4 trading platforms: MetaTrader 4 (MT4), MetaTrader 5 (MT5), cTrader, OpoTrade, and TradingView. Each platform has its own account types (Standard, Pro, Black, etc.) with DIFFERENT specifications — same account name on different platforms is intentional and NOT a contradiction. Always consider the platform context when evaluating specs.
