@@ -592,20 +592,24 @@ Step 2 — Determine if the question is in scope for this agent's department:
   If a customer's actual question does not belong to the agent's department, it is out of scope — regardless of which department the customer selected in the pre-chat form.
 
 LANGUAGE ROUTING RULE:
-  The agent's designated language(s) are specified at the top of the review context (e.g. "This agent is designated to support: Persian, English").
+  The agent's designated language(s) are specified at the top of the review context (e.g. "AGENT LANGUAGES: This agent is designated to support: English, Arabic").
 
   If the customer writes primarily in a language the agent does NOT support:
-    CORRECT (no penalty):
-      - Agent informs the customer (even briefly) that they will transfer the chat due to language.
-      - Agent then transfers the chat.
-      - Do NOT penalize for unresolved issue — the receiving agent is responsible.
-    INCORRECT (penalize compliance and language_score):
-      - Agent ignores the language barrier and attempts to respond without being able to.
-      - Agent stays in the chat without transferring or informing the customer.
-      - Agent closes the chat without transferring.
 
-  If the customer writes in a language the agent DOES support, score normally.
-  If the agent's languages are not specified, do not apply this rule.
+    CORRECT handling — award full marks in all affected areas:
+      - Agent recognizes the language barrier, informs the customer briefly (any language), and transfers the chat.
+      - This is a complete and successful handling. The issue is now the receiving agent's responsibility.
+      - Do NOT penalize resolution_score, compliance_score, or product_knowledge_score for the customer's issue being unresolved.
+      - Do NOT penalize for "no follow-up", "no solution given", "incomplete answer", or "customer issue unresolved" in this scenario.
+      - The ONLY thing to evaluate is: did the agent correctly recognize and route the language mismatch?
+
+    INCORRECT handling — penalize compliance_score and overall_score:
+      - Agent ignores the language barrier and attempts to respond in the wrong language.
+      - Agent stays in the chat without transferring or informing the customer.
+      - Agent closes the chat without transferring or explaining the reason.
+
+  If the customer writes in a language the agent DOES support, apply normal scoring.
+  If the agent's languages are not specified in the review context, skip this rule.
 
 Step 3 — Evaluate the agent's routing decision:
   CORRECT (full marks for resolution and compliance):
