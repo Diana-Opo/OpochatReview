@@ -828,6 +828,11 @@ let settingsAgents = [];
 async function openSettings() {
   document.getElementById("settingsModal").classList.remove("hidden");
   if (agents.length > 0) settingsAgents = agents;
+  try {
+    const r = await fetch("/api/agent-shifts");
+    const fresh = await r.json();
+    if (Array.isArray(fresh)) agentShifts = fresh;
+  } catch {}
   renderShiftsTable();
 }
 
