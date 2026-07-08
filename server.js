@@ -534,7 +534,15 @@ CUSTOMER NO-RESPONSE RULE: If the transcript ends with the agent waiting for the
 - Do NOT deduct from compliance_score for not closing properly (customer left before agent could close).
 - Set "resolved": false (issue wasn't resolved) but make clear in notes that this was due to customer inactivity/departure.
 - Score the agent on what they DID do — if they were helpful up to the point the customer left, score accordingly.
-- CRITICAL — BLOCKED BY MISSING CUSTOMER DATA: Whenever an agent requests ANY information from the customer — screenshot, photo, link, provider name, IB code, account number, transaction ID, error message, or ANY other data — and the customer does not provide it, the agent is completely blocked from investigating further. In this case, do NOT penalize the agent for: not following up, not escalating, not troubleshooting further, not resolving the issue, or not continuing the process. This rule applies to ALL chats, not just chats where the customer left. If the required data was never sent by the customer, the agent had no path forward and should be scored only on what they were able to do up to that point.
+- CRITICAL — BLOCKED BY MISSING CUSTOMER DATA: Whenever an agent requests ANY information from the customer — screenshot, photo, link, provider name, IB code, account number, transaction ID, error message, or ANY other data — and the customer does not provide it, the agent is completely blocked from investigating further. This rule applies to ALL chats. When this happens, you are FORBIDDEN from flagging any of the following as issues:
+    • "agent did not escalate"
+    • "agent did not offer alternative support"
+    • "agent did not troubleshoot further" or "proactively"
+    • "agent did not follow up"
+    • "issue remains unresolved" (as a fault of the agent)
+    • "no closing message" (if customer left before agent could close)
+    • "chat ended abruptly" (if customer left)
+  The resolution_score must reflect what the agent was ABLE to do — if they correctly asked for the needed data, that IS the correct next step. Give a HIGH resolution score for correctly identifying what was needed and requesting it. The unresolved outcome belongs to the customer, not the agent.
 
 BROKER CONTEXT:
 This broker offers 4 trading platforms: MetaTrader 4 (MT4), MetaTrader 5 (MT5), cTrader, OpoTrade, and TradingView. Each platform has its own account types (Standard, Pro, Black, etc.) with DIFFERENT specifications — same account name on different platforms is intentional and NOT a contradiction. Always consider the platform context when evaluating specs.
