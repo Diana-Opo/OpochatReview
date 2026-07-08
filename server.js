@@ -566,8 +566,9 @@ SUPERVISOR NOTES RULE:
 - Supervisor warnings must be factored into the overall assessment and flagged clearly in issues.
 
 RESPONSE TIME SCORING:
-- Measure the gap between each CUSTOMER message and the AGENT's next reply. Do NOT measure total conversation duration.
-- First response (from chat start to agent's first message): must be ≤15s. Score: ≤15s=10, 16-30s=8, 31-60s=6, >60s=4.
+- IMPORTANT: The very first agent message in every chat is an AUTOMATIC greeting sent by the system (not typed by the agent). Do NOT evaluate this message — ignore it completely for response time, tone, and compliance scoring. The agent's real first message is the SECOND agent message in the transcript.
+- Measure the gap between each CUSTOMER message and the AGENT's next MANUAL reply (starting from the second agent message onward). Do NOT measure total conversation duration.
+- First response (from customer's first message to agent's SECOND message): must be ≤15s. Score: ≤15s=10, 16-30s=8, 31-60s=6, >60s=4.
 - Mid-chat replies (gap between customer message and agent reply):
     • Standard: must be ≤60s. Penalty if >60s.
     • If the agent explicitly said something like "let me check", "بررسی میکنم", "صبر کنید", "یه لحظه" before going silent, the allowed gap extends to 120s — do NOT penalize a delay up to 2 minutes after such a statement.
