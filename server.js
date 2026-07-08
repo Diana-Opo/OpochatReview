@@ -658,10 +658,8 @@ ${transcript}`;
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
       max_tokens: 2500,
-      messages: [
-        { role: "user", content: prompt },
-        { role: "assistant", content: "{" },
-      ],
+      system: "You are a JSON-only output assistant. You must ALWAYS respond with a single valid JSON object and nothing else. No preamble, no explanation, no markdown — just the raw JSON starting with { and ending with }.",
+      messages: [{ role: "user", content: prompt }],
     }),
   });
 
@@ -671,7 +669,7 @@ ${transcript}`;
     throw new Error(`Claude API error: ${res.status} ${errBody}`);
   }
   const data = await res.json();
-  let text = ("{" + data.content[0].text).trim();
+  let text = data.content[0].text.trim();
   if (text.startsWith("```")) {
     text = text.replace(/```json?\n?/, "").replace(/```$/, "").trim();
   }
