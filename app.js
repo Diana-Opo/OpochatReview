@@ -878,6 +878,7 @@ function updateChart() {
   }
 
   const labels = Object.keys(byEmployee);
+  const counts = labels.map(n => byEmployee[n].length);
   const data = labels.map(n => +(byEmployee[n].reduce((a,b)=>a+b,0)/byEmployee[n].length).toFixed(2));
   const colors = data.map(s => s >= 7 ? "#22c55e" : s >= 5 ? "#eab308" : "#ef4444");
 
@@ -901,13 +902,18 @@ function updateChart() {
       },
       plugins: {
         legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `Score: ${ctx.parsed.y.toFixed(1)}  |  Chats: ${counts[ctx.dataIndex]}`,
+          },
+        },
         datalabels: {
           anchor: "end",
           align: "end",
           offset: 2,
           color: "#374151",
           font: { weight: "bold", size: 12 },
-          formatter: (v) => v.toFixed(1),
+          formatter: (v, ctx) => `${v.toFixed(1)}\n(${counts[ctx.dataIndex]})`,
         },
       },
     },
