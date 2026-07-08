@@ -510,34 +510,64 @@ function detectTextLanguage(text) {
   return null;
 }
 
-function buildLanguageViolationNote(events, users) {
+function detectLanguageViolations(events, users) {
+  // Returns: Map of agentName -> { prechatLang, agentUsedLang } for violating agents
   const prechatLang = detectPrechatLanguage(events);
-  if (!prechatLang) return "";
+  if (!prechatLang) return new Map();
 
-  // Check first few agent messages for language
+  const violations = new Map();
   const agentMessages = events.filter(e =>
     e.type === "message" && e.visibility !== "agents" && e.text
     && users.find(u => u.id === e.author_id)?.type === "agent"
-  ).slice(0, 5);
+  );
 
-  if (agentMessages.length === 0) return "";
-
+  // Group by agent, check first 5 messages per agent
+  const byAgent = {};
   for (const msg of agentMessages) {
-    const agentLang = detectTextLanguage(msg.text);
     const agent = users.find(u => u.id === msg.author_id);
-    const agentName = agent?.name || msg.author_id;
+    const name = agent?.name || msg.author_id;
+    if (!byAgent[name]) byAgent[name] = [];
+    if (byAgent[name].length < 5) byAgent[name].push(msg.text);
+  }
 
+  for (const [agentName, texts] of Object.entries(byAgent)) {
+    const combined = texts.join(" ");
+    const agentLang = detectTextLanguage(combined);
     const mismatch = (
       (prechatLang === "english" && agentLang === "farsi_or_arabic") ||
-      (prechatLang === "arabic" && agentLang === "farsi_or_arabic" === false) ||
-      (prechatLang === "farsi" && agentLang === "latin")
+      (prechatLang === "farsi"   && agentLang === "latin") ||
+      (prechatLang === "arabic"  && agentLang === "latin")
     );
-
     if (mismatch) {
-      return `\n⚠ LANGUAGE VIOLATION DETECTED BY SYSTEM: The Pre-Chat Form shows the customer selected "${prechatLang.toUpperCase()}" as their language. However, agent ${agentName} responded in a DIFFERENT language. This is a MANDATORY CRITICAL VIOLATION — you MUST set overall_score=1, language_score=1, compliance_score=1, resolution_score=1, tone_score=1. Do NOT override this regardless of anything else in the chat.\n`;
+      violations.set(agentName.toLowerCase(), { prechatLang, agentLang });
     }
   }
-  return "";
+  return violations;
+}
+
+function applyLanguagePenalty(review, agentName, violation) {
+  const penalized = {
+    ...review,
+    overall_score: 1,
+    language_score: 1,
+    compliance_score: 1,
+    resolution_score: 1,
+    tone_score: 1,
+    language_notes: `CRITICAL VIOLATION: Customer selected ${violation.prechatLang.toUpperCase()} in pre-chat form but agent responded in a different language. This is the most severe violation.`,
+    compliance_notes: `CRITICAL: Agent ignored customer's pre-chat language selection (${violation.prechatLang}). Mandatory penalty applied.`,
+    resolution_notes: `CRITICAL: Chat was ineffective because agent responded in wrong language. Customer could not be properly assisted.`,
+    issues: [`CRITICAL: Wrong language — customer selected ${violation.prechatLang.toUpperCase()} but agent used a different language`, ...(review.issues || []).slice(0, 2)],
+    _language_penalty: true,
+  };
+  return penalized;
+}
+
+function buildLanguageViolationNote(events, users) {
+  // Keep for transcript context hint (not relied on for scoring)
+  const violations = detectLanguageViolations(events, users);
+  if (violations.size === 0) return "";
+  const prechatLang = detectPrechatLanguage(events);
+  return `⚠ SYSTEM NOTE: Pre-Chat Form language = ${prechatLang?.toUpperCase()}. Language mismatch detected for some agents.\n\n`;
 }
 
 function buildTranscript(events, users) {
@@ -1178,6 +1208,7 @@ app.post("/api/review/:chatId", authMiddleware, async (req, res) => {
       return res.json(skippedReview);
     }
 
+    const langViolations = detectLanguageViolations(events, users);
     const langViolationNote = buildLanguageViolationNote(events, users);
     const transcript = langViolationNote + buildTranscript(events, users);
     const supervisorNotes = extractSupervisorNotes(events, users);
@@ -1246,13 +1277,26 @@ app.post("/api/review/:chatId", authMiddleware, async (req, res) => {
         )
       : {};
 
-    const review = await overallPromise;
+    let review = await overallPromise;
     review.reviewed_at = new Date().toISOString();
+
+    // Server-side language penalty override — do not rely on Claude to apply it
+    if (langViolations.size > 0) {
+      // Single agent: check if the only agent violated
+      if (agentCount <= 1) {
+        const agentName = Object.values(agentSegments)[0]?.name || "";
+        const v = langViolations.get(agentName.toLowerCase());
+        if (v) review = applyLanguagePenalty(review, agentName, v);
+      }
+    }
 
     if (agentCount > 1) {
       const perAgent = {};
       for (const [agentId, promise] of Object.entries(agentPromises)) {
-        perAgent[agentId] = await promise;
+        let ar = await promise;
+        const v = langViolations.get((ar.agent_name || "").toLowerCase());
+        if (v) ar = applyLanguagePenalty(ar, ar.agent_name, v);
+        perAgent[agentId] = ar;
       }
       review.per_agent_reviews = perAgent;
     }
