@@ -268,7 +268,6 @@ async function loadChats(pageId) {
     }
 
     renderTable();
-    updateStats();
     updatePagination();
     document.getElementById("statusBar").classList.add("hidden");
 
@@ -287,8 +286,9 @@ async function loadChats(pageId) {
         renderTable();
         updateChart();
       });
-    } else if (!pageId) {
-      updateChart();
+    } else {
+      updateStats();
+      if (!pageId) updateChart();
     }
   } catch (e) {
     showStatus("Error: " + e.message, "error");
@@ -296,7 +296,7 @@ async function loadChats(pageId) {
 }
 
 function setStatsLoading(on) {
-  ["statReviewed","statAvg","statResolved"].forEach(id => {
+  ["statTotal","statReviewed","statAvg","statResolved"].forEach(id => {
     const el = document.getElementById(id);
     if (on) el.innerHTML = `<span class="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin align-middle"></span>`;
   });
