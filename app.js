@@ -532,37 +532,47 @@ async function reviewAllVisible() {
     };
     const pageChats = (pageData.chats || []).filter(needsReview);
 
-    for (const chat of pageChats) {
-      showStatus(`Reviewing... ${done + 1} done, ${failed} failed`, "info");
-      const tid = chat.thread_id || "";
-      const rk = tid || chat.id;
-      const actionCell = document.getElementById("action-" + rk);
-      if (actionCell) actionCell.innerHTML = `<span class="spinner"></span>`;
-      try {
-        const qs = tid ? `?thread_id=${tid}` : "";
-        const res = await authFetch(`/api/review/${chat.id}${qs}`, { method: "POST" });
-        const review = await res.json();
-        if (!review.error) {
-          done++;
-          const local = chats.find(c => (c.thread_id || c.id) === rk);
-          if (local) local.review = review;
-          const scoreEl = document.getElementById("score-" + rk);
-          const statusEl = document.getElementById("status-" + rk);
-          if (scoreEl) scoreEl.innerHTML = scorePill(review.overall_score);
-          if (statusEl) statusEl.innerHTML =
-            `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "✓" : "✗"}</span>`;
-          const rr = `<button onclick="reviewChat('${chat.id}','${tid}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>`;
-          if (actionCell) actionCell.innerHTML = `<div class="flex items-center gap-1">
-            <button onclick="openModal('${chat.id}','${tid}')" class="text-xs text-blue-500 hover:underline">View</button>
-          </div>`;
-        } else {
+    // Process in batches of 5 in parallel
+    const BATCH = 5;
+    for (let i = 0; i < pageChats.length; i += BATCH) {
+      const batch = pageChats.slice(i, i + BATCH);
+      // Mark all as loading
+      batch.forEach(chat => {
+        const rk = chat.thread_id || chat.id;
+        const cell = document.getElementById("action-" + rk);
+        if (cell) cell.innerHTML = `<span class="spinner"></span>`;
+      });
+      showStatus(`Reviewing... ${done} done, ${failed} failed`, "info");
+
+      await Promise.all(batch.map(async chat => {
+        const tid = chat.thread_id || "";
+        const rk = tid || chat.id;
+        const actionCell = document.getElementById("action-" + rk);
+        try {
+          const qs = tid ? `?thread_id=${tid}` : "";
+          const res = await authFetch(`/api/review/${chat.id}${qs}`, { method: "POST" });
+          const review = await res.json();
+          if (!review.error) {
+            done++;
+            const local = chats.find(c => (c.thread_id || c.id) === rk);
+            if (local) local.review = review;
+            const scoreEl = document.getElementById("score-" + rk);
+            const statusEl = document.getElementById("status-" + rk);
+            if (scoreEl) scoreEl.innerHTML = review.skipped ? `<span class="text-xs text-gray-400 italic">No msg</span>` : scorePill(review.overall_score);
+            if (statusEl) statusEl.innerHTML = review.skipped ? `<span class="text-gray-300 text-xs">—</span>` :
+              `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "✓" : "✗"}</span>`;
+            if (actionCell) actionCell.innerHTML = review.skipped ? `<span class="text-xs text-gray-400">—</span>` :
+              `<div class="flex items-center gap-1"><button onclick="openModal('${chat.id}','${tid}')" class="text-xs text-blue-500 hover:underline">View</button></div>`;
+          } else {
+            failed++;
+            if (actionCell) actionCell.innerHTML = `<span class="text-xs text-red-400">Failed</span>`;
+          }
+        } catch {
           failed++;
-          if (actionCell) actionCell.innerHTML = `<span class="text-xs text-red-400">Failed</span>`;
+          if (actionCell) actionCell.innerHTML = `<span class="text-xs text-red-400">Error</span>`;
         }
-      } catch {
-        failed++;
-        if (actionCell) actionCell.innerHTML = `<span class="text-xs text-red-400">Error</span>`;
-      }
+      }));
+
       updateStats();
       updateChart();
     }
