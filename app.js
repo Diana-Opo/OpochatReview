@@ -879,6 +879,23 @@ function groupCheckboxesHtml(selected) {
   }).join("");
 }
 
+const ALL_LANGUAGES = [
+  { value: "Persian", label: "FA", color: "text-rose-600" },
+  { value: "English", label: "EN", color: "text-blue-600" },
+  { value: "Arabic",  label: "AR", color: "text-emerald-600" },
+];
+
+function languageCheckboxesHtml(selected) {
+  const sel = selected || [];
+  return ALL_LANGUAGES.map(({ value, label, color }) => {
+    const checked = sel.includes(value) ? "checked" : "";
+    return `<label class="flex items-center gap-1 cursor-pointer whitespace-nowrap">
+      <input type="checkbox" class="sr-lang" value="${value}" ${checked} />
+      <span class="text-xs font-semibold ${color}">${label}</span>
+    </label>`;
+  }).join("");
+}
+
 function shiftRowHtml(s) {
   return `<tr class="border-b border-gray-100 shift-row">
     <td class="py-2 pr-3"><input class="sr-employee w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm" value="${escHtml(s.employee || "")}" placeholder="Employee name" /></td>
@@ -890,6 +907,7 @@ function shiftRowHtml(s) {
     <td class="py-2 pr-3"><input class="sr-start w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23" value="${s.start ?? 8}" /></td>
     <td class="py-2 pr-3"><input class="sr-end w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" value="${s.end ?? 16}" /></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${groupCheckboxesHtml(s.groups)}</div></td>
+    <td class="py-2 pr-3"><div class="flex flex-col gap-1">${languageCheckboxesHtml(s.languages)}</div></td>
     <td class="py-2"><button onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-600 text-lg leading-none px-1">×</button></td>
   </tr>`;
 }
@@ -908,6 +926,7 @@ function addShiftRow() {
     <td class="py-2 pr-3"><input class="sr-start w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23" value="8" /></td>
     <td class="py-2 pr-3"><input class="sr-end w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" value="16" /></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${groupCheckboxesHtml([])}</div></td>
+    <td class="py-2 pr-3"><div class="flex flex-col gap-1">${languageCheckboxesHtml([])}</div></td>
     <td class="py-2"><button onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-600 text-lg leading-none px-1">×</button></td>
   `;
   tbody.appendChild(tr);
@@ -922,8 +941,9 @@ async function saveSettings() {
     const start = parseInt(row.querySelector(".sr-start").value) || 0;
     const end = parseInt(row.querySelector(".sr-end").value) || 24;
     const groups = [...row.querySelectorAll(".sr-group:checked")].map(cb => cb.value);
+    const languages = [...row.querySelectorAll(".sr-lang:checked")].map(cb => cb.value);
     if (!employee || !agentKey) return;
-    newShifts.push({ employee, agentKey, start, end, groups });
+    newShifts.push({ employee, agentKey, start, end, groups, languages });
   });
 
   try {

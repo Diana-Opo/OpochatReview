@@ -38,7 +38,8 @@ if (process.env.DATABASE_URL) {
         agent_key VARCHAR(255) NOT NULL,
         start_hour INTEGER NOT NULL,
         end_hour INTEGER NOT NULL,
-        groups JSONB DEFAULT '[]'
+        groups JSONB DEFAULT '[]',
+        languages JSONB DEFAULT '[]'
       )`);
       // Migrate groups column type if it exists as TEXT[]
       await pool.query(`
@@ -52,6 +53,7 @@ if (process.env.DATABASE_URL) {
         END $$;
       `);
       await pool.query(`ALTER TABLE agent_shifts ADD COLUMN IF NOT EXISTS groups JSONB DEFAULT '[]'`);
+      await pool.query(`ALTER TABLE agent_shifts ADD COLUMN IF NOT EXISTS languages JSONB DEFAULT '[]'`);
       console.log("[db] agent_shifts table ready");
       // Seed from file if empty
       const cnt = await pool.query("SELECT COUNT(*) FROM agent_shifts");
@@ -479,20 +481,20 @@ function allAgentsInThread(events, users, shifts, chatStartedAt) {
   return Object.values(seen);
 }
 
-async function reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes = [], agentName = null, attempt = 1) {
+async function reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes = [], agentName = null, agentLanguages = [], attempt = 1) {
   try {
-    return await _reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes, agentName);
+    return await _reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes, agentName, agentLanguages);
   } catch (err) {
     if (attempt < 3) {
       console.warn(`[review] attempt ${attempt} failed for ${agentName || chatId}, retrying...`, err?.message);
       await new Promise(r => setTimeout(r, 1500 * attempt));
-      return reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes, agentName, attempt + 1);
+      return reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes, agentName, agentLanguages, attempt + 1);
     }
     throw err;
   }
 }
 
-async function _reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes = [], agentName = null) {
+async function _reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes = [], agentName = null, agentLanguages = []) {
   const knowledgeSection = kb.knowledge
     ? `\nKNOWLEDGE BASE:\n${kb.knowledge.slice(0, 3000)}\n`
     : "";
@@ -518,8 +520,12 @@ TAG CLARIFICATIONS (commonly confused tags — follow these exactly):
     : "";
 
   const isPerAgent = !!agentName;
+  const langList = agentLanguages.length > 0 ? agentLanguages.join(", ") : null;
+  const langRule = langList
+    ? `This agent is designated to support: ${langList}. If the customer wrote in a language outside this agent's designated languages, do NOT penalize the agent for language mismatch, inability to respond in that language, or for handing off due to language. The language_score should reflect only whether the agent communicated well in their own supported language(s).`
+    : "";
   const agentContext = isPerAgent
-    ? `\nPER-AGENT REVIEW MODE: You are ONLY reviewing the performance of "${agentName}" based on their assigned portion of the chat below. Do NOT factor in what other agents did. Score ONLY what "${agentName}" did or failed to do.\n`
+    ? `\nPER-AGENT REVIEW MODE: You are ONLY reviewing the performance of "${agentName}" based on their assigned portion of the chat below. Do NOT factor in what other agents did. Score ONLY what "${agentName}" did or failed to do.\n${langRule}\n`
     : "";
 
   const prompt = `You are a QA reviewer for a forex broker support team. Be concise.
@@ -908,9 +914,15 @@ app.post("/api/review/:chatId", async (req, res) => {
               e.type !== "filled_form" && e.type !== "system_message"
             );
             const agentTranscript = buildTranscript([...contextEvents, ...agentOnlyEvents], users);
+            // Find this agent's languages from shifts
+            const agentShiftEntry = shifts3.find(s => {
+              const k = seg.name.toLowerCase().trim();
+              return k === s.agentKey || k.split(" ")[0] === s.agentKey;
+            });
+            const agentLangs = agentShiftEntry?.languages || [];
             return [
               agentId,
-              reviewWithClaude(agentTranscript, chatId, chatStartedAt, seg.supervisorNotes || [], seg.name)
+              reviewWithClaude(agentTranscript, chatId, chatStartedAt, seg.supervisorNotes || [], seg.name, agentLangs)
                 .then(r => ({ ...r, agent_name: seg.name }))
                 .catch(err => {
                   console.error(`[per-agent review] FAILED for ${seg.name}:`, err?.message || err);
@@ -1004,13 +1016,14 @@ app.get("/api/agent-names", async (req, res) => {
 async function loadShifts() {
   if (pool) {
     try {
-      const r = await pool.query("SELECT employee, agent_key, start_hour, end_hour FROM agent_shifts ORDER BY id");
+      const r = await pool.query("SELECT employee, agent_key, start_hour, end_hour, groups, languages FROM agent_shifts ORDER BY id");
       if (r.rows.length > 0) return r.rows.map(row => ({
         employee: row.employee,
         agentKey: row.agent_key,
         start: row.start_hour,
         end: row.end_hour,
         groups: Array.isArray(row.groups) ? row.groups : [],
+        languages: Array.isArray(row.languages) ? row.languages : [],
       }));
     } catch {}
   }
@@ -1025,8 +1038,8 @@ async function saveShifts(shifts) {
     await pool.query("TRUNCATE agent_shifts RESTART IDENTITY");
     for (const s of shifts) {
       await pool.query(
-        `INSERT INTO agent_shifts (employee, agent_key, start_hour, end_hour, groups) VALUES ($1,$2,$3,$4,$5::jsonb)`,
-        [s.employee, s.agentKey, s.start, s.end, JSON.stringify(Array.isArray(s.groups) ? s.groups : [])]
+        `INSERT INTO agent_shifts (employee, agent_key, start_hour, end_hour, groups, languages) VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb)`,
+        [s.employee, s.agentKey, s.start, s.end, JSON.stringify(Array.isArray(s.groups) ? s.groups : []), JSON.stringify(Array.isArray(s.languages) ? s.languages : [])]
       );
     }
     return;
