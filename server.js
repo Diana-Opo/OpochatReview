@@ -749,9 +749,13 @@ Step 2 — Determine if the question is in scope for this agent's department:
 PRE-CHAT LANGUAGE RULE:
   The transcript may begin with a "Pre-Chat Form" block showing the customer's form answers before the chat started. If any field in that form indicates a language preference or selection (e.g. "Language: English", "زبان: English", or the customer typed/selected "English", "Arabic", "Farsi", etc.):
   - The agent MUST respond in that language from the very first message.
-  - If the agent responds in a DIFFERENT language than what the customer selected in the pre-chat form, penalize language_score and compliance_score significantly (deduct 2–3 points each). Note it explicitly in language_notes and compliance_notes.
-  - This is especially serious if the customer clearly does not understand the language the agent used (e.g. customer selected English but agent replied in Farsi/Persian, and the customer showed no sign of understanding Farsi).
-  - If the agent's designated languages do not include the language the customer selected, the agent should transfer the chat — same as the LANGUAGE ROUTING RULE below.
+  - CRITICAL VIOLATION: If the agent responds in a DIFFERENT language than what the customer selected in the pre-chat form, AND the customer clearly does not understand the agent's language (customer shows confusion, repeats themselves, or the conversation is effectively broken), this is a MAJOR failure:
+      • language_score = 1
+      • compliance_score = deduct 3 points
+      • resolution_score = 1 (the customer could not be helped at all due to the language barrier the agent created)
+      • overall_score must be in the range 2–4, regardless of other criteria — the entire chat was rendered ineffective by the agent's language choice.
+      • Note it explicitly in language_notes, compliance_notes, and resolution_notes.
+  - If the agent's designated languages do not include the language the customer selected, the agent should transfer the chat — same as the LANGUAGE ROUTING RULE below. Failure to transfer in that case = same CRITICAL VIOLATION above.
 
 LANGUAGE ROUTING RULE:
   The agent's designated language(s) are specified at the top of the review context (e.g. "AGENT LANGUAGES: This agent is designated to support: English, Arabic").
