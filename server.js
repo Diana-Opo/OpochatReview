@@ -689,11 +689,11 @@ Score the agent on 8 criteria. Write ALL notes, comments, issues, strengths, and
 
 LOST CHAT RULE: If the agent's assigned portion shows customer messages but ZERO responses from the agent, it means the agent lost/abandoned the chat. In this case: response_time_score = 0, overall_score must reflect this failure heavily, and notes must clearly state the agent did not respond and lost the chat.
 
-CUSTOMER NO-RESPONSE RULE: If the transcript ends with the agent waiting for the customer (agent asked a question, requested a link/screenshot/info, or sent a follow-up) and then the customer stopped replying or left the chat (system_message: "X left the chat" or "Chat is idle due to inactivity"), the unresolved outcome is the CUSTOMER's fault — NOT the agent's. In this case:
-- Do NOT deduct from resolution_score for the issue being unresolved.
+CUSTOMER NO-RESPONSE RULE: If at ANY point the customer stops replying — whether after the agent asked a question, requested info/screenshot/link, sent a follow-up, or simply waited — and the chat ends with the customer silent (visible as: no further customer message, "X left the chat", "Chat is idle due to inactivity", or the agent sending a closing/follow-up message with no customer reply), then:
+- The unresolved outcome is the CUSTOMER's fault — NOT the agent's.
+- YOU MUST NOT deduct from resolution_score for the issue being unresolved. Give resolution_score based on how correctly the agent handled the chat up to the point the customer went silent — if the agent did their job correctly, resolution_score should be 8–10.
 - Do NOT deduct from compliance_score for not closing properly (customer left before agent could close).
-- Set "resolved": false (issue wasn't resolved) but make clear in notes that this was due to customer inactivity/departure.
-- Score the agent on what they DID do — if they were helpful up to the point the customer left, score accordingly.
+- Set "resolved": false (issue wasn't technically resolved) but make clear in notes it was due to customer inactivity/departure.
 - CRITICAL — BLOCKED BY MISSING CUSTOMER DATA: Whenever an agent requests ANY information from the customer — screenshot, photo, link, provider name, IB code, account number, transaction ID, error message, or ANY other data — and the customer does not provide it, the agent is completely blocked from investigating further. This rule applies to ALL chats. When this happens, you are FORBIDDEN from flagging any of the following as issues:
     • "agent did not escalate"
     • "agent did not offer alternative support"
