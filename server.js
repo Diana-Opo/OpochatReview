@@ -657,8 +657,11 @@ ${transcript}`;
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
-      max_tokens: 1200,
-      messages: [{ role: "user", content: prompt }],
+      max_tokens: 2500,
+      messages: [
+        { role: "user", content: prompt },
+        { role: "assistant", content: "{" },
+      ],
     }),
   });
 
@@ -668,11 +671,19 @@ ${transcript}`;
     throw new Error(`Claude API error: ${res.status} ${errBody}`);
   }
   const data = await res.json();
-  let text = data.content[0].text.trim();
+  let text = ("{" + data.content[0].text).trim();
   if (text.startsWith("```")) {
     text = text.replace(/```json?\n?/, "").replace(/```$/, "").trim();
   }
-  return JSON.parse(text);
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Fallback: extract the first {...} block from the response
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    console.error("[claude] non-JSON response:", text.slice(0, 300));
+    throw new Error("Claude returned non-JSON response");
+  }
 }
 
 // ── Routes ───────────────────────────────────────────────────────────────────
