@@ -746,6 +746,13 @@ Step 2 — Determine if the question is in scope for this agent's department:
 
   If a customer's actual question does not belong to the agent's department, it is out of scope — regardless of which department the customer selected in the pre-chat form.
 
+PRE-CHAT LANGUAGE RULE:
+  The transcript may begin with a "Pre-Chat Form" block showing the customer's form answers before the chat started. If any field in that form indicates a language preference or selection (e.g. "Language: English", "زبان: English", or the customer typed/selected "English", "Arabic", "Farsi", etc.):
+  - The agent MUST respond in that language from the very first message.
+  - If the agent responds in a DIFFERENT language than what the customer selected in the pre-chat form, penalize language_score and compliance_score significantly (deduct 2–3 points each). Note it explicitly in language_notes and compliance_notes.
+  - This is especially serious if the customer clearly does not understand the language the agent used (e.g. customer selected English but agent replied in Farsi/Persian, and the customer showed no sign of understanding Farsi).
+  - If the agent's designated languages do not include the language the customer selected, the agent should transfer the chat — same as the LANGUAGE ROUTING RULE below.
+
 LANGUAGE ROUTING RULE:
   The agent's designated language(s) are specified at the top of the review context (e.g. "AGENT LANGUAGES: This agent is designated to support: English, Arabic").
 
