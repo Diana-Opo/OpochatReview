@@ -509,7 +509,12 @@ async function _reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNo
     ? `\nSTANDARD MACROS (pre-approved responses — check if agent used correct macro or deviated unnecessarily):\n${kb.macros.slice(0, 2000)}\n`
     : "";
   const tagsSection = kb.tags
-    ? `\nAVAILABLE TAGS (assign ALL that apply — minimum 1 per chat. If referral was mentioned, always include "referred"):\n${kb.tags.slice(0, 2000)}\n`
+    ? `\nAVAILABLE TAGS (assign ALL that apply — minimum 1 per chat. If referral was mentioned, always include "referred"):\n${kb.tags.slice(0, 2000)}\n
+TAG CLARIFICATIONS (commonly confused tags — follow these exactly):
+- AC-Delete: use when customer wants to DELETE or CLOSE their trading account.
+- Prof-Change: use ONLY when customer wants to change personal/profile information (name, email, phone number, address, national ID, etc.). Do NOT use for account deletion.
+- If customer asks to delete account → AC-Delete (not Prof-Change).
+`
     : "";
 
   const isPerAgent = !!agentName;
