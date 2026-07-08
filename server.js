@@ -567,11 +567,17 @@ SUPERVISOR NOTES RULE:
 
 RESPONSE TIME SCORING:
 - Measure the gap between each CUSTOMER message and the AGENT's next reply. Do NOT measure total conversation duration.
-- First response SLA: <15s=10, 15-30s=8, 30-60s=6, >60s=4.
-- Between replies: <45s good, 45-90s warning, >90s bad.
+- First response (from chat start to agent's first message): must be ≤15s. Score: ≤15s=10, 16-30s=8, 31-60s=6, >60s=4.
+- Mid-chat replies (gap between customer message and agent reply):
+    • Standard: must be ≤60s. Penalty if >60s.
+    • If the agent explicitly said something like "let me check", "بررسی میکنم", "صبر کنید", "یه لحظه" before going silent, the allowed gap extends to 120s — do NOT penalize a delay up to 2 minutes after such a statement.
 - A long conversation with fast per-message replies = HIGH response time score. Do NOT penalize for total conversation length.
-- If an agent handles multiple questions in sequence (answering some, routing others), each reply is measured independently. Handling multiple topics is normal and does NOT indicate slow response.
-- NEVER say an agent "handled late" or "took too long" based on total conversation time — only base this on gaps between customer message and agent reply.
+- NEVER say an agent "handled late" or "took too long" based on total conversation time — only base this on per-reply gaps.
+
+CHAT MANAGEMENT RULES (check these in compliance scoring):
+1. Follow-up check: After the agent sends a response and the customer does NOT write anything for ~60 seconds (visible as a long gap before the next customer message, or the chat ends without the customer responding), the agent SHOULD send a follow-up such as "سوال دیگه‌ای دارید؟" or "آیا مشکل دیگه‌ای هست؟". If the agent skips this and closes without asking, flag it as a minor compliance issue.
+2. Chat closing: At the end of the conversation the agent must send a proper closing message — either the standard closing macro OR a message explaining the chat is being closed due to customer inactivity. If the agent closes abruptly without a farewell or closing reason, flag it as a compliance issue.
+3. These are MINOR issues — deduct at most 1 point from compliance per missing item. Do not heavily penalize if the conversation was otherwise resolved well.
 overall_score = weighted avg: accuracy 20%, resolution 20%, compliance 15%, tone 15%, response_time 15%, product_knowledge 10%, satisfaction 3%, language 2%
 
 Return ONLY valid JSON:
