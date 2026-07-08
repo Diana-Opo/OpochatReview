@@ -506,7 +506,9 @@ async function reviewAllVisible() {
 
   const from = document.getElementById("dateFrom").value;
   const to = document.getElementById("dateTo").value;
-  const agentId = document.getElementById("agentFilter").value;
+  // resolveEmployeeFilter sets activeEmployeeShift and returns LiveChat agent ID (or null)
+  const agentId = resolveEmployeeFilter();
+  const employeeShift = activeEmployeeShift; // snapshot for filtering
 
   do {
     const params = new URLSearchParams();
@@ -525,12 +527,18 @@ async function reviewAllVisible() {
     pageId = pageData.next_page_id || null;
     const needsReview = (c) => {
       if (!c.review) return true;
-      if (c.review.skipped) return false; // no customer messages — nothing to review
+      if (c.review.skipped) return false;
       const pa = c.review.per_agent_reviews;
       if (pa && Object.values(pa).some(r => r && r._error)) return true;
       return false;
     };
-    const pageChats = (pageData.chats || []).filter(needsReview);
+    // If employee filter active, only review chats in their shift hours
+    const inShift = (c) => {
+      if (!employeeShift) return true;
+      const h = getTehranHour(c.started_at);
+      return h >= employeeShift.start && h < employeeShift.end;
+    };
+    const pageChats = (pageData.chats || []).filter(c => needsReview(c) && inShift(c));
 
     // Process in batches of 5 in parallel
     const BATCH = 5;
