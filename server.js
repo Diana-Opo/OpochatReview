@@ -528,6 +528,29 @@ function detectLanguageViolations(events, users) {
   const prechatLang = detectPrechatLanguage(events);
   if (!prechatLang) return new Map();
 
+  // If the customer themselves sent messages in a DIFFERENT language than pre-chat,
+  // they changed their mind — use the language they actually wrote in as the effective language.
+  // Also: if customer explicitly asked to switch language, no violation for any agent.
+  const customerMessages = events.filter(e =>
+    e.type === "message" && e.visibility !== "agents" && e.text
+    && users.find(u => u.id === e.author_id)?.type === "customer"
+  );
+  const customerChatText = customerMessages.map(m => m.text).join(" ");
+  const customerChatLang = detectTextLanguage(customerChatText);
+
+  // If customer switched language during chat (pre-chat vs actual messages differ), no violation
+  const prechatIsLatin = prechatLang === "english";
+  const prechatIsFarsiAr = prechatLang === "farsi" || prechatLang === "arabic" || prechatLang === "farsi_or_arabic";
+  const customerSwitchedToFarsiAr = prechatIsLatin && customerChatLang === "farsi_or_arabic";
+  const customerSwitchedToLatin   = prechatIsFarsiAr && customerChatLang === "latin";
+  if (customerSwitchedToFarsiAr || customerSwitchedToLatin) {
+    console.log(`[lang] customer switched language during chat (prechat=${prechatLang}, chat=${customerChatLang}) — no violation`);
+    return new Map();
+  }
+
+  // Effective language = what customer actually wrote in chat (if available), else prechat
+  const effectiveLang = customerChatLang || prechatLang;
+
   const violations = new Map();
   const agentMessages = events.filter(e =>
     e.type === "message" && e.visibility !== "agents" && e.text
@@ -547,13 +570,13 @@ function detectLanguageViolations(events, users) {
     const combined = texts.join(" ");
     const agentLang = detectTextLanguage(combined);
     const mismatch = (
-      (prechatLang === "english"         && agentLang === "farsi_or_arabic") ||
-      (prechatLang === "farsi"           && agentLang === "latin") ||
-      (prechatLang === "arabic"          && agentLang === "latin") ||
-      (prechatLang === "farsi_or_arabic" && agentLang === "latin")
+      (effectiveLang === "english"         && agentLang === "farsi_or_arabic") ||
+      (effectiveLang === "farsi"           && agentLang === "latin") ||
+      (effectiveLang === "arabic"          && agentLang === "latin") ||
+      (effectiveLang === "farsi_or_arabic" && agentLang === "latin")
     );
     if (mismatch) {
-      violations.set(agentName.toLowerCase(), { prechatLang, agentLang });
+      violations.set(agentName.toLowerCase(), { prechatLang: effectiveLang, agentLang });
     }
   }
   return violations;
@@ -851,11 +874,11 @@ Step 2 — Determine if the question is in scope for this agent's department:
 LANGUAGE MATCHING RULE — HIGHEST PRIORITY:
   The agent MUST respond in the same language the customer is communicating in, OR the language the customer selected in the pre-chat form. This rule has NO exceptions and NO conditions.
 
-  Step 1 — Determine the customer's language:
-    a) Check the Pre-Chat Form (if present at the start of transcript). If any field shows a language selection (e.g. "Language: English", "زبان: English", customer wrote "english", "arabic", "farsi", etc.) — that is the customer's chosen language.
-    b) If no pre-chat form or no language field: look at the language of the customer's own messages.
-    c) If customer writes in English → agent must respond in English.
-    d) If customer writes in Arabic → agent must respond in Arabic.
+  Step 1 — Determine the customer's EFFECTIVE language (priority order):
+    a) Look at the actual language the customer used in their chat messages — this overrides the pre-chat form if different.
+    b) If the customer wrote in Farsi during the chat, the effective language is Farsi — even if the pre-chat form was in English. The customer chose to switch.
+    c) If the customer explicitly requested a language switch (e.g. "can we speak Farsi?", "لطفاً فارسی صحبت کنید") — that request is the effective language from that point forward.
+    d) If customer chat messages are in the same language as the pre-chat form, use that language.
     e) NEVER assume a customer knows Farsi/Persian unless: (1) the customer explicitly wrote in Farsi, OR (2) the pre-chat form shows Farsi.
 
   Step 2 — Check what language the agent used.
