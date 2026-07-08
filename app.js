@@ -842,13 +842,39 @@ function getEmployeeName(agentName, dateStr) {
   return match ? match.employee : agentName;
 }
 
+function getEmployeeNameForChart(agentName, dateStr) {
+  // Try hour-matched shift first
+  const matched = getEmployeeName(agentName, dateStr);
+  if (matched !== agentName) return matched; // found a shift match
+  // Fallback: find any shift for this agent (ignore hour) so agent names don't appear as separate bars
+  const full = (agentName || "").toLowerCase().trim();
+  const first = full.split(" ")[0];
+  const anyShift = agentShifts.find(s => s.agentKey === full || s.agentKey === first);
+  return anyShift ? anyShift.employee : agentName;
+}
+
 function updateChart() {
   const byEmployee = {};
-  for (const chat of applyEmployeeHourFilter(allChats)) {
+  const filtered = applyEmployeeHourFilter(allChats);
+  const filteredAgentName = activeEmployeeShift ? getAgentForShift(activeEmployeeShift)?.name || null : null;
+
+  for (const chat of filtered) {
     if (!chat.review || chat.review.skipped || !chat.agent) continue;
-    const emp = getEmployeeName(chat.agent.name, chat.started_at) || chat.agent.name;
+    const emp = activeEmployeeShift
+      ? (activeEmployeeShift.employee)
+      : getEmployeeNameForChart(chat.agent.name, chat.started_at);
+
+    // Use per-agent score when employee filter is active, else overall
+    let score;
+    if (activeEmployeeShift && filteredAgentName) {
+      const pr = getPerAgentReview(chat.review, filteredAgentName);
+      score = pr ? pr.overall_score : chat.review.overall_score;
+    } else {
+      score = chat.review.overall_score;
+    }
+    if (score == null) continue;
     if (!byEmployee[emp]) byEmployee[emp] = [];
-    byEmployee[emp].push(chat.review.overall_score);
+    byEmployee[emp].push(score);
   }
 
   const labels = Object.keys(byEmployee);
