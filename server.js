@@ -10,28 +10,52 @@ import crypto from "crypto";
 const { Pool } = pg;
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
-const sessions = new Map(); // token → { username, role, employee_name, expires }
+const SESSION_IDLE_MINUTES = 30;
 
 function hashPass(password, salt) {
   return crypto.pbkdf2Sync(password, salt, 10000, 64, "sha512").toString("hex");
 }
-function createSession(user) {
+
+async function createSession(user) {
   const token = crypto.randomBytes(32).toString("hex");
-  sessions.set(token, { ...user, expires: Date.now() + 24 * 60 * 60 * 1000 });
+  if (pool) {
+    await pool.query(
+      `INSERT INTO sessions (token, username, role, employee_name, last_active)
+       VALUES ($1, $2, $3, $4, NOW())`,
+      [token, user.username, user.role, user.employee_name || null]
+    );
+  }
   return token;
 }
-function getSession(token) {
-  const s = sessions.get(token);
-  if (!s) return null;
-  if (Date.now() > s.expires) { sessions.delete(token); return null; }
-  return s;
+
+async function getSession(token) {
+  if (!token) return null;
+  if (pool) {
+    const r = await pool.query(
+      `SELECT username, role, employee_name FROM sessions
+       WHERE token=$1 AND last_active > NOW() - INTERVAL '${SESSION_IDLE_MINUTES} minutes'`,
+      [token]
+    );
+    if (!r.rows[0]) return null;
+    // Touch last_active (fire-and-forget)
+    pool.query("UPDATE sessions SET last_active=NOW() WHERE token=$1", [token]).catch(() => {});
+    return r.rows[0];
+  }
+  return null;
 }
+
+async function deleteSession(token) {
+  if (pool && token) await pool.query("DELETE FROM sessions WHERE token=$1", [token]).catch(() => {});
+}
+
 function authMiddleware(req, res, next) {
   const token = (req.headers.authorization || "").replace("Bearer ", "").trim();
-  const sess = token ? getSession(token) : null;
-  if (!sess) return res.status(401).json({ error: "Not authenticated" });
-  req.user = sess;
-  next();
+  getSession(token).then(sess => {
+    if (!sess) return res.status(401).json({ error: "Not authenticated" });
+    req.user = sess;
+    req.sessionToken = token;
+    next();
+  }).catch(() => res.status(401).json({ error: "Not authenticated" }));
 }
 function adminOnly(req, res, next) {
   if (req.user?.role !== "admin") return res.status(403).json({ error: "Admin only" });
@@ -52,6 +76,17 @@ if (process.env.DATABASE_URL) {
     data JSONB NOT NULL,
     updated_at TIMESTAMP DEFAULT NOW()
   )`).then(() => console.log("[db] reviews table ready")).catch(e => console.error("[db] init error:", e.message));
+  pool.query(`CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    role TEXT NOT NULL,
+    employee_name TEXT,
+    last_active TIMESTAMP DEFAULT NOW()
+  )`).then(() => {
+    console.log("[db] sessions table ready");
+    // Clean up expired sessions on startup
+    pool.query(`DELETE FROM sessions WHERE last_active < NOW() - INTERVAL '${SESSION_IDLE_MINUTES} minutes'`).catch(() => {});
+  }).catch(e => console.error("[db] sessions init error:", e.message));
   (async () => {
     try {
       // Migrate old JSON-blob schema to per-record schema if needed
@@ -157,20 +192,20 @@ app.post("/api/login", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Invalid username or password" });
     const hash = hashPass(password, user.salt);
     if (hash !== user.password_hash) return res.status(401).json({ error: "Invalid username or password" });
-    const token = createSession({ username: user.username, role: user.role, employee_name: user.employee_name });
+    const token = await createSession({ username: user.username, role: user.role, employee_name: user.employee_name });
     res.json({ token, role: user.role, username: user.username });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post("/api/logout", (req, res) => {
+app.post("/api/logout", async (req, res) => {
   const token = (req.headers.authorization || "").replace("Bearer ", "").trim();
-  if (token) sessions.delete(token);
+  await deleteSession(token);
   res.json({ ok: true });
 });
 
-app.get("/api/me", (req, res) => {
+app.get("/api/me", async (req, res) => {
   const token = (req.headers.authorization || "").replace("Bearer ", "").trim();
-  const sess = token ? getSession(token) : null;
+  const sess = await getSession(token);
   if (!sess) return res.status(401).json({ error: "Not authenticated" });
   res.json({ username: sess.username, role: sess.role, employee_name: sess.employee_name });
 });
