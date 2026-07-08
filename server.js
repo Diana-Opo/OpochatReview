@@ -481,20 +481,20 @@ function allAgentsInThread(events, users, shifts, chatStartedAt) {
   return Object.values(seen);
 }
 
-async function reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes = [], agentName = null, agentLanguages = [], attempt = 1) {
+async function reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes = [], agentName = null, agentLanguages = [], agentGroups = [], attempt = 1) {
   try {
-    return await _reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes, agentName, agentLanguages);
+    return await _reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes, agentName, agentLanguages, agentGroups);
   } catch (err) {
     if (attempt < 3) {
       console.warn(`[review] attempt ${attempt} failed for ${agentName || chatId}, retrying...`, err?.message);
       await new Promise(r => setTimeout(r, 1500 * attempt));
-      return reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes, agentName, agentLanguages, attempt + 1);
+      return reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes, agentName, agentLanguages, agentGroups, attempt + 1);
     }
     throw err;
   }
 }
 
-async function _reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes = [], agentName = null, agentLanguages = []) {
+async function _reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes = [], agentName = null, agentLanguages = [], agentGroups = []) {
   const knowledgeSection = kb.knowledge
     ? `\nKNOWLEDGE BASE:\n${kb.knowledge.slice(0, 3000)}\n`
     : "";
@@ -521,11 +521,15 @@ TAG CLARIFICATIONS (commonly confused tags — follow these exactly):
 
   const isPerAgent = !!agentName;
   const langList = agentLanguages.length > 0 ? agentLanguages.join(", ") : null;
+  const groupList = agentGroups.length > 0 ? agentGroups.join(", ") : null;
   const langRule = langList
-    ? `This agent is designated to support: ${langList}. If the customer wrote in a language outside this agent's designated languages, do NOT penalize the agent for language mismatch, inability to respond in that language, or for handing off due to language. The language_score should reflect only whether the agent communicated well in their own supported language(s).`
+    ? `AGENT LANGUAGES: This agent is designated to support: ${langList}. Apply the LANGUAGE ROUTING RULE accordingly. The language_score should reflect only whether the agent communicated well in their own supported language(s).`
+    : "";
+  const groupRule = groupList
+    ? `AGENT DEPARTMENT: This agent belongs to the "${groupList}" department. Apply the DEPARTMENT ROUTING RULES accordingly — evaluate whether topics in this chat are in scope for this agent's department.`
     : "";
   const agentContext = isPerAgent
-    ? `\nPER-AGENT REVIEW MODE: You are ONLY reviewing the performance of "${agentName}" based on their assigned portion of the chat below. Do NOT factor in what other agents did. Score ONLY what "${agentName}" did or failed to do.\n${langRule}\n`
+    ? `\nPER-AGENT REVIEW MODE: You are ONLY reviewing the performance of "${agentName}" based on their assigned portion of the chat below. Do NOT factor in what other agents did. Score ONLY what "${agentName}" did or failed to do.\n${groupRule}\n${langRule}\n`
     : "";
 
   const prompt = `You are a QA reviewer for a forex broker support team. Be concise.
@@ -568,10 +572,44 @@ Step 1 — Understand the customer's actual question:
   Read the [PRE-CHAT FORM] block first. The form shows which department the customer chose AND what they wrote as their question. The department selection in the form is made by the customer and does NOT always match their real question. Always combine the form question + in-chat messages to determine what the customer truly needs. Short in-chat messages ("why?", "دلیلش چیه", "what's the reason?") are follow-ups to what the customer already wrote in the form — never treat them as ambiguous when the form question is clear.
 
 Step 2 — Determine if the question is in scope for this agent's department:
-  • Social Trade / CopyTrade department: handles ONLY questions about the Social Trade or CopyTrade platform itself — providers, followers, copy strategies, copy performance. Nothing else.
-  • General department: handles everything else — account issues, positions, deposits, withdrawals, buy/sell errors, greyed-out buttons, platform problems, account activation, login issues, etc.
-  • KYC department: handles identity verification and document submission only.
+
+  • KYC department: handles ONLY these topics:
+      - Identity verification (احراز هویت)
+      - Submitting or reviewing personal documents (ID card, passport, selfie)
+      - Proof of residence documents (utility bills, bank statements for address)
+      - Changing or correcting profile/personal information (name, national code, birthdate, address, phone, email)
+      Nothing else belongs to KYC.
+
+  • Social Trade / CopyTrade department: handles ONLY questions specifically about the Social Trade or CopyTrade platform:
+      - Copy trading: providers, followers, copy strategies, copy performance, following/unfollowing a provider
+      - Social Trade platform features and problems
+      Nothing else belongs to Social Trade — even if the customer selected "Social Trade" in the pre-chat form.
+
+  • General department: handles ALL other topics, including:
+      - Trading platform issues (MetaTrader 4, MetaTrader 5, cTrader, OpoTrade, TradingView)
+      - Account issues: account activation, login problems, account types, upgrade/downgrade
+      - Trading: positions, buy/sell orders, open/close positions, greyed-out buttons, chart issues, spread, leverage
+      - Financial: deposits, withdrawals, money transfers between accounts, IB (introducing broker) commissions
+      - Promotions, bonuses, campaigns
+      - Any other topic not explicitly in KYC or Social Trade scope
+
   If a customer's actual question does not belong to the agent's department, it is out of scope — regardless of which department the customer selected in the pre-chat form.
+
+LANGUAGE ROUTING RULE:
+  The agent's designated language(s) are specified at the top of the review context (e.g. "This agent is designated to support: Persian, English").
+
+  If the customer writes primarily in a language the agent does NOT support:
+    CORRECT (no penalty):
+      - Agent informs the customer (even briefly) that they will transfer the chat due to language.
+      - Agent then transfers the chat.
+      - Do NOT penalize for unresolved issue — the receiving agent is responsible.
+    INCORRECT (penalize compliance and language_score):
+      - Agent ignores the language barrier and attempts to respond without being able to.
+      - Agent stays in the chat without transferring or informing the customer.
+      - Agent closes the chat without transferring.
+
+  If the customer writes in a language the agent DOES support, score normally.
+  If the agent's languages are not specified, do not apply this rule.
 
 Step 3 — Evaluate the agent's routing decision:
   CORRECT (full marks for resolution and compliance):
@@ -914,15 +952,16 @@ app.post("/api/review/:chatId", async (req, res) => {
               e.type !== "filled_form" && e.type !== "system_message"
             );
             const agentTranscript = buildTranscript([...contextEvents, ...agentOnlyEvents], users);
-            // Find this agent's languages from shifts
+            // Find this agent's shift entry for languages + groups
             const agentShiftEntry = shifts3.find(s => {
               const k = seg.name.toLowerCase().trim();
               return k === s.agentKey || k.split(" ")[0] === s.agentKey;
             });
             const agentLangs = agentShiftEntry?.languages || [];
+            const agentGroups = agentShiftEntry?.groups || [];
             return [
               agentId,
-              reviewWithClaude(agentTranscript, chatId, chatStartedAt, seg.supervisorNotes || [], seg.name, agentLangs)
+              reviewWithClaude(agentTranscript, chatId, chatStartedAt, seg.supervisorNotes || [], seg.name, agentLangs, agentGroups)
                 .then(r => ({ ...r, agent_name: seg.name }))
                 .catch(err => {
                   console.error(`[per-agent review] FAILED for ${seg.name}:`, err?.message || err);
