@@ -858,13 +858,23 @@ function updateChart() {
   const filtered = applyEmployeeHourFilter(allChats);
   const filteredAgentName = activeEmployeeShift ? getAgentForShift(activeEmployeeShift)?.name || null : null;
 
+  // Total count: when employee filter active, use statTotal (same source as the card)
+  // In all-employees mode, count from loaded chats per employee
   const totalByEmployee = {};
+  if (activeEmployeeShift) {
+    // Single employee selected — count = all loaded chats for this employee (matches statTotal card)
+    totalByEmployee[activeEmployeeShift.employee] = filtered.length;
+  }
+
   for (const chat of filtered) {
     if (!chat.agent) continue;
     const emp = activeEmployeeShift
       ? activeEmployeeShift.employee
       : getEmployeeNameForChart(chat.agent.name, chat.started_at);
-    totalByEmployee[emp] = (totalByEmployee[emp] || 0) + 1;
+
+    if (!activeEmployeeShift) {
+      totalByEmployee[emp] = (totalByEmployee[emp] || 0) + 1;
+    }
 
     if (!chat.review || chat.review.skipped) continue;
     let score;
