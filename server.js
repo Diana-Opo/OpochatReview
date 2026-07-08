@@ -6,7 +6,37 @@ import path from "path";
 import { fileURLToPath } from "url";
 import pg from "pg";
 import cron from "node-cron";
+import crypto from "crypto";
 const { Pool } = pg;
+
+// ── Auth helpers ──────────────────────────────────────────────────────────────
+const sessions = new Map(); // token → { username, role, employee_name, expires }
+
+function hashPass(password, salt) {
+  return crypto.pbkdf2Sync(password, salt, 10000, 64, "sha512").toString("hex");
+}
+function createSession(user) {
+  const token = crypto.randomBytes(32).toString("hex");
+  sessions.set(token, { ...user, expires: Date.now() + 24 * 60 * 60 * 1000 });
+  return token;
+}
+function getSession(token) {
+  const s = sessions.get(token);
+  if (!s) return null;
+  if (Date.now() > s.expires) { sessions.delete(token); return null; }
+  return s;
+}
+function authMiddleware(req, res, next) {
+  const token = (req.headers.authorization || "").replace("Bearer ", "").trim();
+  const sess = token ? getSession(token) : null;
+  if (!sess) return res.status(401).json({ error: "Not authenticated" });
+  req.user = sess;
+  next();
+}
+function adminOnly(req, res, next) {
+  if (req.user?.role !== "admin") return res.status(403).json({ error: "Admin only" });
+  next();
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -70,6 +100,31 @@ if (process.env.DATABASE_URL) {
       }
     } catch (e) { console.error("[db] shifts init error:", e.message); }
   })();
+
+  // ── app_users table ──────────────────────────────────────────────────────
+  (async () => {
+    try {
+      await pool.query(`CREATE TABLE IF NOT EXISTS app_users (
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        salt TEXT NOT NULL,
+        role TEXT DEFAULT 'employee',
+        employee_name TEXT
+      )`);
+      // Seed admin if not exists
+      const exists = await pool.query("SELECT id FROM app_users WHERE username='admin'");
+      if (exists.rows.length === 0) {
+        const salt = crypto.randomBytes(16).toString("hex");
+        await pool.query(
+          "INSERT INTO app_users (username, password_hash, salt, role) VALUES ($1,$2,$3,'admin')",
+          ["admin", hashPass("Admin@12893@@", salt), salt]
+        );
+        console.log("[db] admin user created");
+      }
+      console.log("[db] app_users table ready");
+    } catch (e) { console.error("[db] app_users init error:", e.message); }
+  })();
 }
 const LC_API = "https://api.livechatinc.com/v3.6/agent/action";
 const LC_CONFIG_API = "https://api.livechatinc.com/v3.6/configuration/action";
@@ -90,6 +145,67 @@ app.use(express.json());
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
 app.get("/app.js", (req, res) => res.sendFile(path.join(__dirname, "app.js")));
 app.get("/style.css", (req, res) => res.sendFile(path.join(__dirname, "style.css")));
+
+// ── Auth routes (public) ──────────────────────────────────────────────────────
+app.post("/api/login", async (req, res) => {
+  try {
+    const { username, password } = req.body || {};
+    if (!username || !password) return res.status(400).json({ error: "Missing credentials" });
+    if (!pool) return res.status(503).json({ error: "DB not available" });
+    const r = await pool.query("SELECT * FROM app_users WHERE username=$1", [username]);
+    const user = r.rows[0];
+    if (!user) return res.status(401).json({ error: "Invalid username or password" });
+    const hash = hashPass(password, user.salt);
+    if (hash !== user.password_hash) return res.status(401).json({ error: "Invalid username or password" });
+    const token = createSession({ username: user.username, role: user.role, employee_name: user.employee_name });
+    res.json({ token, role: user.role, username: user.username });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/logout", (req, res) => {
+  const token = (req.headers.authorization || "").replace("Bearer ", "").trim();
+  if (token) sessions.delete(token);
+  res.json({ ok: true });
+});
+
+app.get("/api/me", (req, res) => {
+  const token = (req.headers.authorization || "").replace("Bearer ", "").trim();
+  const sess = token ? getSession(token) : null;
+  if (!sess) return res.status(401).json({ error: "Not authenticated" });
+  res.json({ username: sess.username, role: sess.role, employee_name: sess.employee_name });
+});
+
+// ── App users (admin only) ───────────────────────────────────────────────────
+app.get("/api/app-users", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const r = await pool.query("SELECT username, role, employee_name FROM app_users ORDER BY id");
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/app-users", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { username, password, employee_name } = req.body || {};
+    if (!username || !password) return res.status(400).json({ error: "Username and password required" });
+    const salt = crypto.randomBytes(16).toString("hex");
+    const hash = hashPass(password, salt);
+    await pool.query(
+      `INSERT INTO app_users (username, password_hash, salt, role, employee_name)
+       VALUES ($1,$2,$3,'employee',$4)
+       ON CONFLICT (username) DO UPDATE SET password_hash=$2, salt=$3, employee_name=$4`,
+      [username, hash, salt, employee_name || null]
+    );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete("/api/app-users/:username", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    if (req.params.username === "admin") return res.status(400).json({ error: "Cannot delete admin" });
+    await pool.query("DELETE FROM app_users WHERE username=$1", [req.params.username]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -734,7 +850,7 @@ app.get("/api/debug-env", (req, res) => {
 });
 
 // Get all agents
-app.get("/api/agents", async (req, res) => {
+app.get("/api/agents", authMiddleware, async (req, res) => {
   try {
     console.log("calling list_agents...");
     const data = await lcPost("list_agents", {}, LC_CONFIG_API);
@@ -756,7 +872,7 @@ app.get("/api/agents", async (req, res) => {
 });
 
 // Fetch archived chats from LiveChat
-app.get("/api/chats", async (req, res) => {
+app.get("/api/chats", authMiddleware, async (req, res) => {
   try {
     const { date_from, date_to, agent_id, page_id } = req.query;
     const filters = {};
@@ -818,7 +934,7 @@ app.get("/api/chats", async (req, res) => {
 });
 
 // Get single chat with full transcript
-app.get("/api/chats/:chatId", async (req, res) => {
+app.get("/api/chats/:chatId", authMiddleware, async (req, res) => {
   try {
     const { thread_id } = req.query;
     const gcBody = { chat_id: req.params.chatId };
@@ -893,7 +1009,7 @@ app.get("/api/chats/:chatId", async (req, res) => {
 });
 
 // Review a chat with Claude AI
-app.post("/api/review/:chatId", async (req, res) => {
+app.post("/api/review/:chatId", authMiddleware, async (req, res) => {
   try {
     const { chatId } = req.params;
     console.log(`[review] fetching chat ${chatId}`);
@@ -1103,13 +1219,13 @@ async function saveShifts(shifts) {
   await fs.writeFile(path.join(DATA_DIR, "agent_shifts.json"), JSON.stringify(shifts, null, 2));
 }
 
-app.get("/api/agent-shifts", async (req, res) => {
+app.get("/api/agent-shifts", authMiddleware, async (req, res) => {
   try {
     res.json(await loadShifts());
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post("/api/agent-shifts", async (req, res) => {
+app.post("/api/agent-shifts", authMiddleware, adminOnly, async (req, res) => {
   try {
     await saveShifts(req.body);
     res.json({ ok: true });
@@ -1137,7 +1253,7 @@ app.get("/api/telegram-setup", async (req, res) => {
 });
 
 // Refresh knowledge base from Google Docs/Sheets
-app.post("/api/refresh-knowledge", async (req, res) => {
+app.post("/api/refresh-knowledge", authMiddleware, async (req, res) => {
   try {
     await loadKnowledge();
     res.json({ ok: true, lastFetched: kb.lastFetched, knowledge: kb.knowledge.length, campaigns: kb.campaigns.length, telegram: kb.telegram.length, protocol: kb.protocol.length, macros: kb.macros.length, tags: kb.tags.length });

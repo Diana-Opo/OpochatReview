@@ -8,17 +8,96 @@ let agentChart = null;
 let totalChats = 0;
 let agentShifts = [];
 let allChats = [];
-let activeEmployeeShift = null; // { employee, agentKey, start, end } when employee filter is on
+let activeEmployeeShift = null;
+let currentUser = null; // { username, role, employee_name }
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+function getToken() { return localStorage.getItem("auth_token") || ""; }
+
+function authFetch(url, opts = {}) {
+  const token = getToken();
+  return fetch(url, {
+    ...opts,
+    headers: { ...(opts.headers || {}), "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
+  });
+}
+
+async function doLogin() {
+  const username = document.getElementById("loginUsername").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  const errEl = document.getElementById("loginError");
+  errEl.classList.add("hidden");
+  if (!username || !password) { errEl.textContent = "Enter username and password"; errEl.classList.remove("hidden"); return; }
+  const btn = document.getElementById("btnLogin");
+  btn.disabled = true; btn.textContent = "Signing in…";
+  try {
+    const res = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || "Login failed"; errEl.classList.remove("hidden"); return; }
+    localStorage.setItem("auth_token", data.token);
+    currentUser = { username: data.username, role: data.role };
+    document.getElementById("loginModal").classList.add("hidden");
+    initApp();
+  } catch (e) {
+    errEl.textContent = "Connection error"; errEl.classList.remove("hidden");
+  } finally {
+    btn.disabled = false; btn.textContent = "Sign In";
+  }
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !document.getElementById("loginModal").classList.contains("hidden")) doLogin();
+});
+
+async function checkAuth() {
+  const token = getToken();
+  if (!token) return false;
+  try {
+    const res = await fetch("/api/me", { headers: { "Authorization": `Bearer ${token}` } });
+    if (!res.ok) { localStorage.removeItem("auth_token"); return false; }
+    currentUser = await res.json();
+    return true;
+  } catch { return false; }
+}
+
+function logout() {
+  authFetch("/api/logout", { method: "POST" }).catch(() => {});
+  localStorage.removeItem("auth_token");
+  location.reload();
+}
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
+  const authed = await checkAuth();
+  if (!authed) return; // login modal stays visible
+  document.getElementById("loginModal").classList.add("hidden");
+  initApp();
+});
+
+async function initApp() {
   const today = new Date();
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   document.getElementById("dateFrom").value = firstOfMonth.toISOString().slice(0, 10);
   document.getElementById("dateTo").value = today.toISOString().slice(0, 10);
 
+  // Show logout button and hide settings if not admin
+  const header = document.querySelector("header .flex.flex-wrap.items-center");
+  if (header) {
+    const logoutBtn = document.createElement("button");
+    logoutBtn.textContent = `${currentUser.username} ↩`;
+    logoutBtn.title = "Logout";
+    logoutBtn.className = "text-xs text-gray-400 hover:text-red-500 px-2 py-1";
+    logoutBtn.onclick = logout;
+    header.appendChild(logoutBtn);
+  }
+  // Hide employee settings button for non-admin
+  if (currentUser.role !== "admin") {
+    const empBtn = document.querySelector("button[onclick='openSettings()']");
+    if (empBtn) empBtn.style.display = "none";
+  }
+
   await loadAgents();
-  try { const r = await fetch("/api/agent-shifts"); agentShifts = await r.json(); } catch {}
+  try { const r = await authFetch("/api/agent-shifts"); agentShifts = await r.json(); } catch {}
   renderAgentFilter();
   loadKnowledgeStatus();
   document.getElementById("btnLoad").addEventListener("click", () => loadChats(null));
@@ -27,12 +106,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("modal").addEventListener("click", (e) => {
     if (e.target === document.getElementById("modal")) closeModal();
   });
-});
+}
 
 // ── Knowledge Base ───────────────────────────────────────────────────────────
 async function loadKnowledgeStatus() {
   try {
-    const res = await fetch("/api/knowledge-status");
+    const res = await authFetch("/api/knowledge-status");
     const data = await res.json();
     updateKbStatus(data);
   } catch {}
@@ -43,7 +122,7 @@ async function refreshKnowledge() {
   btn.disabled = true;
   document.getElementById("kbStatus").textContent = "...";
   try {
-    const res = await fetch("/api/refresh-knowledge", { method: "POST" });
+    const res = await authFetch("/api/refresh-knowledge", { method: "POST" });
     const data = await res.json();
     updateKbStatus(data);
     showStatus("Knowledge base refreshed", "success");
@@ -75,7 +154,7 @@ function updateKbStatus(data) {
 // ── Agents ────────────────────────────────────────────────────────────────────
 async function loadAgents() {
   try {
-    const res = await fetch("/api/agents");
+    const res = await authFetch("/api/agents");
     const data = await res.json();
     if (!res.ok || data.error) {
       showStatus("Agents error: " + (data.error || res.status), "error");
@@ -146,7 +225,7 @@ async function loadChats(pageId) {
   if (pageId)  params.set("page_id", pageId);
 
   try {
-    const res = await fetch("/api/chats?" + params);
+    const res = await authFetch("/api/chats?" + params);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
@@ -219,7 +298,7 @@ async function fetchAllPagesForStats(startPageId, from, to, agentId) {
       if (to)   p.set("date_to",   iranDayToUtc(to, true));
       if (agentId) p.set("agent_id", agentId);
       p.set("page_id", pid);
-      const res = await fetch("/api/chats?" + p);
+      const res = await authFetch("/api/chats?" + p);
       const data = await res.json();
       if (data.error || !data.chats) break;
       // Merge into allChats
@@ -350,7 +429,7 @@ async function reviewChat(chatId, threadId, btn) {
 
   try {
     const qs = threadId ? `?thread_id=${threadId}` : "";
-    const res = await fetch(`/api/review/${chatId}${qs}`, { method: "POST" });
+    const res = await authFetch(`/api/review/${chatId}${qs}`, { method: "POST" });
     const review = await res.json();
     if (review.error) throw new Error(review.error);
 
@@ -409,7 +488,7 @@ async function reviewAllVisible() {
 
     let pageData;
     try {
-      const res = await fetch("/api/chats?" + params);
+      const res = await authFetch("/api/chats?" + params);
       pageData = await res.json();
       if (pageData.error) break;
     } catch { break; }
@@ -432,7 +511,7 @@ async function reviewAllVisible() {
       if (actionCell) actionCell.innerHTML = `<span class="spinner"></span>`;
       try {
         const qs = tid ? `?thread_id=${tid}` : "";
-        const res = await fetch(`/api/review/${chat.id}${qs}`, { method: "POST" });
+        const res = await authFetch(`/api/review/${chat.id}${qs}`, { method: "POST" });
         const review = await res.json();
         if (!review.error) {
           done++;
@@ -661,7 +740,7 @@ async function openModal(chatId, threadId) {
 async function reviewChatModal(chatId) {
   document.getElementById("modalContent").innerHTML = `<div class="p-10 text-center text-gray-400"><span class="spinner"></span> Reviewing with AI...</div>`;
   try {
-    const res = await fetch(`/api/review/${chatId}`, { method: "POST" });
+    const res = await authFetch(`/api/review/${chatId}`, { method: "POST" });
     const review = await res.json();
     if (review.error) throw new Error(review.error);
     const chat = chats.find(c => c.id === chatId);
@@ -842,9 +921,18 @@ async function openSettings() {
   document.getElementById("settingsModal").classList.remove("hidden");
   if (agents.length > 0) settingsAgents = agents;
   try {
-    const r = await fetch("/api/agent-shifts");
-    const fresh = await r.json();
-    if (Array.isArray(fresh)) agentShifts = fresh;
+    const [shiftsRes, usersRes] = await Promise.all([
+      authFetch("/api/agent-shifts"),
+      authFetch("/api/app-users"),
+    ]);
+    const fresh = await shiftsRes.json();
+    const appUsers = await usersRes.json();
+    if (Array.isArray(fresh)) {
+      // Attach username to each shift from app_users
+      const userMap = {};
+      if (Array.isArray(appUsers)) appUsers.forEach(u => { if (u.employee_name) userMap[u.employee_name] = u.username; });
+      agentShifts = fresh.map(s => ({ ...s, username: userMap[s.employee] || "" }));
+    }
   } catch {}
   renderShiftsTable();
 }
@@ -857,7 +945,7 @@ async function refreshSettingsAgents() {
   const icon = document.getElementById("settingsAgentRefreshIcon");
   icon.textContent = "…";
   try {
-    const res = await fetch("/api/agents");
+    const res = await authFetch("/api/agents");
     const data = await res.json();
     settingsAgents = data.agents || data || [];
     agents = settingsAgents;
@@ -926,6 +1014,8 @@ function shiftRowHtml(s) {
     <td class="py-2 pr-3"><input class="sr-end w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" value="${s.end ?? 16}" /></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${groupCheckboxesHtml(s.groups)}</div></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${languageCheckboxesHtml(s.languages)}</div></td>
+    <td class="py-2 pr-3"><input class="sr-username w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" value="${escHtml(s.username || "")}" placeholder="username" autocomplete="off" /></td>
+    <td class="py-2 pr-3"><input class="sr-password w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" type="password" placeholder="••••••" autocomplete="new-password" /></td>
     <td class="py-2"><button onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-600 text-lg leading-none px-1">×</button></td>
   </tr>`;
 }
@@ -945,6 +1035,8 @@ function addShiftRow() {
     <td class="py-2 pr-3"><input class="sr-end w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" value="16" /></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${groupCheckboxesHtml([])}</div></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${languageCheckboxesHtml([])}</div></td>
+    <td class="py-2 pr-3"><input class="sr-username w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" placeholder="username" autocomplete="off" /></td>
+    <td class="py-2 pr-3"><input class="sr-password w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" type="password" placeholder="••••••" autocomplete="new-password" /></td>
     <td class="py-2"><button onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-600 text-lg leading-none px-1">×</button></td>
   `;
   tbody.appendChild(tr);
@@ -953,6 +1045,7 @@ function addShiftRow() {
 async function saveSettings() {
   const rows = document.querySelectorAll("#shiftsTableBody .shift-row");
   const newShifts = [];
+  const userUpdates = []; // { username, password, employee_name }
   rows.forEach(row => {
     const employee = row.querySelector(".sr-employee").value.trim();
     const agentKey = row.querySelector(".sr-agent").value.trim();
@@ -960,17 +1053,26 @@ async function saveSettings() {
     const end = parseInt(row.querySelector(".sr-end").value) || 24;
     const groups = [...row.querySelectorAll(".sr-group:checked")].map(cb => cb.value);
     const languages = [...row.querySelectorAll(".sr-lang:checked")].map(cb => cb.value);
+    const username = row.querySelector(".sr-username")?.value.trim() || "";
+    const password = row.querySelector(".sr-password")?.value || "";
     if (!employee || !agentKey) return;
-    newShifts.push({ employee, agentKey, start, end, groups, languages });
+    newShifts.push({ employee, agentKey, start, end, groups, languages, username });
+    if (username && password) userUpdates.push({ username, password, employee_name: employee });
   });
 
   try {
-    const res = await fetch("/api/agent-shifts", {
+    // Save shifts
+    const res = await authFetch("/api/agent-shifts", {
       method: "POST",
-      headers: { "content-type": "application/json" },
       body: JSON.stringify(newShifts),
     });
     const data = await res.json();
+    // Save user credentials in parallel
+    if (userUpdates.length > 0) {
+      await Promise.all(userUpdates.map(u =>
+        authFetch("/api/app-users", { method: "POST", body: JSON.stringify(u) })
+      ));
+    }
     if (data.ok) {
       agentShifts = newShifts;
       showStatus("Saved", "success");
