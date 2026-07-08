@@ -749,12 +749,13 @@ Step 2 — Determine if the question is in scope for this agent's department:
 PRE-CHAT LANGUAGE RULE:
   The transcript may begin with a "Pre-Chat Form" block showing the customer's form answers before the chat started. If any field in that form indicates a language preference or selection (e.g. "Language: English", "زبان: English", or the customer typed/selected "English", "Arabic", "Farsi", etc.):
   - The agent MUST respond in that language from the very first message.
-  - CRITICAL VIOLATION: If the agent responds in a DIFFERENT language than what the customer selected in the pre-chat form, AND the customer clearly does not understand the agent's language (customer shows confusion, repeats themselves, or the conversation is effectively broken), this is a MAJOR failure:
+  - CRITICAL VIOLATION: If the agent responds in a DIFFERENT language than what the customer selected in the pre-chat form, AND the customer clearly does not understand the agent's language (customer shows confusion, repeats themselves, or the conversation is effectively broken), this is one of the MOST SEVERE failures possible:
       • language_score = 1
-      • compliance_score = deduct 3 points
+      • compliance_score = 1
       • resolution_score = 1 (the customer could not be helped at all due to the language barrier the agent created)
-      • overall_score must be in the range 2–4, regardless of other criteria — the entire chat was rendered ineffective by the agent's language choice.
-      • Note it explicitly in language_notes, compliance_notes, and resolution_notes.
+      • tone_score = 1 (responding in a language the customer cannot understand is fundamentally disrespectful)
+      • overall_score MUST be 1 or 2 — no exceptions. The entire chat failed because the agent chose the wrong language despite explicit customer selection. Do NOT let any other positive factors raise the overall above 2.
+      • Note this violation prominently in language_notes, compliance_notes, resolution_notes, and the issues field.
   - If the agent's designated languages do not include the language the customer selected, the agent should transfer the chat — same as the LANGUAGE ROUTING RULE below. Failure to transfer in that case = same CRITICAL VIOLATION above.
 
 LANGUAGE ROUTING RULE:
