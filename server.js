@@ -704,6 +704,7 @@ function getTehranHourFromIso(iso) {
 
 function allAgentsInThread(events, users, shifts, chatStartedAt) {
   const seen = {};
+  const reasons = {};
   const agentUsers = users.filter(u => u.type === "agent");
   for (const e of events) {
     const isPrivate = e.visibility === "agents" || e.type === "annotation";
@@ -711,22 +712,25 @@ function allAgentsInThread(events, users, shifts, chatStartedAt) {
       const user = users.find(u => u.id === e.author_id);
       if (user?.type === "agent" && !seen[user.id]) {
         seen[user.id] = { id: user.id, name: user.name };
+        reasons[user.name] = `sent message (type=${e.type})`;
       }
     }
     if (e.type === "system_message" && e.text) {
       const lower = e.text.toLowerCase();
       const isGroupTransfer = !!extractTransferGroup(e.text);
-      // Only detect agent by explicit name mention — not group transfers (queue agents didn't handle this chat)
       if (!isGroupTransfer) {
         for (const a of agentUsers) {
           if (!seen[a.id] && lower.includes(a.name.toLowerCase())) {
             seen[a.id] = { id: a.id, name: a.name };
+            reasons[a.name] = `named in system_message: "${e.text.slice(0,80)}"`;
           }
         }
       }
     }
   }
-  return Object.values(seen);
+  const result = Object.values(seen);
+  if (result.length) console.log(`[allAgents] found: ${result.map(a => `${a.name}(${reasons[a.name]})`).join(' | ')}`);
+  return result;
 }
 
 async function reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes = [], agentName = null, agentLanguages = [], agentGroups = [], attempt = 1) {
