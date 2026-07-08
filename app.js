@@ -92,7 +92,7 @@ function renderAgentFilter() {
   const sel = document.getElementById("agentFilter");
   const prev = sel.value;
   sel.innerHTML = '<option value="">All Employees</option>';
-  const employees = Array.isArray(agentShifts) ? agentShifts : [];
+  const employees = (Array.isArray(agentShifts) ? [...agentShifts] : []).sort((a, b) => a.employee.localeCompare(b.employee));
   employees.forEach(s => {
     const opt = document.createElement("option");
     opt.value = s.employee;
