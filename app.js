@@ -858,13 +858,15 @@ function updateChart() {
   const filtered = applyEmployeeHourFilter(allChats);
   const filteredAgentName = activeEmployeeShift ? getAgentForShift(activeEmployeeShift)?.name || null : null;
 
+  const totalByEmployee = {};
   for (const chat of filtered) {
-    if (!chat.review || chat.review.skipped || !chat.agent) continue;
+    if (!chat.agent) continue;
     const emp = activeEmployeeShift
-      ? (activeEmployeeShift.employee)
+      ? activeEmployeeShift.employee
       : getEmployeeNameForChart(chat.agent.name, chat.started_at);
+    totalByEmployee[emp] = (totalByEmployee[emp] || 0) + 1;
 
-    // Use per-agent score when employee filter is active, else overall
+    if (!chat.review || chat.review.skipped) continue;
     let score;
     if (activeEmployeeShift && filteredAgentName) {
       const pr = getPerAgentReview(chat.review, filteredAgentName);
@@ -877,9 +879,9 @@ function updateChart() {
     byEmployee[emp].push(score);
   }
 
-  const labels = Object.keys(byEmployee);
-  const counts = labels.map(n => byEmployee[n].length);
-  const data = labels.map(n => +(byEmployee[n].reduce((a,b)=>a+b,0)/byEmployee[n].length).toFixed(2));
+  const labels = Object.keys(totalByEmployee);
+  const counts = labels.map(n => totalByEmployee[n] || 0);
+  const data = labels.map(n => byEmployee[n]?.length ? +(byEmployee[n].reduce((a,b)=>a+b,0)/byEmployee[n].length).toFixed(2) : 0);
   const colors = data.map(s => s >= 7 ? "#22c55e" : s >= 5 ? "#eab308" : "#ef4444");
 
   if (agentChart) agentChart.destroy();
