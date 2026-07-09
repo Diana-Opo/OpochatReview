@@ -1443,6 +1443,8 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
 
     const [reviews, shifts] = await Promise.all([loadReviews(), loadShifts()]);
 
+    console.log("[dashboard] shifts agentKeys:", shifts.map(s => `${s.agentKey}→${s.employee}`).join(", "));
+
     // Map agent name → employee via shifts table (null if not found = excluded)
     function toEmp(agentName) {
       if (!agentName) return null;
@@ -1451,6 +1453,8 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       const s = shifts.find(s => s.agentKey === low || s.agentKey === fst);
       return s ? s.employee : null;
     }
+
+    const allLCAgentNames = new Set();
 
     // per employee: { total, reviewed, scores[], resolved }
     const emp = {};
@@ -1488,6 +1492,10 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
         for (const e of events) {
           const u = users.find(u => u.id === e.author_id && u.type === "agent");
           if (u) agentIdsInThread.add(u.id);
+        }
+        for (const aid of agentIdsInThread) {
+          const u = users.find(u => u.id === aid);
+          if (u?.name) allLCAgentNames.add(u.name);
         }
 
         for (const agentId of agentIdsInThread) {
@@ -1533,6 +1541,8 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       }
     } while (pageId);
 
+    console.log("[dashboard] all LC agent names:", [...allLCAgentNames].sort().join(", "));
+    console.log("[dashboard] unmatched agents:", [...allLCAgentNames].filter(n => !toEmp(n)).sort().join(", "));
     console.log("[dashboard] employee totals:", Object.entries(emp).map(([n,d])=>`${n}:${d.total}`).join(", "));
 
     const allScores = Object.values(emp).flatMap(e => e.scores);
