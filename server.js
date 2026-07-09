@@ -889,49 +889,43 @@ Step 2 — Determine if the question is in scope for this agent's department:
 
   If a customer's actual question does not belong to the agent's department, it is out of scope — regardless of which department the customer selected in the pre-chat form.
 
-LANGUAGE MATCHING RULE — HIGHEST PRIORITY:
-  The agent MUST respond in the same language the customer is communicating in, OR the language the customer selected in the pre-chat form. This rule has NO exceptions and NO conditions.
+LANGUAGE EVALUATION — MANDATORY FIRST STEP:
+  Before applying ANY language-related penalty, you MUST complete this check:
 
-  Step 1 — Determine the customer's EFFECTIVE language (priority order):
+  Step 1 — Determine the customer's EFFECTIVE language:
     a) Look at the actual language the customer used in their chat messages — this overrides the pre-chat form if different.
-    b) If the customer wrote in Farsi during the chat, the effective language is Farsi — even if the pre-chat form was in English. The customer chose to switch.
-    c) If the customer explicitly requested a language switch (e.g. "can we speak Farsi?", "لطفاً فارسی صحبت کنید") — that request is the effective language from that point forward.
-    d) If customer chat messages are in the same language as the pre-chat form, use that language.
-    e) NEVER assume a customer knows Farsi/Persian unless: (1) the customer explicitly wrote in Farsi, OR (2) the pre-chat form shows Farsi.
+    b) If the customer wrote in Farsi during the chat, the effective language is Farsi — even if the pre-chat form was in English.
+    c) If the customer explicitly requested a language switch, that is the effective language from that point forward.
+    d) NEVER assume a customer knows Farsi/Persian unless: (1) the customer explicitly wrote in Farsi, OR (2) the pre-chat form shows Farsi.
 
-  Step 2 — Check what language the agent used.
+  Step 2 — Check the agent's assigned language list (shown at the top of the review context as "AGENT LANGUAGES: ...").
+    - Is the customer's effective language included in this agent's assigned language list?
 
-  Step 3 — If the agent responded in a DIFFERENT language than the customer's determined language (from Step 1):
+  Step 3A — If the customer's language is NOT in the agent's assigned list:
+    The agent CANNOT and MUST NOT respond in that language. The ONLY correct action is:
+      - Inform the customer briefly (in any language) and transfer the chat to the appropriate department.
+    If the agent did this → award FULL MARKS on all scores. Do NOT penalize anything.
+    Do NOT deduct from language_score, compliance_score, resolution_score, tone_score, or satisfaction_score.
+    Do NOT penalize for "customer issue unresolved", "no solution given", or "incomplete answer".
+    If the agent's language list is not specified in the review context, skip language penalties entirely.
+
+    INCORRECT handling in this case (penalize compliance_score and overall_score only):
+      - Agent ignored the language barrier and attempted to respond in the customer's unsupported language.
+      - Agent stayed in the chat without transferring.
+      - Agent closed without transferring or explaining.
+
+  Step 3B — If the customer's language IS in the agent's assigned list:
+    The agent MUST respond in that language. If the agent responded in a DIFFERENT language:
     THIS IS THE MOST CRITICAL VIOLATION IN THE ENTIRE REVIEW. Apply ALL of the following:
       • language_score = 1
       • compliance_score = 1
       • resolution_score = 1
       • tone_score = 1
-      • overall_score = 1 — MANDATORY. No other positive factor can raise this. Set overall_score to 1.
+      • overall_score = 1 — MANDATORY. No other positive factor can raise this.
       • In issues: first bullet must be "CRITICAL: Agent responded in [language used] despite customer communicating in / selecting [customer's language]."
-      • Do NOT soften this penalty under any circumstances. Do NOT say "agent was otherwise helpful" as a mitigating factor.
+      • Do NOT soften this penalty under any circumstances.
 
-  If the agent's designated languages do not include the customer's language, the ONLY correct action is to inform the customer and transfer the chat. Responding in a third wrong language instead of transferring = same CRITICAL VIOLATION above.
-
-LANGUAGE ROUTING RULE:
-  The agent's designated language(s) are specified at the top of the review context (e.g. "AGENT LANGUAGES: This agent is designated to support: English, Arabic").
-
-  If the customer writes primarily in a language the agent does NOT support:
-
-    CORRECT handling — award full marks in all affected areas:
-      - Agent recognizes the language barrier, informs the customer briefly (any language), and transfers the chat.
-      - This is a complete and successful handling. The issue is now the receiving agent's responsibility.
-      - Do NOT penalize resolution_score, compliance_score, or product_knowledge_score for the customer's issue being unresolved.
-      - Do NOT penalize for "no follow-up", "no solution given", "incomplete answer", or "customer issue unresolved" in this scenario.
-      - The ONLY thing to evaluate is: did the agent correctly recognize and route the language mismatch?
-
-    INCORRECT handling — penalize compliance_score and overall_score:
-      - Agent ignores the language barrier and attempts to respond in the wrong language.
-      - Agent stays in the chat without transferring or informing the customer.
-      - Agent closes the chat without transferring or explaining the reason.
-
-  If the customer writes in a language the agent DOES support, apply normal scoring.
-  If the agent's languages are not specified in the review context, skip this rule.
+    Exception within Step 3B: if the agent's designated languages do not include the customer's language but the agent attempted to respond anyway in a third wrong language instead of transferring → same CRITICAL VIOLATION above.
 
 Step 3 — Evaluate the agent's routing decision:
   CORRECT (full marks for resolution and compliance):
