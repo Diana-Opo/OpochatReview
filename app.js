@@ -1057,6 +1057,7 @@ async function loadDashboard() {
     ["statTotal","statReviewed","statAvg","statResolved"].forEach(id => {
       const el = document.getElementById(id); if (el) el.textContent = "—";
     });
+    showStatus("Dashboard error: " + e.message, "error");
   }
 }
 
