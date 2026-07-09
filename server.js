@@ -1452,17 +1452,30 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       return anyShift ? anyShift.employee : agentName;
     }
 
-    // Read reviews for the month from DB
+    const nextMonth = `${y}-${String(m === 12 ? 1 : m+1).padStart(2,"0")}-01`;
+
+    // Read reviews for the month — filter by _chat_date (stored in JSONB) when available,
+    // fall back to updated_at for older reviews that don't have _chat_date yet
     let reviewRows = [];
     if (pool) {
       const r = await pool.query(
-        `SELECT data FROM reviews WHERE updated_at >= $1 AND updated_at < $2`,
-        [dateFrom, `${y}-${String(m === 12 ? 1 : m+1).padStart(2,"0")}-01`]
+        `SELECT data FROM reviews
+         WHERE (
+           (data->>'_chat_date' IS NOT NULL AND data->>'_chat_date' >= $1 AND data->>'_chat_date' < $2)
+           OR
+           (data->>'_chat_date' IS NULL AND updated_at >= $1::timestamptz AND updated_at < $2::timestamptz)
+         )`,
+        [dateFrom, nextMonth]
       );
       reviewRows = r.rows.map(row => row.data).filter(Boolean);
     } else {
       const all = await loadReviews();
-      reviewRows = Object.values(all);
+      reviewRows = Object.values(all).filter(rv => {
+        if (!rv) return false;
+        const d = rv._chat_date || null;
+        if (d) return d >= dateFrom && d < nextMonth;
+        return true; // include all if no date
+      });
     }
 
     const byEmployee = {};
