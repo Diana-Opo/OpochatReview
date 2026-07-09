@@ -1299,12 +1299,16 @@ app.post("/api/review/:chatId", authMiddleware, async (req, res) => {
         console.log(`[lang-filter] SKIP penalty for "${agentNameKey}" — no language list configured`);
         continue;
       }
-      const agentCanSpeak = agentLangs.some(l =>
-        (custLang === "farsi"           && (l.includes("farsi") || l.includes("persian"))) ||
-        (custLang === "arabic"          && l.includes("arabic")) ||
-        (custLang === "english"         && l.includes("english")) ||
-        (custLang === "farsi_or_arabic" && (l.includes("farsi") || l.includes("persian") || l.includes("arabic")))
-      );
+      const speaksFarsi   = agentLangs.some(l => l.includes("farsi") || l.includes("persian"));
+      const speaksArabic  = agentLangs.some(l => l.includes("arabic"));
+      const speaksEnglish = agentLangs.some(l => l.includes("english"));
+      // For "farsi_or_arabic": only penalize if agent speaks BOTH — if agent only speaks one
+      // of the two, customer might be the other language and transfer was correct.
+      const agentCanSpeak =
+        (custLang === "farsi"           && speaksFarsi) ||
+        (custLang === "arabic"          && speaksArabic) ||
+        (custLang === "english"         && speaksEnglish) ||
+        (custLang === "farsi_or_arabic" && speaksFarsi && speaksArabic);
       if (agentCanSpeak) {
         console.log(`[lang-filter] KEEP violation for "${agentNameKey}" — can speak ${custLang}`);
         langViolations.set(agentNameKey, violation);
