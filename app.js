@@ -1538,16 +1538,16 @@ function downloadReportPdf() {
   if (!_activeReport) return;
   const r = _activeReport;
   const s = r.avg_scores || {};
+  const scHex = v => v == null ? "#9ca3af" : v >= 7 ? "#16a34a" : v >= 5 ? "#ca8a04" : "#dc2626";
+  const bar = v => v == null ? "" :
+    `<div style="flex:1;height:6px;background:#f3f4f6;border-radius:3px;overflow:hidden">
+       <div style="width:${(v/10)*100}%;height:100%;background:${scHex(v)};border-radius:3px"></div>
+     </div>`;
   const scoreRows = [
     ["Response Time", s.response_time], ["Tone", s.tone], ["Accuracy", s.accuracy],
     ["Resolution", s.resolution], ["Compliance", s.compliance],
     ["Product Knowledge", s.product_knowledge], ["Satisfaction", s.satisfaction], ["Language", s.language],
   ];
-  const scHex = v => v == null ? "#9ca3af" : v >= 7 ? "#16a34a" : v >= 5 ? "#ca8a04" : "#dc2626";
-  const bar = v => v == null ? "" :
-    `<div style="flex:1;height:5px;background:#f3f4f6;border-radius:3px;overflow:hidden">
-       <div style="width:${(v/10)*100}%;height:100%;background:${scHex(v)};border-radius:3px"></div>
-     </div>`;
 
   const win = window.open("", "_blank");
   if (!win) { showStatus("Allow popups to download PDF", "error"); return; }
@@ -1557,81 +1557,35 @@ function downloadReportPdf() {
 <style>
   @page { size: A4 portrait; margin: 14mm 16mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 11px;
-    color: #1f2937;
-    background: #fff;
-    width: 178mm;
-    margin: 0 auto;
-  }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1f2937; background: #fff; }
 
-  /* Header */
-  .hdr { display: flex; justify-content: space-between; align-items: flex-start;
-         border-bottom: 2px solid #2563eb; padding-bottom: 8px; margin-bottom: 14px; }
-  .hdr-name { font-size: 20px; font-weight: 900; color: #111827; line-height: 1.1; }
-  .hdr-month { font-size: 12px; color: #6b7280; margin-top: 2px; }
-  .hdr-badge { background: #eff6ff; color: #2563eb; font-size: 9px; font-weight: 700;
-               text-transform: uppercase; letter-spacing: .06em;
-               padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
-
-  /* Stats row */
-  .stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-bottom: 14px; }
-  .stat { border: 1px solid #e5e7eb; border-radius: 7px; padding: 7px 6px; text-align: center; }
-  .stat-l { font-size: 8px; color: #9ca3af; text-transform: uppercase;
-             font-weight: 700; letter-spacing: .04em; margin-bottom: 4px; }
-  .stat-v { font-size: 15px; font-weight: 900; line-height: 1; }
-
-  /* Two-column layout */
-  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-
-  /* Section */
-  .sec { margin-bottom: 12px; }
-  .sec-title { font-size: 8px; font-weight: 700; text-transform: uppercase; color: #6b7280;
-               letter-spacing: .07em; margin-bottom: 8px;
-               padding-bottom: 4px; border-bottom: 1px solid #e5e7eb; }
-
-  /* Overall score */
-  .overall { font-size: 30px; font-weight: 900; line-height: 1; margin-bottom: 10px; }
-  .overall span { font-size: 13px; color: #9ca3af; font-weight: 400; }
-
-  /* Score rows */
-  .srow { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
-  .slabel { font-size: 9.5px; color: #6b7280; width: 110px; flex-shrink: 0; }
-  .sval { font-size: 9.5px; font-weight: 700; width: 24px; text-align: right; flex-shrink: 0; }
-
-  /* Trend */
-  .trend { display: flex; gap: 8px; justify-content: space-around;
-           background: #f9fafb; border-radius: 8px; padding: 10px 6px; }
-  .tw { text-align: center; }
-  .tw-lbl { font-size: 8px; color: #9ca3af; margin-bottom: 3px; }
-  .tw-val { font-size: 18px; font-weight: 900; line-height: 1.1; }
-  .tw-cnt { font-size: 8px; color: #9ca3af; margin-top: 2px; }
-
-  /* Lists */
+  .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+  .sec-title { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+               color: #6b7280; margin-bottom: 8px; }
+  .srow { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+  .slabel { font-size: 9.5px; color: #6b7280; width: 120px; flex-shrink: 0; }
+  .sval { font-size: 9.5px; font-weight: 700; width: 28px; text-align: right; flex-shrink: 0; }
   ul { list-style: none; }
-  li { font-size: 9.5px; margin-bottom: 3px; padding-left: 10px; position: relative; }
-  li::before { content: "•"; position: absolute; left: 0; }
-
-  /* Notes */
-  .notes-box { background: #eff6ff; border-radius: 6px; padding: 8px 10px;
-               font-size: 10px; color: #1d4ed8; line-height: 1.5; }
-
-  /* Footer */
-  .footer { margin-top: 14px; padding-top: 6px; border-top: 1px solid #e5e7eb;
+  li { font-size: 9.5px; margin-bottom: 4px; display: flex; gap: 5px; line-height: 1.4; }
+  .footer { margin-top: 12px; padding-top: 6px; border-top: 1px solid #e5e7eb;
             font-size: 8px; color: #9ca3af; text-align: center; }
 </style>
 </head><body>
 
-<div class="hdr">
+<!-- Header -->
+<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #2563eb;padding-bottom:10px;margin-bottom:12px">
   <div>
-    <div class="hdr-name">${escHtml(r.employee)}</div>
-    <div class="hdr-month">${monthLabel(r.month)} Performance Report</div>
+    <div style="font-size:22px;font-weight:900;color:#111827;line-height:1.1">${escHtml(r.employee)}</div>
+    <div style="font-size:12px;color:#6b7280;margin-top:3px">${monthLabel(r.month)} Performance Report</div>
   </div>
-  <div class="hdr-badge">Generated ${new Date(r.generated_at).toLocaleDateString()}</div>
+  <div style="background:#eff6ff;color:#2563eb;font-size:9px;font-weight:700;text-transform:uppercase;
+              letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
+    Generated ${new Date(r.generated_at).toLocaleDateString()}
+  </div>
 </div>
 
-<div class="stats" style="grid-template-columns:repeat(7,1fr)">
+<!-- Stats row -->
+<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:10px">
   ${[
     ["Total Chats",    r.total_chats,                         "#2563eb"],
     ["In Shift",       r.chats_in_shift ?? "—",               "#374151"],
@@ -1640,58 +1594,62 @@ function downloadReportPdf() {
     ["Resolved",       (r.resolved_rate ?? 0) + "%",          "#16a34a"],
     ["Avg Duration",   fmtDuration(r.avg_chat_duration_sec),  "#374151"],
     ["First Response", fmtDuration(r.avg_first_response_sec), "#374151"],
-  ].map(([l,v,c]) => `<div class="stat">
-    <div class="stat-l">${l}</div>
-    <div class="stat-v" style="color:${c}">${v ?? "—"}</div>
+  ].map(([l,v,c]) => `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:7px 5px;text-align:center">
+    <div style="font-size:7.5px;color:#9ca3af;text-transform:uppercase;font-weight:700;letter-spacing:.04em;margin-bottom:4px">${l}</div>
+    <div style="font-size:14px;font-weight:900;color:${c}">${v ?? "—"}</div>
   </div>`).join("")}
 </div>
 
-<div class="cols">
-  <div>
-    <div class="sec">
-      <div class="sec-title">Score Breakdown</div>
-      <div class="overall" style="color:${scHex(s.overall)}">${s.overall?.toFixed(1) ?? "—"} <span>/ 10</span></div>
-      ${scoreRows.map(([l,v]) => v == null ? "" : `<div class="srow">
-        <div class="slabel">${l}</div>
-        ${bar(v)}
-        <div class="sval" style="color:${scHex(v)}">${v.toFixed(1)}</div>
-      </div>`).join("")}
-    </div>
+<!-- Score Breakdown -->
+<div class="card" style="background:#f9fafb">
+  <div class="sec-title">Score Breakdown</div>
+  <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:10px">
+    <span style="font-size:9.5px;color:#6b7280;width:120px;flex-shrink:0">Overall Average</span>
+    <span style="font-size:28px;font-weight:900;color:${scHex(s.overall)}">${s.overall?.toFixed(1) ?? "—"}</span>
+    <span style="font-size:11px;color:#9ca3af">/ 10</span>
   </div>
-
-  <div>
-    ${r.score_trend?.length ? `<div class="sec">
-      <div class="sec-title">Weekly Trend</div>
-      <div class="trend">
-        ${r.score_trend.map(w => `<div class="tw">
-          <div class="tw-lbl">${escHtml(w.label)}</div>
-          <div class="tw-val" style="color:${scHex(w.avg)}">${w.avg != null ? w.avg.toFixed(1) : "—"}</div>
-          <div class="tw-cnt">${w.count} chats</div>
-        </div>`).join("")}
-      </div>
-    </div>` : ""}
-
-    ${r.progress_narrative ? `<div class="sec" style="margin-top:10px">
-      <div class="sec-title">Progress & Trend</div>
-      <p style="font-size:10px;color:#3730a3;background:#eef2ff;padding:8px 10px;border-radius:6px;line-height:1.5">${escHtml(r.progress_narrative)}</p>
-    </div>` : ""}
-
-    ${r.strengths?.length ? `<div class="sec" style="margin-top:10px">
-      <div class="sec-title">Strengths</div>
-      <ul>${r.strengths.map(s=>`<li style="color:#15803d">✓ ${escHtml(s)}</li>`).join("")}</ul>
-    </div>` : ""}
-
-    ${r.weaknesses?.length ? `<div class="sec" style="margin-top:10px">
-      <div class="sec-title">Areas for Improvement</div>
-      <ul>${r.weaknesses.map(w=>`<li style="color:#b91c1c">✗ ${escHtml(w)}</li>`).join("")}</ul>
-    </div>` : ""}
-
-    ${r.admin_notes ? `<div class="sec" style="margin-top:10px">
-      <div class="sec-title">Manager Notes</div>
-      <div class="notes-box">${escHtml(r.admin_notes)}</div>
-    </div>` : ""}
-  </div>
+  ${scoreRows.map(([l,v]) => v == null ? "" : `<div class="srow">
+    <div class="slabel">${l}</div>
+    ${bar(v)}
+    <div class="sval" style="color:${scHex(v)}">${v.toFixed(1)}</div>
+  </div>`).join("")}
 </div>
+
+<!-- Weekly Trend -->
+${r.score_trend?.length ? `<div class="card" style="background:#f9fafb">
+  <div class="sec-title">Weekly Trend</div>
+  <div style="display:flex;gap:8px;justify-content:space-around">
+    ${r.score_trend.map(w => `<div style="text-align:center">
+      <div style="font-size:8px;color:#9ca3af;margin-bottom:3px">${escHtml(w.label)}</div>
+      <div style="font-size:20px;font-weight:900;color:${scHex(w.avg)}">${w.avg != null ? w.avg.toFixed(1) : "—"}</div>
+      <div style="font-size:8px;color:#9ca3af;margin-top:2px">${w.count} chats</div>
+    </div>`).join("")}
+  </div>
+</div>` : ""}
+
+<!-- Progress & Trend -->
+${r.progress_narrative ? `<div class="card" style="background:#eef2ff;border-color:#c7d2fe">
+  <div class="sec-title" style="color:#4338ca">Progress & Trend</div>
+  <p style="font-size:10px;color:#3730a3;line-height:1.6">${escHtml(r.progress_narrative)}</p>
+</div>` : ""}
+
+<!-- Strengths & Weaknesses -->
+${(r.strengths?.length || r.weaknesses?.length) ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+  ${r.strengths?.length ? `<div class="card" style="background:#f0fdf4;border-color:#bbf7d0;margin-bottom:0">
+    <div class="sec-title" style="color:#15803d">Strengths</div>
+    <ul>${r.strengths.map(s=>`<li><span style="color:#16a34a;flex-shrink:0">✓</span><span style="color:#166534">${escHtml(s)}</span></li>`).join("")}</ul>
+  </div>` : "<div></div>"}
+  ${r.weaknesses?.length ? `<div class="card" style="background:#fff1f2;border-color:#fecdd3;margin-bottom:0">
+    <div class="sec-title" style="color:#b91c1c">Areas for Improvement</div>
+    <ul>${r.weaknesses.map(w=>`<li><span style="color:#ef4444;flex-shrink:0">✗</span><span style="color:#991b1b">${escHtml(w)}</span></li>`).join("")}</ul>
+  </div>` : "<div></div>"}
+</div>` : ""}
+
+<!-- Admin Notes -->
+${r.admin_notes ? `<div class="card" style="background:#eff6ff;border-color:#bfdbfe">
+  <div class="sec-title" style="color:#1d4ed8">Manager Notes</div>
+  <p style="font-size:10px;color:#1e40af;line-height:1.5">${escHtml(r.admin_notes)}</p>
+</div>` : ""}
 
 <div class="footer">Chat Review Dashboard — ${escHtml(r.employee)} · ${monthLabel(r.month)}</div>
 
