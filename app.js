@@ -14,12 +14,18 @@ let currentUser = null; // { username, role, employee_name }
 // ── Auth ──────────────────────────────────────────────────────────────────────
 function getToken() { return localStorage.getItem("auth_token") || ""; }
 
-function authFetch(url, opts = {}) {
+async function authFetch(url, opts = {}) {
   const token = getToken();
-  return fetch(url, {
+  const res = await fetch(url, {
     ...opts,
     headers: { ...(opts.headers || {}), "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
   });
+  if (res.status === 401) {
+    localStorage.removeItem("auth_token");
+    document.getElementById("loginModal").classList.remove("hidden");
+    throw new Error("Session expired. Please log in again.");
+  }
+  return res;
 }
 
 async function doLogin() {

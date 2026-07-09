@@ -1438,8 +1438,12 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
     const month = req.query.month || new Date().toISOString().slice(0, 7);
     const [y, m] = month.split("-").map(Number);
     const lastDay = new Date(y, m, 0).getDate();
-    const lcFrom = `${month}-01T00:00:00.000000+00:00`;
-    const lcTo   = `${month}-${String(lastDay).padStart(2,"0")}T23:59:59.999999+00:00`;
+    // Match frontend iranDayToUtc: use Istanbul UTC+3 offset (same as getTehranHour)
+    const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
+    const fromDate = new Date(new Date(`${month}-01T00:00:00.000Z`).getTime() - ISTANBUL_OFFSET_MS);
+    const toDate   = new Date(new Date(`${month}-${String(lastDay).padStart(2,"0")}T23:59:59.999Z`).getTime() - ISTANBUL_OFFSET_MS);
+    const lcFrom = fromDate.toISOString().replace(/\.\d{3}Z$/, ".000000+00:00");
+    const lcTo   = toDate.toISOString().replace(/\.\d{3}Z$/, ".999999+00:00");
 
     const [reviews, shifts, agentsRaw] = await Promise.all([
       loadReviews(),
@@ -1472,15 +1476,10 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
     }
     console.log("[dashboard] agentKeyToEmail:", JSON.stringify(agentKeyToEmail));
 
-    // Iran Daylight Time in summer = UTC+4:30
-    const IRAN_OFFSET_MS = (4 * 60 + 30) * 60 * 1000;
-
-    function empAtTime(shiftList, chatTime) {
-      if (shiftList.length === 1 || !chatTime) return shiftList[0].employee;
-      const iranMs = new Date(chatTime).getTime() + IRAN_OFFSET_MS;
-      const iranHour = (iranMs / 3600000) % 24;
-      const s = shiftList.find(s => iranHour >= s.start && iranHour < s.end);
-      return (s || shiftList[0]).employee;
+    // Use Istanbul UTC+3 to match frontend getTehranHour("Europe/Istanbul")
+    function getIstHour(chatTime) {
+      if (!chatTime) return 0;
+      return ((new Date(chatTime).getTime() + ISTANBUL_OFFSET_MS) / 3600000) % 24;
     }
 
     // name → employee (first match, for review attribution)
@@ -1498,54 +1497,64 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
 
     const emp = {};
 
-    // Process each agentKey sequentially
+    // Per-agent approach matching Chat Review's applyEmployeeHourFilter exactly:
+    // fetch each agent's chats via LC filter, run allAgentsInThread, apply shift-hour check.
     for (const [key, shiftList] of Object.entries(agentKeyShifts)) {
       const agentEmail = agentKeyToEmail[key];
       if (!agentEmail) {
-        console.log(`[dashboard] no LC agent for key: ${key} (${shiftList.map(s=>s.employee).join("/")})`);
+        console.log(`[dashboard] no LC agent for key: ${key} (${shiftList.map(s => s.employee).join("/")})`);
         continue;
       }
 
       const uniqueEmpsForKey = [...new Set(shiftList.map(s => s.employee))];
+      uniqueEmpsForKey.forEach(n => { if (!emp[n]) emp[n] = { total: 0, reviewed: 0, scores: [], resolved: 0 }; });
+      const isShared = uniqueEmpsForKey.length > 1;
 
-      if (uniqueEmpsForKey.length === 1) {
-        // Single employee (may have multiple shift rows for groups/hours) → one fast call
-        try {
-          const d = await lcPost("list_archives", {
-            filters: { from: lcFrom, to: lcTo, agents: { values: [agentEmail] } },
-            limit: 1,
+      let pid = null;
+      let dbgRaw = 0, dbgNoAgent = 0, dbgNoShift = 0;
+      const dbgHours = {};
+      do {
+        const body = pid
+          ? { page_id: pid }
+          : { filters: { from: lcFrom, to: lcTo, agents: { values: [agentEmail] } }, limit: 100 };
+        const data = await lcPost("list_archives", body);
+        pid = data.next_page_id || null;
+
+        for (const c of data.chats || []) {
+          const thread = c.thread || (c.threads?.[0]) || {};
+          const users = c.users || [];
+          const events = thread.events || [];
+          const chatTime = thread.created_at || null;
+          const istHour = getIstHour(chatTime);
+          dbgRaw++;
+          dbgHours[Math.floor(istHour)] = (dbgHours[Math.floor(istHour)] || 0) + 1;
+
+          // allAgentsInThread: same function used by /api/chats → same as Chat Review's chatAgents
+          const chatAgents = allAgentsInThread(events, users, shifts, chatTime);
+          // agentMatchesShift equivalent: does this agentKey appear in chatAgents?
+          const agentInChat = chatAgents.some(a => {
+            const n = (a.name || "").toLowerCase().trim();
+            return n === key || n.split(" ")[0] === key;
           });
-          const total = d.found_chats ?? 0;
-          const empName = uniqueEmpsForKey[0];
-          if (total > 0) emp[empName] = { total, reviewed: 0, scores: [], resolved: 0 };
-          console.log(`[dashboard] ${empName}: ${total}`);
-        } catch(e) {
-          console.log(`[dashboard] error ${uniqueEmpsForKey[0]}:`, e.message);
-        }
-      } else {
-        // Truly shared account (multiple employees) → paginate and split by shift time
-        console.log(`[dashboard] shared ${key}: ${uniqueEmpsForKey.join("/")} — paginating`);
-        let pid = null;
-        do {
-          const body = pid
-            ? { page_id: pid }
-            : { filters: { from: lcFrom, to: lcTo, agents: { values: [agentEmail] } }, limit: 100 };
-          const data = await lcPost("list_archives", body);
-          pid = data.next_page_id || null;
-          for (const c of data.chats || []) {
-            const thread = c.thread || (c.threads?.[0]) || {};
-            // Try multiple time fields to find when this chat occurred
-            const chatTime = thread.created_at
-              || thread.events?.[0]?.created_at
-              || c.created_at;
-            const empName = empAtTime(shiftList, chatTime);
-            if (!emp[empName]) emp[empName] = { total: 0, reviewed: 0, scores: [], resolved: 0 };
+          if (!agentInChat) { dbgNoAgent++; continue; }
+
+          if (isShared) {
+            // Split by hour to determine which employee
+            const matched = shiftList.find(s => istHour >= s.start && istHour < s.end);
+            if (!matched) { dbgNoShift++; }
+            const empName = (matched || shiftList[0]).employee;
             emp[empName].total++;
-            if (!chatTime) console.log(`[dashboard] shared chat ${c.id} has no time — fallback to ${empName}`);
+          } else {
+            // Single employee: apply shift-hour filter (Chat Review's applyEmployeeHourFilter)
+            const inShift = shiftList.some(s => istHour >= s.start && istHour < s.end);
+            if (!inShift) { dbgNoShift++; continue; }
+            emp[uniqueEmpsForKey[0]].total++;
           }
-        } while (pid);
-        uniqueEmpsForKey.forEach(n => console.log(`[dashboard] ${n}: ${emp[n]?.total ?? 0}`));
-      }
+        }
+      } while (pid);
+
+      console.log(`[dashboard] ${key}: raw=${dbgRaw} noAgent=${dbgNoAgent} noShift=${dbgNoShift} hours=${JSON.stringify(dbgHours)}`);
+      uniqueEmpsForKey.forEach(n => console.log(`[dashboard] ${n}: ${emp[n]?.total ?? 0}`));
     }
 
     console.log("[dashboard] employee totals:", Object.entries(emp).map(([n,d])=>`${n}:${d.total}`).join(", "));
