@@ -137,7 +137,7 @@ async function initApp() {
 
 // ── Page navigation ───────────────────────────────────────────────────────────
 function showPage(name) {
-  const pages = ["dashboard", "chats", "reports", "employees"];
+  const pages = ["dashboard", "chats", "reports", "employees", "config"];
   pages.forEach(p => {
     document.getElementById(`page-${p}`)?.classList.add("hidden");
     const btn = document.getElementById(`nav-${p}`);
@@ -155,6 +155,7 @@ function showPage(name) {
   if (name === "dashboard") loadDashboard();
   if (name === "reports") openReports();
   if (name === "employees") openSettings();
+  if (name === "config") loadKnowledgeStatus();
   localStorage.setItem("lastPage", name);
 }
 
@@ -199,6 +200,54 @@ function updateKbStatus(data) {
   if (hasTags) parts.push("Tags✓");
   kb.textContent = parts.length ? parts.join(" ") : "No data";
   kb.title = `Last fetched: ${data.lastFetched || "never"}\nKnowledge: ${data.knowledge} chars\nCampaigns: ${data.campaigns} chars\nTelegram: ${data.telegram} chars\nProtocol: ${data.protocol} chars`;
+  updateConfigPage(data);
+}
+
+function updateConfigPage(data) {
+  const fetched = data.lastFetched ? new Date(data.lastFetched).toLocaleString() : "Never";
+  const badge = (chars, label) => {
+    const ok = chars > 0;
+    return `<span class="text-xs px-2 py-1 rounded-full ${ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}">${ok ? label + ' ✓ (' + Math.round(chars/1000) + 'k)' : 'No data'}</span>`;
+  };
+  const set = (id, chars, label) => {
+    const el = document.getElementById(id);
+    if (el) el.outerHTML = badge(chars, label).replace('>', ` id="${id}">`);
+  };
+  const setFetched = (id) => { const el = document.getElementById(id); if (el) el.textContent = fetched; };
+
+  const kbBadge = document.getElementById("cfg-kb-badge");
+  if (kbBadge) kbBadge.outerHTML = badge(data.knowledge, "KB").replace('<span', `<span id="cfg-kb-badge"`);
+  const campBadge = document.getElementById("cfg-camp-badge");
+  if (campBadge) campBadge.outerHTML = badge(data.campaigns, "Campaigns").replace('<span', `<span id="cfg-camp-badge"`);
+  const macrosBadge = document.getElementById("cfg-macros-badge");
+  if (macrosBadge) macrosBadge.outerHTML = badge(data.macros, "Macros").replace('<span', `<span id="cfg-macros-badge"`);
+  const tagsBadge = document.getElementById("cfg-tags-badge");
+  if (tagsBadge) tagsBadge.outerHTML = badge(data.tags, "Tags").replace('<span', `<span id="cfg-tags-badge"`);
+  const protoBadge = document.getElementById("cfg-proto-badge");
+  if (protoBadge) protoBadge.outerHTML = badge(data.protocol, "Protocol").replace('<span', `<span id="cfg-proto-badge"`);
+  const tgBadge = document.getElementById("cfg-tg-badge");
+  if (tgBadge) tgBadge.outerHTML = badge(data.telegram, "Telegram").replace('<span', `<span id="cfg-tg-badge"`);
+
+  ["cfg-kb-fetched","cfg-camp-fetched","cfg-macros-fetched","cfg-tags-fetched","cfg-proto-fetched","cfg-tg-fetched"].forEach(id => {
+    const el = document.getElementById(id); if (el) el.textContent = fetched;
+  });
+}
+
+async function refreshAllKnowledge() {
+  const btn = document.getElementById("btnRefreshAllKb");
+  const icon = document.getElementById("refreshAllIcon");
+  btn.disabled = true;
+  if (icon) icon.textContent = "...";
+  try {
+    const res = await authFetch("/api/refresh-knowledge", { method: "POST" });
+    const data = await res.json();
+    updateKbStatus(data);
+    showStatus("All knowledge sources refreshed", "success");
+  } catch (e) {
+    showStatus("Refresh failed: " + e.message, "error");
+  }
+  btn.disabled = false;
+  if (icon) icon.textContent = "⟳";
 }
 
 // ── Agents ────────────────────────────────────────────────────────────────────

@@ -40,6 +40,10 @@
         class="sidebar-nav w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition-all admin-only hidden">
         <span class="text-base w-5 text-center">👥</span> Employees
       </button>
+      <button onclick="showPage('config')" id="nav-config"
+        class="sidebar-nav w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition-all admin-only hidden">
+        <span class="text-base w-5 text-center">⚙️</span> Config
+      </button>
     </nav>
 
     <!-- User + Logout -->
@@ -207,6 +211,92 @@
           <div class="flex justify-end mt-4">
             <button onclick="saveSettings()" class="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-medium hover:bg-blue-700 transition">Save</button>
           </div>
+        </div>
+      </div>
+
+      <!-- ── CONFIG ────────────────────────────────────────────────────────── -->
+      <div id="page-config" class="hidden admin-only h-full overflow-y-auto">
+        <div class="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between">
+          <h2 class="text-base font-bold text-gray-800">Config</h2>
+          <button onclick="refreshAllKnowledge()" id="btnRefreshAllKb"
+            class="flex items-center gap-2 bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-blue-700 transition">
+            <span id="refreshAllIcon">⟳</span> Refresh All
+          </button>
+        </div>
+        <div class="p-6 space-y-4">
+
+          <!-- Knowledge Base -->
+          <div class="bg-white rounded-2xl border border-gray-200 p-5">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <h3 class="font-semibold text-gray-800 text-sm">Knowledge Base</h3>
+                <p class="text-xs text-gray-400 mt-0.5">Google Docs — product info, account types, rules</p>
+              </div>
+              <span id="cfg-kb-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+            </div>
+            <p class="text-xs text-gray-400">Last fetched: <span id="cfg-kb-fetched">—</span></p>
+          </div>
+
+          <!-- Campaigns -->
+          <div class="bg-white rounded-2xl border border-gray-200 p-5">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <h3 class="font-semibold text-gray-800 text-sm">Campaigns</h3>
+                <p class="text-xs text-gray-400 mt-0.5">Google Sheets — active promotions & bonuses</p>
+              </div>
+              <span id="cfg-camp-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+            </div>
+            <p class="text-xs text-gray-400">Last fetched: <span id="cfg-camp-fetched">—</span></p>
+          </div>
+
+          <!-- Macros -->
+          <div class="bg-white rounded-2xl border border-gray-200 p-5">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <h3 class="font-semibold text-gray-800 text-sm">Macros</h3>
+                <p class="text-xs text-gray-400 mt-0.5">Google Sheets — standard agent response macros</p>
+              </div>
+              <span id="cfg-macros-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+            </div>
+            <p class="text-xs text-gray-400">Last fetched: <span id="cfg-macros-fetched">—</span></p>
+          </div>
+
+          <!-- Tags -->
+          <div class="bg-white rounded-2xl border border-gray-200 p-5">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <h3 class="font-semibold text-gray-800 text-sm">Tags</h3>
+                <p class="text-xs text-gray-400 mt-0.5">Google Sheets — chat classification tags</p>
+              </div>
+              <span id="cfg-tags-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+            </div>
+            <p class="text-xs text-gray-400">Last fetched: <span id="cfg-tags-fetched">—</span></p>
+          </div>
+
+          <!-- Protocol Docs -->
+          <div class="bg-white rounded-2xl border border-gray-200 p-5">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <h3 class="font-semibold text-gray-800 text-sm">Protocol Docs</h3>
+                <p class="text-xs text-gray-400 mt-0.5">Google Docs — internal agent protocols & guidelines</p>
+              </div>
+              <span id="cfg-proto-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+            </div>
+            <p class="text-xs text-gray-400">Last fetched: <span id="cfg-proto-fetched">—</span></p>
+          </div>
+
+          <!-- Telegram Updates -->
+          <div class="bg-white rounded-2xl border border-gray-200 p-5">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <h3 class="font-semibold text-gray-800 text-sm">Telegram Updates</h3>
+                <p class="text-xs text-gray-400 mt-0.5">Telegram channel — latest team announcements</p>
+              </div>
+              <span id="cfg-tg-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+            </div>
+            <p class="text-xs text-gray-400">Last fetched: <span id="cfg-tg-fetched">—</span></p>
+          </div>
+
         </div>
       </div>
 
