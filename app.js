@@ -1057,10 +1057,11 @@ async function openSettings() {
     const fresh = await shiftsRes.json();
     const appUsers = await usersRes.json();
     if (Array.isArray(fresh)) {
-      // Attach username to each shift from app_users
-      const userMap = {};
-      if (Array.isArray(appUsers)) appUsers.forEach(u => { if (u.employee_name) userMap[u.employee_name] = u.username; });
-      agentShifts = fresh.map(s => ({ ...s, username: userMap[s.employee] || "" }));
+      const userMap = {}, roleMap = {};
+      if (Array.isArray(appUsers)) appUsers.forEach(u => {
+        if (u.employee_name) { userMap[u.employee_name] = u.username; roleMap[u.employee_name] = u.role || "user"; }
+      });
+      agentShifts = fresh.map(s => ({ ...s, username: userMap[s.employee] || "", userRole: roleMap[s.employee] || "user" }));
     }
   } catch {}
   renderShiftsTable();
@@ -1143,6 +1144,12 @@ function shiftRowHtml(s) {
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${languageCheckboxesHtml(s.languages)}</div></td>
     <td class="py-2 pr-3"><input class="sr-username w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" value="${escHtml(s.username || "")}" placeholder="username" autocomplete="off" /></td>
     <td class="py-2 pr-3"><input class="sr-password w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" type="password" placeholder="••••••" autocomplete="new-password" /></td>
+    <td class="py-2 pr-3">
+      <select class="sr-role border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
+        <option value="user" ${(s.userRole || "user") !== "admin" ? "selected" : ""}>User</option>
+        <option value="admin" ${s.userRole === "admin" ? "selected" : ""}>Admin</option>
+      </select>
+    </td>
     <td class="py-2"><button onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-600 text-lg leading-none px-1">×</button></td>
   </tr>`;
 }
@@ -1164,6 +1171,12 @@ function addShiftRow() {
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${languageCheckboxesHtml([])}</div></td>
     <td class="py-2 pr-3"><input class="sr-username w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" placeholder="username" autocomplete="off" /></td>
     <td class="py-2 pr-3"><input class="sr-password w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" type="password" placeholder="••••••" autocomplete="new-password" /></td>
+    <td class="py-2 pr-3">
+      <select class="sr-role border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
+        <option value="user" selected>User</option>
+        <option value="admin">Admin</option>
+      </select>
+    </td>
     <td class="py-2"><button onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-600 text-lg leading-none px-1">×</button></td>
   `;
   tbody.appendChild(tr);
@@ -1172,7 +1185,8 @@ function addShiftRow() {
 async function saveSettings() {
   const rows = document.querySelectorAll("#shiftsTableBody .shift-row");
   const newShifts = [];
-  const userUpdates = []; // { username, password, employee_name }
+  const userUpdates = [];
+  const roleUpdates = [];
   rows.forEach(row => {
     const employee = row.querySelector(".sr-employee").value.trim();
     const agentKey = row.querySelector(".sr-agent").value.trim();
@@ -1182,22 +1196,29 @@ async function saveSettings() {
     const languages = [...row.querySelectorAll(".sr-lang:checked")].map(cb => cb.value);
     const username = row.querySelector(".sr-username")?.value.trim() || "";
     const password = row.querySelector(".sr-password")?.value || "";
+    const role = row.querySelector(".sr-role")?.value || "user";
     if (!employee || !agentKey) return;
     newShifts.push({ employee, agentKey, start, end, groups, languages, username });
     if (username && password) userUpdates.push({ username, password, employee_name: employee });
+    if (username) roleUpdates.push({ username, role });
   });
 
   try {
-    // Save shifts
     const res = await authFetch("/api/agent-shifts", {
       method: "POST",
       body: JSON.stringify(newShifts),
     });
     const data = await res.json();
-    // Save user credentials in parallel
     if (userUpdates.length > 0) {
       await Promise.all(userUpdates.map(u =>
         authFetch("/api/app-users", { method: "POST", body: JSON.stringify(u) })
+      ));
+    }
+    if (roleUpdates.length > 0) {
+      await Promise.all(roleUpdates.map(u =>
+        authFetch(`/api/app-users/${encodeURIComponent(u.username)}/role`, {
+          method: "PATCH", body: JSON.stringify({ role: u.role })
+        })
       ));
     }
     if (data.ok) {

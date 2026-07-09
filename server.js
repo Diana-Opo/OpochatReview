@@ -144,9 +144,12 @@ if (process.env.DATABASE_URL) {
         username TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         salt TEXT NOT NULL,
-        role TEXT DEFAULT 'employee',
+        role TEXT DEFAULT 'user',
         employee_name TEXT
       )`);
+      // Migrate legacy 'employee' role to 'user'
+      await pool.query(`UPDATE app_users SET role='user' WHERE role='employee'`);
+      await pool.query(`ALTER TABLE app_users ALTER COLUMN role SET DEFAULT 'user'`);
       // Seed admin if not exists
       const exists = await pool.query("SELECT id FROM app_users WHERE username='admin'");
       if (exists.rows.length === 0) {
@@ -235,10 +238,21 @@ app.post("/api/app-users", authMiddleware, adminOnly, async (req, res) => {
     const hash = hashPass(password, salt);
     await pool.query(
       `INSERT INTO app_users (username, password_hash, salt, role, employee_name)
-       VALUES ($1,$2,$3,'employee',$4)
+       VALUES ($1,$2,$3,'user',$4)
        ON CONFLICT (username) DO UPDATE SET password_hash=$2, salt=$3, employee_name=$4`,
       [username, hash, salt, employee_name || null]
     );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch("/api/app-users/:username/role", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { username } = req.params;
+    const { role } = req.body || {};
+    if (!["admin", "user"].includes(role)) return res.status(400).json({ error: "Role must be admin or user" });
+    if (username === "admin" && role !== "admin") return res.status(400).json({ error: "Cannot demote the main admin account" });
+    await pool.query("UPDATE app_users SET role=$1 WHERE username=$2", [role, username]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
