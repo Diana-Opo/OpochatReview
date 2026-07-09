@@ -376,6 +376,17 @@ function getPerAgentReview(review, agentName) {
 function renderTable() {
   const tbody = document.getElementById("chatTableBody");
   const displayChats = applyEmployeeHourFilter(allChats);
+
+  const countEl = document.getElementById("chatCount");
+  if (countEl) {
+    if (displayChats.length > 0) {
+      countEl.textContent = `${displayChats.length} chats`;
+      countEl.classList.remove("hidden");
+    } else {
+      countEl.classList.add("hidden");
+    }
+  }
+
   if (displayChats.length === 0) {
     tbody.innerHTML = `<tr><td colspan="8" class="text-center py-12 text-gray-400">No chats found for this period</td></tr>`;
     return;
