@@ -889,43 +889,44 @@ Step 2 — Determine if the question is in scope for this agent's department:
 
   If a customer's actual question does not belong to the agent's department, it is out of scope — regardless of which department the customer selected in the pre-chat form.
 
-LANGUAGE EVALUATION — MANDATORY FIRST STEP:
-  Before applying ANY language-related penalty, you MUST complete this check:
+LANGUAGE EVALUATION — DO THIS BEFORE SCORING ANYTHING:
 
-  Step 1 — Determine the customer's EFFECTIVE language:
-    a) Look at the actual language the customer used in their chat messages — this overrides the pre-chat form if different.
-    b) If the customer wrote in Farsi during the chat, the effective language is Farsi — even if the pre-chat form was in English.
-    c) If the customer explicitly requested a language switch, that is the effective language from that point forward.
-    d) NEVER assume a customer knows Farsi/Persian unless: (1) the customer explicitly wrote in Farsi, OR (2) the pre-chat form shows Farsi.
+  STEP 1: What language did the customer use?
+    - Look at the customer's actual chat messages (not just the pre-chat form).
+    - If the customer wrote in Farsi during the chat → effective language = Farsi.
+    - If the customer explicitly requested a language switch → use that language from that point.
+    - NEVER assume Farsi unless the customer actually wrote in Farsi or selected it in the pre-chat form.
 
-  Step 2 — Check the agent's assigned language list (shown at the top of the review context as "AGENT LANGUAGES: ...").
-    - Is the customer's effective language included in this agent's assigned language list?
+  STEP 2: Is that language in the agent's assigned language list?
+    - The agent's languages are listed at the top of the review as "AGENT LANGUAGES: ...".
+    - If the agent's language list is not provided → skip all language penalties entirely.
 
-  Step 3A — If the customer's language is NOT in the agent's assigned list:
-    The agent CANNOT and MUST NOT respond in that language. The ONLY correct action is:
-      - Inform the customer briefly (in any language) and transfer the chat to the appropriate department.
-    If the agent did this → award FULL MARKS on all scores. Do NOT penalize anything.
-    Do NOT deduct from language_score, compliance_score, resolution_score, tone_score, or satisfaction_score.
-    Do NOT penalize for "customer issue unresolved", "no solution given", or "incomplete answer".
-    If the agent's language list is not specified in the review context, skip language penalties entirely.
+  ── IF THE CUSTOMER'S LANGUAGE IS NOT IN THE AGENT'S LIST ──────────────────
+  The agent is UNABLE to handle this chat. Transferring is the ONLY correct action.
 
-    INCORRECT handling in this case (penalize compliance_score and overall_score only):
-      - Agent ignored the language barrier and attempted to respond in the customer's unsupported language.
-      - Agent stayed in the chat without transferring.
-      - Agent closed without transferring or explaining.
+  IF the agent informed the customer and transferred the chat:
+    → This is a PERFECT handling. Score accordingly:
+    → compliance_score: do NOT deduct anything — transfer was the correct action
+    → resolution_score: do NOT deduct anything — issue is now the receiving agent's responsibility
+    → tone_score: score based ONLY on how politely and professionally the agent communicated, NOT on the language barrier
+    → language_score: do NOT deduct — the agent cannot be expected to respond in a language outside their list
+    → satisfaction_score: do NOT deduct — the agent did everything they could
+    → Do NOT mention "unresolved", "no solution", "language mismatch" as issues in this case.
+    → ABSOLUTELY DO NOT apply the CRITICAL VIOLATION penalties below. They do not apply here.
 
-  Step 3B — If the customer's language IS in the agent's assigned list:
-    The agent MUST respond in that language. If the agent responded in a DIFFERENT language:
-    THIS IS THE MOST CRITICAL VIOLATION IN THE ENTIRE REVIEW. Apply ALL of the following:
+  IF the agent did NOT transfer and instead tried to respond in the wrong language or stayed without acting:
+    → penalize compliance_score and overall_score only.
+
+  ── IF THE CUSTOMER'S LANGUAGE IS IN THE AGENT'S LIST ──────────────────────
+  The agent MUST respond in that language. If they responded in a different language:
+    THIS IS THE MOST CRITICAL VIOLATION IN THE ENTIRE REVIEW:
       • language_score = 1
       • compliance_score = 1
       • resolution_score = 1
       • tone_score = 1
-      • overall_score = 1 — MANDATORY. No other positive factor can raise this.
-      • In issues: first bullet must be "CRITICAL: Agent responded in [language used] despite customer communicating in / selecting [customer's language]."
-      • Do NOT soften this penalty under any circumstances.
-
-    Exception within Step 3B: if the agent's designated languages do not include the customer's language but the agent attempted to respond anyway in a third wrong language instead of transferring → same CRITICAL VIOLATION above.
+      • overall_score = 1 — MANDATORY. Nothing can raise this.
+      • First issue bullet: "CRITICAL: Agent responded in [language used] despite customer communicating in [customer's language]."
+      • Do NOT soften under any circumstances.
 
 Step 3 — Evaluate the agent's routing decision:
   CORRECT (full marks for resolution and compliance):
