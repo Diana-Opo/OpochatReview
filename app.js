@@ -1237,18 +1237,30 @@ async function saveSettings() {
 
 function closeReports() { /* page-based */ }
 
+let _activeReport = null;
+
 async function openReports() {
   const el = document.getElementById("reportsContent");
   el.innerHTML = `<div class="text-center text-gray-400 py-8"><span class="spinner"></span></div>`;
+  const res = await authFetch("/api/reports");
+  const list = await res.json();
+  el.innerHTML = currentUser?.role === "admin" ? renderReportsAdmin(list) : renderReportsEmployee(list);
+}
 
-  const [listRes] = await Promise.all([authFetch("/api/reports")]);
-  const list = await listRes.json();
+function monthLabel(m) {
+  const [y, mo] = m.split("-").map(Number);
+  return new Date(y, mo - 1, 1).toLocaleString("en-US", { month: "long" }) + " " + y;
+}
 
-  if (currentUser?.role === "admin") {
-    el.innerHTML = renderReportsAdmin(list);
-  } else {
-    el.innerHTML = renderReportsEmployee(list);
+function groupByYearMonth(list) {
+  const tree = {};
+  for (const r of list) {
+    const year = r.month.split("-")[0];
+    if (!tree[year]) tree[year] = {};
+    if (!tree[year][r.month]) tree[year][r.month] = [];
+    tree[year][r.month].push(r);
   }
+  return tree;
 }
 
 function fmtDuration(sec) {
@@ -1266,7 +1278,7 @@ function renderScoreRow(label, val) {
   if (val == null) return "";
   const pct = (val / 10) * 100;
   const bg = val >= 7 ? "bg-green-500" : val >= 5 ? "bg-yellow-400" : "bg-red-500";
-  return `<div class="flex items-center gap-2 mb-1">
+  return `<div class="flex items-center gap-2 mb-1.5">
     <span class="text-xs text-gray-500 w-36 shrink-0">${label}</span>
     <div class="flex-1 bg-gray-100 rounded-full h-2"><div class="${bg} h-2 rounded-full" style="width:${pct}%"></div></div>
     <span class="text-xs font-semibold w-8 text-right ${scoreColor(val)}">${val.toFixed(1)}</span>
@@ -1276,52 +1288,48 @@ function renderScoreRow(label, val) {
 function renderReportView(r) {
   const s = r.avg_scores || {};
   const trend = (r.score_trend || []).map(w =>
-    `<div class="text-center"><div class="text-xs text-gray-400">${escHtml(w.label)}</div>
-     <div class="text-lg font-black ${scoreColor(w.avg)}">${w.avg != null ? w.avg.toFixed(1) : "—"}</div>
-     <div class="text-xs text-gray-400">${w.count} chat</div></div>`
+    `<div class="text-center">
+       <div class="text-xs text-gray-400 mb-1">${escHtml(w.label)}</div>
+       <div class="text-2xl font-black ${scoreColor(w.avg)}">${w.avg != null ? w.avg.toFixed(1) : "—"}</div>
+       <div class="text-xs text-gray-400">${w.count} chat</div>
+     </div>`
   ).join("");
 
-  return `
-  <div class="space-y-5">
+  return `<div class="space-y-5">
     <div class="flex flex-wrap gap-3">
       ${[
-        ["Total Chats", r.total_chats, "text-blue-600"],
-        ["Reviewed", r.reviewed_chats, "text-purple-600"],
-        ["Missed", r.missed_chats, "text-red-500"],
-        ["Resolved", r.resolved_rate + "%", "text-green-600"],
+        ["Total Chats",   r.total_chats,          "text-blue-600"],
+        ["Reviewed",      r.reviewed_chats,        "text-purple-600"],
+        ["Missed",        r.missed_chats,          "text-red-500"],
+        ["Resolved",      (r.resolved_rate??0)+"%","text-green-600"],
+        ["Avg Duration",  fmtDuration(r.avg_chat_duration_sec), "text-gray-700"],
+        ["First Response",fmtDuration(r.avg_first_response_sec),"text-gray-700"],
       ].map(([l,v,c]) => `<div class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-center min-w-[90px]">
         <div class="text-xs text-gray-400 mb-1">${l}</div>
         <div class="text-xl font-black ${c}">${v ?? "—"}</div>
       </div>`).join("")}
-      <div class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-center min-w-[90px]">
-        <div class="text-xs text-gray-400 mb-1">Avg Duration</div>
-        <div class="text-xl font-black text-gray-700">${fmtDuration(r.avg_chat_duration_sec)}</div>
-      </div>
-      <div class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-center min-w-[90px]">
-        <div class="text-xs text-gray-400 mb-1">First Response</div>
-        <div class="text-xl font-black text-gray-700">${fmtDuration(r.avg_first_response_sec)}</div>
-      </div>
     </div>
 
     <div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
       <p class="text-xs font-semibold text-gray-500 uppercase mb-3">Score Breakdown</p>
-      <div class="flex items-center gap-2 mb-3">
-        <span class="text-xs text-gray-500 w-36">Overall Avg</span>
-        <span class="text-2xl font-black ${scoreColor(s.overall)}">${s.overall?.toFixed(1) ?? "—"}</span>
+      <div class="flex items-center gap-3 mb-3">
+        <span class="text-xs text-gray-500 w-36">Overall Average</span>
+        <span class="text-3xl font-black ${scoreColor(s.overall)}">${s.overall?.toFixed(1) ?? "—"}</span>
+        <span class="text-xs text-gray-400">/ 10</span>
       </div>
-      ${renderScoreRow("Response Time", s.response_time)}
-      ${renderScoreRow("Tone", s.tone)}
-      ${renderScoreRow("Accuracy", s.accuracy)}
-      ${renderScoreRow("Resolution", s.resolution)}
-      ${renderScoreRow("Compliance", s.compliance)}
-      ${renderScoreRow("Product Knowledge", s.product_knowledge)}
-      ${renderScoreRow("Satisfaction", s.satisfaction)}
-      ${renderScoreRow("Language", s.language)}
+      ${renderScoreRow("Response Time",    s.response_time)}
+      ${renderScoreRow("Tone",             s.tone)}
+      ${renderScoreRow("Accuracy",         s.accuracy)}
+      ${renderScoreRow("Resolution",       s.resolution)}
+      ${renderScoreRow("Compliance",       s.compliance)}
+      ${renderScoreRow("Product Knowledge",s.product_knowledge)}
+      ${renderScoreRow("Satisfaction",     s.satisfaction)}
+      ${renderScoreRow("Language",         s.language)}
     </div>
 
     ${trend ? `<div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
-      <p class="text-xs font-semibold text-gray-500 uppercase mb-3">Weekly Trend</p>
-      <div class="flex gap-4 justify-around">${trend}</div>
+      <p class="text-xs font-semibold text-gray-500 uppercase mb-4">Weekly Trend</p>
+      <div class="flex gap-6 justify-around">${trend}</div>
     </div>` : ""}
 
     ${r.top_issues?.length ? `<div class="bg-red-50 border border-red-100 rounded-xl p-4">
@@ -1339,52 +1347,86 @@ function renderReportView(r) {
       ${currentUser?.role === "admin"
         ? `<textarea id="reportNotes" class="w-full text-sm border border-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white" rows="3" placeholder="Add notes...">${escHtml(r.admin_notes || "")}</textarea>
            <button onclick="saveReportNotes('${escHtml(r.employee)}','${escHtml(r.month)}')" class="mt-2 bg-blue-600 text-white px-3 py-1.5 text-xs rounded-lg hover:bg-blue-700">Save Notes</button>`
-        : `<p class="text-sm text-blue-700">${r.admin_notes || "—"}</p>`
-      }
+        : `<p class="text-sm text-blue-700">${r.admin_notes || "—"}</p>`}
     </div>
   </div>`;
 }
 
 function renderReportsAdmin(list) {
-  const months = [];
+  const monthOpts = [];
   const now = new Date();
   for (let i = 0; i < 12; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);
+    const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    monthOpts.push(`<option value="${val}">${monthLabel(val)}</option>`);
   }
-  return `
-  <div class="space-y-4">
-    <div class="flex flex-wrap gap-2 items-end">
-      <div>
-        <label class="text-xs text-gray-500 block mb-1">Employee</label>
-        <select id="rptEmployee" class="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none">
-          <option value="">Select employee...</option>
-          ${agentShifts.map(s => `<option value="${escHtml(s.employee)}">${escHtml(s.employee)}</option>`).join("")}
-        </select>
-      </div>
-      <div>
-        <label class="text-xs text-gray-500 block mb-1">Month</label>
-        <select id="rptMonth" class="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none">
-          ${months.map(m => `<option value="${m}">${m}</option>`).join("")}
-        </select>
-      </div>
-      <button onclick="generateReport()" id="btnGenReport" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition">Generate Report</button>
-    </div>
 
-    <div id="rptResult"></div>
+  const generatePanel = `
+    <div class="bg-white rounded-2xl border border-gray-200 p-5 mb-6">
+      <p class="text-xs font-semibold text-gray-500 uppercase mb-3">Generate New Report</p>
+      <div class="flex flex-wrap gap-2 items-end">
+        <div>
+          <label class="text-xs text-gray-400 block mb-1">Employee</label>
+          <select id="rptEmployee" class="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
+            <option value="">Select...</option>
+            ${[...new Map(agentShifts.map(s => [s.employee, s])).values()]
+              .map(s => `<option value="${escHtml(s.employee)}">${escHtml(s.employee)}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-gray-400 block mb-1">Month</label>
+          <select id="rptMonth" class="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
+            ${monthOpts.join("")}
+          </select>
+        </div>
+        <button onclick="generateReport()" id="btnGenReport"
+          class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition">
+          Generate
+        </button>
+      </div>
+      <div id="rptResult" class="mt-3"></div>
+    </div>`;
 
-    ${list.length > 0 ? `
-    <div>
-      <p class="text-xs font-semibold text-gray-500 uppercase mb-2">Saved Reports</p>
-      <div class="space-y-1">
-        ${list.map(r => `<button onclick="viewSavedReport('${escHtml(r.employee)}','${escHtml(r.month)}')"
-          class="w-full text-left flex justify-between items-center px-3 py-2 rounded-lg hover:bg-gray-50 border border-gray-100 text-sm">
-          <span><span class="font-medium">${escHtml(r.employee)}</span> <span class="text-gray-400">${escHtml(r.month)}</span></span>
+  if (!list.length) return generatePanel + `
+    <div class="text-center py-12 text-gray-400 text-sm">No reports generated yet.</div>`;
+
+  const tree = groupByYearMonth(list);
+  const yearsHtml = Object.keys(tree).sort((a,b) => b-a).map(year => {
+    const monthsHtml = Object.keys(tree[year]).sort((a,b) => b.localeCompare(a)).map(month => {
+      const emps = tree[year][month].sort((a,b) => a.employee.localeCompare(b.employee));
+      const empsHtml = emps.map(r => `
+        <button onclick="viewSavedReport('${escHtml(r.employee)}','${month}')"
+          class="w-full text-left flex justify-between items-center px-4 py-2.5 rounded-xl hover:bg-blue-50 transition group">
+          <span class="text-sm font-medium text-gray-700 group-hover:text-blue-700">${escHtml(r.employee)}</span>
           <span class="text-xs text-gray-400">${new Date(r.generated_at).toLocaleDateString()}</span>
-        </button>`).join("")}
-      </div>
-    </div>` : ""}
-  </div>`;
+        </button>`).join("");
+      const mid = `month-${month.replace("-","_")}`;
+      return `
+        <div class="mb-1">
+          <button onclick="document.getElementById('${mid}').classList.toggle('hidden');this.querySelector('span').textContent=document.getElementById('${mid}').classList.contains('hidden')?'▶':'▼'"
+            class="w-full text-left flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-100 transition">
+            <span class="text-xs text-gray-400 w-3">▼</span>
+            <span class="text-sm font-semibold text-gray-600">${monthLabel(month)}</span>
+            <span class="ml-auto text-xs text-gray-400">${emps.length} report${emps.length > 1 ? "s" : ""}</span>
+          </button>
+          <div id="${mid}" class="pl-3">${empsHtml}</div>
+        </div>`;
+    }).join("");
+    const yid = `year-${year}`;
+    const total = Object.values(tree[year]).flat().length;
+    return `
+      <div class="bg-white rounded-2xl border border-gray-200 overflow-hidden mb-4">
+        <button onclick="document.getElementById('${yid}').classList.toggle('hidden');this.querySelector('span').textContent=document.getElementById('${yid}').classList.contains('hidden')?'▶':'▼'"
+          class="w-full text-left flex items-center gap-3 px-5 py-3.5 bg-gray-50 hover:bg-gray-100 transition border-b border-gray-200">
+          <span class="text-xs text-gray-400 w-3">▼</span>
+          <span class="text-base font-bold text-gray-800">${year}</span>
+          <span class="text-xs text-gray-400">${total} report${total > 1 ? "s" : ""}</span>
+        </button>
+        <div id="${yid}" class="p-3">${monthsHtml}</div>
+      </div>`;
+  }).join("");
+
+  return generatePanel + yearsHtml;
 }
 
 function renderReportsEmployee(list) {
@@ -1394,14 +1436,26 @@ function renderReportsEmployee(list) {
       <p class="text-gray-700 font-semibold text-base mb-1">No reports yet</p>
       <p class="text-gray-400 text-sm max-w-xs">Your monthly performance reports will appear here once your manager generates them.</p>
     </div>`;
-  return `<div class="space-y-2">
-    <p class="text-xs text-gray-500 font-semibold uppercase mb-3">Your Reports</p>
-    ${list.map(r => `<button onclick="viewSavedReport('${escHtml(r.employee)}','${escHtml(r.month)}')"
-      class="w-full text-left flex justify-between items-center px-3 py-2 rounded-lg hover:bg-gray-50 border border-gray-100 text-sm">
-      <span class="font-medium">${escHtml(r.month)}</span>
-      <span class="text-xs text-gray-400">${new Date(r.generated_at).toLocaleDateString()}</span>
-    </button>`).join("")}
-  </div>`;
+
+  const tree = groupByYearMonth(list);
+  return Object.keys(tree).sort((a,b) => b-a).map(year => {
+    const monthsHtml = Object.keys(tree[year]).sort((a,b) => b.localeCompare(a)).map(month => {
+      const r = tree[year][month][0];
+      return `
+        <button onclick="viewSavedReport('${escHtml(r.employee)}','${month}')"
+          class="w-full text-left flex justify-between items-center px-4 py-3.5 bg-white rounded-2xl border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition group">
+          <div>
+            <p class="text-sm font-semibold text-gray-800 group-hover:text-blue-700">${monthLabel(month)}</p>
+            <p class="text-xs text-gray-400 mt-0.5">Generated ${new Date(r.generated_at).toLocaleDateString()}</p>
+          </div>
+          <span class="text-gray-300 group-hover:text-blue-400 text-xl">›</span>
+        </button>`;
+    }).join("");
+    return `<div class="mb-6">
+      <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">${year}</p>
+      <div class="space-y-2">${monthsHtml}</div>
+    </div>`;
+  }).join("");
 }
 
 async function generateReport() {
@@ -1411,21 +1465,16 @@ async function generateReport() {
   const btn = document.getElementById("btnGenReport");
   btn.disabled = true; btn.textContent = "Generating...";
   const el = document.getElementById("rptResult");
-  el.innerHTML = `<div class="text-center py-6 text-gray-400"><span class="spinner"></span> Fetching chats & calculating...</div>`;
+  el.innerHTML = `<div class="text-center py-4 text-gray-400 text-sm"><span class="spinner"></span> Fetching chats & calculating…</div>`;
   try {
     const res = await authFetch("/api/reports/generate", { method: "POST", body: JSON.stringify({ employee, month }) });
     const report = await res.json();
     if (report.error) { el.innerHTML = `<p class="text-red-500 text-sm">${escHtml(report.error)}</p>`; return; }
-    el.innerHTML = `<div class="border border-gray-200 rounded-xl p-4 mt-2">
-      <div class="flex justify-between items-center mb-4">
-        <div><h3 class="font-bold text-gray-800">${escHtml(employee)}</h3><p class="text-xs text-gray-400">${escHtml(month)}</p></div>
-      </div>
-      ${renderReportView(report)}
-    </div>`;
+    viewSavedReport(employee, month);
   } catch (e) {
     el.innerHTML = `<p class="text-red-500 text-sm">Error: ${escHtml(e.message)}</p>`;
   } finally {
-    btn.disabled = false; btn.textContent = "Generate Report";
+    btn.disabled = false; btn.textContent = "Generate";
   }
 }
 
@@ -1434,12 +1483,115 @@ async function viewSavedReport(employee, month) {
   container.innerHTML = `<div class="text-center py-8 text-gray-400"><span class="spinner"></span></div>`;
   const res = await authFetch(`/api/reports/${encodeURIComponent(employee)}/${encodeURIComponent(month)}`);
   const report = await res.json();
-  if (report.error) { container.innerHTML = `<p class="text-red-500">${escHtml(report.error)}</p>`; return; }
+  if (report.error) { container.innerHTML = `<p class="text-red-500 p-6">${escHtml(report.error)}</p>`; return; }
+  _activeReport = report;
   container.innerHTML = `
-    <button onclick="openReports()" class="text-xs text-blue-500 hover:underline mb-4 block">← Back to Reports</button>
-    <div class="mb-4"><h3 class="font-bold text-gray-800 text-lg">${escHtml(employee)}</h3>
-    <p class="text-xs text-gray-400">${escHtml(month)} — Generated ${new Date(report.generated_at).toLocaleString()}</p></div>
-    ${renderReportView(report)}`;
+    <div class="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-200 sticky top-0 z-10">
+      <div class="flex items-center gap-3">
+        <button onclick="openReports()" class="text-gray-400 hover:text-gray-700 transition text-lg leading-none">←</button>
+        <div>
+          <h3 class="font-bold text-gray-800">${escHtml(employee)}</h3>
+          <p class="text-xs text-gray-400">${monthLabel(month)} — Generated ${new Date(report.generated_at).toLocaleString()}</p>
+        </div>
+      </div>
+      <button onclick="downloadReportPdf()" class="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium px-3 py-2 rounded-lg transition">
+        ⬇ Download PDF
+      </button>
+    </div>
+    <div class="p-6">${renderReportView(report)}</div>`;
+}
+
+function downloadReportPdf() {
+  if (!_activeReport) return;
+  const r = _activeReport;
+  const s = r.avg_scores || {};
+  const scoreRows = [
+    ["Response Time", s.response_time], ["Tone", s.tone], ["Accuracy", s.accuracy],
+    ["Resolution", s.resolution], ["Compliance", s.compliance],
+    ["Product Knowledge", s.product_knowledge], ["Satisfaction", s.satisfaction], ["Language", s.language],
+  ];
+  const scoreFill = v => v == null ? "" : `<div style="background:${v>=7?"#16a34a":v>=5?"#ca8a04":"#dc2626"};height:6px;border-radius:4px;width:${(v/10)*100}%"></div>`;
+  const scHex = v => v == null ? "#9ca3af" : v >= 7 ? "#16a34a" : v >= 5 ? "#ca8a04" : "#dc2626";
+
+  const win = window.open("", "_blank");
+  if (!win) { showStatus("Allow popups to download PDF", "error"); return; }
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>${r.employee} — ${monthLabel(r.month)}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;max-width:680px;margin:36px auto;color:#1f2937;font-size:13px}
+    h1{font-size:22px;font-weight:900;margin-bottom:2px}
+    .sub{color:#6b7280;font-size:12px;margin-bottom:24px}
+    .stats{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px}
+    .stat{border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;text-align:center;min-width:88px}
+    .stat-l{font-size:10px;color:#9ca3af;text-transform:uppercase;font-weight:600;margin-bottom:4px}
+    .stat-v{font-size:20px;font-weight:900}
+    .section{margin-bottom:18px}
+    .sec-title{font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.05em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #f3f4f6}
+    .overall{font-size:32px;font-weight:900;margin-bottom:12px}
+    .srow{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+    .slabel{font-size:11px;color:#6b7280;width:140px;flex-shrink:0}
+    .sbar{flex:1;height:6px;background:#f3f4f6;border-radius:4px}
+    .sval{font-size:11px;font-weight:700;width:28px;text-align:right}
+    .trend{display:flex;gap:16px;justify-content:space-around}
+    .tw-label{font-size:10px;color:#9ca3af;text-align:center;margin-bottom:3px}
+    .tw-val{font-size:22px;font-weight:900;text-align:center}
+    .tw-cnt{font-size:10px;color:#9ca3af;text-align:center}
+    ul{list-style:none}
+    li{font-size:11px;margin-bottom:3px}
+    .notes-box{background:#eff6ff;border-radius:8px;padding:10px 14px;font-size:12px;color:#1d4ed8}
+    @media print{body{margin:20px}button{display:none}}
+  </style></head><body>
+  <h1>${escHtml(r.employee)}</h1>
+  <p class="sub">${monthLabel(r.month)} &nbsp;·&nbsp; Generated ${new Date(r.generated_at).toLocaleDateString()}</p>
+
+  <div class="stats">
+    ${[["Total Chats",r.total_chats,"#2563eb"],["Reviewed",r.reviewed_chats,"#7c3aed"],
+       ["Missed",r.missed_chats,"#dc2626"],["Resolved",(r.resolved_rate??0)+"%","#16a34a"],
+       ["Avg Duration",fmtDuration(r.avg_chat_duration_sec),"#374151"],
+       ["First Response",fmtDuration(r.avg_first_response_sec),"#374151"]]
+      .map(([l,v,c])=>`<div class="stat"><div class="stat-l">${l}</div><div class="stat-v" style="color:${c}">${v??'—'}</div></div>`).join("")}
+  </div>
+
+  <div class="section">
+    <div class="sec-title">Score Breakdown</div>
+    <div class="overall" style="color:${scHex(s.overall)}">${s.overall?.toFixed(1)??"—"} <span style="font-size:16px;color:#9ca3af">/ 10</span></div>
+    ${scoreRows.map(([l,v])=>v==null?"":`<div class="srow">
+      <div class="slabel">${l}</div>
+      <div class="sbar">${scoreFill(v)}</div>
+      <div class="sval" style="color:${scHex(v)}">${v.toFixed(1)}</div>
+    </div>`).join("")}
+  </div>
+
+  ${r.score_trend?.length ? `<div class="section">
+    <div class="sec-title">Weekly Trend</div>
+    <div class="trend">
+      ${r.score_trend.map(w=>`<div>
+        <div class="tw-label">${escHtml(w.label)}</div>
+        <div class="tw-val" style="color:${scHex(w.avg)}">${w.avg!=null?w.avg.toFixed(1):"—"}</div>
+        <div class="tw-cnt">${w.count} chats</div>
+      </div>`).join("")}
+    </div>
+  </div>` : ""}
+
+  ${r.top_issues?.length ? `<div class="section">
+    <div class="sec-title">Common Issues</div>
+    <ul>${r.top_issues.map(i=>`<li style="color:#dc2626">• ${escHtml(i)}</li>`).join("")}</ul>
+  </div>` : ""}
+
+  ${r.top_strengths?.length ? `<div class="section">
+    <div class="sec-title">Strengths</div>
+    <ul>${r.top_strengths.map(i=>`<li style="color:#16a34a">• ${escHtml(i)}</li>`).join("")}</ul>
+  </div>` : ""}
+
+  ${r.admin_notes ? `<div class="section">
+    <div class="sec-title">Admin Notes</div>
+    <div class="notes-box">${escHtml(r.admin_notes)}</div>
+  </div>` : ""}
+
+  <script>setTimeout(()=>window.print(),400)<\/script>
+  </body></html>`);
+  win.document.close();
 }
 
 async function saveReportNotes(employee, month) {
