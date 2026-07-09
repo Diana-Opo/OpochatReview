@@ -1466,6 +1466,7 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       const data = await lcPost("list_archives", body);
       const chats = data.chats || [];
       if (firstPage) { totalChats = data.found_chats ?? data.total_chats ?? 0; firstPage = false; }
+      console.log(`[dashboard] page chats=${chats.length} found=${totalChats} nextPage=${data.next_page_id||null}`);
       pageId = data.next_page_id || null;
 
       for (const c of chats) {
@@ -1473,13 +1474,13 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
         const users  = c.users || [];
         const events = thread.events || [];
 
-        // Count total chats for every agent mapped in shifts — deduplicate by ID
-        const seenIds = new Set();
+        // Count total chats per employee — deduplicate so each employee counted once per chat
+        const countedEmps = new Set();
         for (const u of users) {
-          if (u.type !== "agent" || seenIds.has(u.id)) continue;
-          seenIds.add(u.id);
+          if (u.type !== "agent") continue;
           const n = toEmp(u.name);
-          if (!n) continue;
+          if (!n || countedEmps.has(n)) continue;
+          countedEmps.add(n);
           if (!emp[n]) emp[n] = { total: 0, reviewed: 0, scores: [], resolved: 0 };
           emp[n].total++;
         }
@@ -1513,6 +1514,8 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
         if (ar.resolved) emp[name].resolved++;
       }
     } while (pageId);
+
+    console.log("[dashboard] employee totals:", Object.entries(emp).map(([n,d])=>`${n}:${d.total}`).join(", "));
 
     const allScores = Object.values(emp).flatMap(e => e.scores);
     const totalReviewed = Object.values(emp).reduce((s, e) => s + e.reviewed, 0);
