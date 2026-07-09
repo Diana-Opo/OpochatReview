@@ -1474,6 +1474,7 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
     let totalChats = 0;
     let pageId = null;
     let firstPage = true;
+    const processedChatIds = new Set(); // avoid double-counting chats with multiple threads
 
     do {
       const body = pageId
@@ -1486,28 +1487,34 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       pageId = data.next_page_id || null;
 
       for (const c of chats) {
+        if (processedChatIds.has(c.id)) continue;
+        processedChatIds.add(c.id);
+
         const thread = c.thread || (Array.isArray(c.threads) ? c.threads[0] : null) || {};
         const users  = c.users || [];
-        const events = thread.events || [];
 
-        // Only count agents who actually sent events in THIS thread
-        // (c.users includes historical agents from all past threads — too broad)
+        // Collect all agents from ALL threads of this chat
+        const allThreads = Array.isArray(c.threads) ? c.threads : (c.thread ? [c.thread] : [thread]);
         const assigneeId = thread?.assignee?.id;
-        const threadAgentIds = new Set();
-        if (assigneeId) threadAgentIds.add(assigneeId);
-        for (const e of events) {
-          const u = users.find(u => u.id === e.author_id && u.type === "agent");
-          if (u) threadAgentIds.add(u.id);
+        const chatAgentIds = new Set();
+        if (assigneeId) chatAgentIds.add(assigneeId);
+        for (const t of allThreads) {
+          if (t?.assignee?.id) chatAgentIds.add(t.assignee.id);
+          for (const e of (t.events || [])) {
+            if (agentIdToEmp[e.author_id]) chatAgentIds.add(e.author_id);
+          }
         }
 
         const countedEmps = new Set();
-        for (const agentId of threadAgentIds) {
+        for (const agentId of chatAgentIds) {
           const n = agentIdToEmp[agentId];
           if (!n || countedEmps.has(n)) continue;
           countedEmps.add(n);
           if (!emp[n]) emp[n] = { total: 0, reviewed: 0, scores: [], resolved: 0 };
           emp[n].total++;
         }
+
+        const events = thread.events || [];
 
         // Review/score attribution: primary agent only (assignee → first event sender)
         const firstAgentId = events.find(e => agentIdToEmp[e.author_id])?.author_id;
