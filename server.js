@@ -1441,10 +1441,13 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
     const lcFrom = `${month}-01T00:00:00.000000+00:00`;
     const lcTo   = `${month}-${String(lastDay).padStart(2,"0")}T23:59:59.999999+00:00`;
 
-    const [reviews, shifts] = await Promise.all([loadReviews(), loadShifts()]);
+    const [reviews, shifts, agentsRaw] = await Promise.all([
+      loadReviews(),
+      loadShifts(),
+      lcPost("list_agents", {}, LC_CONFIG_API),
+    ]);
 
-    // Only count agents who are mapped in shifts table (= active employees)
-    // Suspended/deactivated agents not in shifts are excluded automatically
+    // Build agentId → employeeName map (exact ID match — avoids first-name ambiguity)
     function toEmp(agentName) {
       if (!agentName) return null;
       const low = agentName.toLowerCase().trim();
@@ -1452,6 +1455,19 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       const s = shifts.find(s => s.agentKey === low || s.agentKey === fst);
       return s ? s.employee : null;
     }
+
+    const rawAgentList = Array.isArray(agentsRaw) ? agentsRaw
+      : Array.isArray(agentsRaw?.agents) ? agentsRaw.agents
+      : Object.values(agentsRaw || {}).find(v => Array.isArray(v)) || [];
+
+    // agentId → employee display name (only active, non-suspended agents)
+    const agentIdToEmp = {};
+    for (const a of rawAgentList) {
+      if (a.suspended) continue;
+      const n = toEmp(a.name);
+      if (n) agentIdToEmp[a.id] = n;
+    }
+    console.log("[dashboard] agentIdToEmp:", JSON.stringify(agentIdToEmp).slice(0, 400));
 
     // per employee: { total, reviewed, scores[], resolved }
     const emp = {};
@@ -1486,9 +1502,7 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
 
         const countedEmps = new Set();
         for (const agentId of threadAgentIds) {
-          const u = users.find(u => u.id === agentId);
-          if (!u) continue;
-          const n = toEmp(u.name);
+          const n = agentIdToEmp[agentId];
           if (!n || countedEmps.has(n)) continue;
           countedEmps.add(n);
           if (!emp[n]) emp[n] = { total: 0, reviewed: 0, scores: [], resolved: 0 };
@@ -1496,12 +1510,12 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
         }
 
         // Review/score attribution: primary agent only (assignee → first event sender)
-        const firstAgentId = events.find(e => users.find(u => u.id === e.author_id && u.type === "agent"))?.author_id;
-        const agent = (assigneeId ? users.find(u => u.id === assigneeId) : null)
-                   || (firstAgentId ? users.find(u => u.id === firstAgentId) : null);
+        const firstAgentId = events.find(e => agentIdToEmp[e.author_id])?.author_id;
+        const primaryAgentId = (assigneeId && agentIdToEmp[assigneeId]) ? assigneeId : firstAgentId;
+        const agent = primaryAgentId ? users.find(u => u.id === primaryAgentId) : null;
         if (!agent) continue;
 
-        const name = toEmp(agent.name);
+        const name = agentIdToEmp[agent.id] || toEmp(agent.name);
         if (!name) continue;
         if (!emp[name]) emp[name] = { total: 0, reviewed: 0, scores: [], resolved: 0 };
 
