@@ -1447,7 +1447,43 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       lcPost("list_agents", {}, LC_CONFIG_API),
     ]);
 
-    // name → employee display name via shifts
+    // Build agentKey → [shifts] (may have multiple employees for shared accounts)
+    const agentKeyShifts = {};
+    for (const s of shifts) {
+      const key = s.agentKey.toLowerCase().trim();
+      if (!agentKeyShifts[key]) agentKeyShifts[key] = [];
+      agentKeyShifts[key].push(s);
+    }
+
+    // Build agentKey → LC email from list_agents
+    const rawAgentList = Array.isArray(agentsRaw) ? agentsRaw
+      : Array.isArray(agentsRaw?.agents) ? agentsRaw.agents
+      : Object.values(agentsRaw || {}).find(v => Array.isArray(v)) || [];
+
+    const agentKeyToEmail = {};
+    for (const a of rawAgentList) {
+      const low = a.name.toLowerCase().trim();
+      const fst = low.split(" ")[0];
+      for (const key of Object.keys(agentKeyShifts)) {
+        if ((low === key || fst === key) && !agentKeyToEmail[key]) {
+          agentKeyToEmail[key] = a.id;
+        }
+      }
+    }
+    console.log("[dashboard] agentKeyToEmail:", JSON.stringify(agentKeyToEmail));
+
+    // Iran Daylight Time in summer = UTC+4:30
+    const IRAN_OFFSET_MS = (4 * 60 + 30) * 60 * 1000;
+
+    function empAtTime(shiftList, chatTime) {
+      if (shiftList.length === 1 || !chatTime) return shiftList[0].employee;
+      const iranMs = new Date(chatTime).getTime() + IRAN_OFFSET_MS;
+      const iranHour = (iranMs / 3600000) % 24;
+      const s = shiftList.find(s => iranHour >= s.start_hour && iranHour < s.end_hour);
+      return (s || shiftList[0]).employee;
+    }
+
+    // name → employee (first match, for review attribution)
     function toEmp(agentName) {
       if (!agentName) return null;
       const low = agentName.toLowerCase().trim();
@@ -1456,56 +1492,59 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       return s ? s.employee : null;
     }
 
-    // Build employeeName → LiveChat agentId map from list_agents
-    const rawAgentList = Array.isArray(agentsRaw) ? agentsRaw
-      : Array.isArray(agentsRaw?.agents) ? agentsRaw.agents
-      : Object.values(agentsRaw || {}).find(v => Array.isArray(v)) || [];
-
-    const empToAgentId = {};
-    for (const a of rawAgentList) {
-      const n = toEmp(a.name);
-      if (n && !empToAgentId[n]) empToAgentId[n] = a.id;
-    }
-    console.log("[dashboard] empToAgentId:", JSON.stringify(empToAgentId));
-
-    // Unique employees from shifts
-    const uniqueEmps = [...new Set(shifts.map(s => s.employee))];
-
-    // Total chats + per-employee counts sequentially to avoid rate limiting
+    // Total chats (no agent filter)
     const firstPage = await lcPost("list_archives", { filters: { from: lcFrom, to: lcTo }, limit: 1 });
     const totalChats = firstPage.found_chats ?? firstPage.total_chats ?? 0;
 
-    const empTotals = [];
-    for (const empName of uniqueEmps) {
-      const agentId = empToAgentId[empName];
-      if (!agentId) {
-        console.log(`[dashboard] no agentId for: ${empName}`);
-        empTotals.push({ empName, total: 0 });
+    const emp = {};
+
+    // Process each agentKey sequentially
+    for (const [key, shiftList] of Object.entries(agentKeyShifts)) {
+      const agentEmail = agentKeyToEmail[key];
+      if (!agentEmail) {
+        console.log(`[dashboard] no LC agent for key: ${key} (${shiftList.map(s=>s.employee).join("/")})`);
         continue;
       }
-      try {
-        const d = await lcPost("list_archives", {
-          filters: { from: lcFrom, to: lcTo, agents: { values: [agentId] } },
-          limit: 1,
-        });
-        const total = d.found_chats ?? d.total_chats ?? 0;
-        console.log(`[dashboard] ${empName} (${agentId}): ${total}`);
-        empTotals.push({ empName, total });
-      } catch(e) {
-        console.log(`[dashboard] error for ${empName}:`, e.message);
-        empTotals.push({ empName, total: 0 });
+
+      if (shiftList.length === 1) {
+        // Single employee → one fast call
+        try {
+          const d = await lcPost("list_archives", {
+            filters: { from: lcFrom, to: lcTo, agents: { values: [agentEmail] } },
+            limit: 1,
+          });
+          const total = d.found_chats ?? 0;
+          const empName = shiftList[0].employee;
+          if (total > 0) emp[empName] = { total, reviewed: 0, scores: [], resolved: 0 };
+          console.log(`[dashboard] ${empName}: ${total}`);
+        } catch(e) {
+          console.log(`[dashboard] error ${shiftList[0].employee}:`, e.message);
+        }
+      } else {
+        // Shared account → paginate and split by shift time
+        console.log(`[dashboard] shared ${key}: ${shiftList.map(s=>s.employee).join("/")} — paginating`);
+        let pid = null;
+        do {
+          const body = pid
+            ? { page_id: pid }
+            : { filters: { from: lcFrom, to: lcTo, agents: { values: [agentEmail] } }, limit: 100 };
+          const data = await lcPost("list_archives", body);
+          pid = data.next_page_id || null;
+          for (const c of data.chats || []) {
+            const thread = c.thread || (c.threads?.[0]) || {};
+            const chatTime = thread.created_at || c.created_at;
+            const empName = empAtTime(shiftList, chatTime);
+            if (!emp[empName]) emp[empName] = { total: 0, reviewed: 0, scores: [], resolved: 0 };
+            emp[empName].total++;
+          }
+        } while (pid);
+        shiftList.forEach(s => console.log(`[dashboard] ${s.employee}: ${emp[s.employee]?.total ?? 0}`));
       }
     }
 
-    // Build emp map — only include employees who had at least 1 chat
-    const emp = {};
-    for (const { empName, total } of empTotals) {
-      if (total > 0) emp[empName] = { total, reviewed: 0, scores: [], resolved: 0 };
-    }
     console.log("[dashboard] employee totals:", Object.entries(emp).map(([n,d])=>`${n}:${d.total}`).join(", "));
-    console.log("[dashboard] no agentId for:", uniqueEmps.filter(e => !empToAgentId[e]).join(", "));
 
-    // Scores/reviews: from our database filtered by month
+    // Scores/reviews from database filtered by month
     for (const rv of Object.values(reviews)) {
       if (!rv || rv.skipped) continue;
       const chatMonth = (rv._chat_date || "").slice(0, 7);
