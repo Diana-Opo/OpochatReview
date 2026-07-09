@@ -307,10 +307,12 @@ async function loadChats(pageId) {
       setChartLoading(true);
       fetchAllPagesForStats(data.next_page_id, from, to, agentId).finally(() => {
         setStatsLoading(false);
-        setChartLoading(false);
-        updateStats();
-        renderTable();
-        updateChart();
+        if (!document.getElementById("page-chats")?.classList.contains("hidden")) {
+          setChartLoading(false);
+          updateStats();
+          renderTable();
+          updateChart();
+        }
       });
     } else {
       updateStats();
@@ -982,6 +984,9 @@ function updatePagination() {
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 async function loadDashboard() {
+  // Destroy old chart immediately so background Chat Review fetch can't resurrect it
+  if (agentChart) { agentChart.destroy(); agentChart = null; }
+
   const now = new Date();
   const month = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
   const label = now.toLocaleString("en-US", { month: "long", year: "numeric" });
@@ -1009,7 +1014,6 @@ async function loadDashboard() {
 
     // Chart
     setChartLoading(false);
-    if (agentChart) agentChart.destroy();
     const ctx = document.getElementById("agentChart").getContext("2d");
     const emps = d.employees;
     const labels = emps.map(e => e.name);
