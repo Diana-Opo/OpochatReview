@@ -1682,7 +1682,8 @@ app.post("/api/reports/generate", authMiddleware, adminOnly, async (req, res) =>
     let reviewedChats = 0, missedChats = 0, resolvedCount = 0;
     let totalDurSec = 0, durCount = 0, totalFirstResSec = 0, firstResCount = 0;
     const weekData = {};
-    const allIssues = [], allStrengths = [];
+    const allNotes = [];
+    let chatsInShift = 0;
 
     for (const chat of allMonthChats) {
       const thread = chat.thread || (Array.isArray(chat.threads) ? chat.threads[0] : null) || {};
@@ -1693,6 +1694,7 @@ app.post("/api/reports/generate", authMiddleware, adminOnly, async (req, res) =>
       // Filter by shift hours
       const h = getTehranHourFromIso(startedAt);
       if (h < shift.start || h >= shift.end) continue;
+      chatsInShift++;
 
       // Chat duration
       if (endedAt) {
@@ -1721,14 +1723,13 @@ app.post("/api/reports/generate", authMiddleware, adminOnly, async (req, res) =>
         missedChats++;
       }
 
-      // Find review
-      const reviewKey = thread.id || chat.id;
-      const review = reviews[reviewKey];
+      // Find review — try thread.id first, fallback to chat.id
+      const review = reviews[thread.id] || reviews[chat.id];
       if (!review || review.skipped) continue;
       reviewedChats++;
       if (review.resolved) resolvedCount++;
 
-      // Get agent-specific score
+      // Get agent-specific score: prefer per_agent match, fall back to overall
       let ar = review;
       if (review.per_agent_reviews) {
         const pr = Object.values(review.per_agent_reviews).find(r =>
@@ -1737,34 +1738,35 @@ app.post("/api/reports/generate", authMiddleware, adminOnly, async (req, res) =>
         if (pr) ar = pr;
       }
 
-      const scoreMap = { overall: ar.overall_score, response_time: ar.response_time_score, tone: ar.tone_score,
+      const scoreMap = {
+        overall: ar.overall_score, response_time: ar.response_time_score, tone: ar.tone_score,
         accuracy: ar.accuracy_score, resolution: ar.resolution_score, compliance: ar.compliance_score,
-        product_knowledge: ar.product_knowledge_score, satisfaction: ar.satisfaction_score, language: ar.language_score };
+        product_knowledge: ar.product_knowledge_score, satisfaction: ar.satisfaction_score, language: ar.language_score
+      };
       for (const [k, v] of Object.entries(scoreMap)) {
         if (v != null && v > 0) { sums[k] += v; cnts[k]++; }
       }
 
-      // Weekly trend (by week-of-month)
+      // Weekly trend
       const dayOfMonth = new Date(startedAt).getDate();
       const weekLabel = `Week ${Math.ceil(dayOfMonth / 7)}`;
       if (!weekData[weekLabel]) weekData[weekLabel] = { sum: 0, cnt: 0 };
-      if (ar.overall_score != null) { weekData[weekLabel].sum += ar.overall_score; weekData[weekLabel].cnt++; }
+      if (ar.overall_score != null && ar.overall_score > 0) {
+        weekData[weekLabel].sum += ar.overall_score; weekData[weekLabel].cnt++;
+      }
 
-      if (ar.issues) allIssues.push(...(Array.isArray(ar.issues) ? ar.issues : [ar.issues]).filter(Boolean));
-      if (ar.strengths) allStrengths.push(...(Array.isArray(ar.strengths) ? ar.strengths : [ar.strengths]).filter(Boolean));
+      // Collect notes for summary
+      if (ar.notes) allNotes.push(ar.notes);
     }
 
     const avgScores = Object.fromEntries(scoreFields.map(f => [f, cnts[f] > 0 ? +(sums[f]/cnts[f]).toFixed(2) : null]));
-
-    // Top issues/strengths by frequency
-    const freq = arr => [...arr.reduce((m, v) => m.set(v, (m.get(v)||0)+1), new Map())]
-      .sort((a,b) => b[1]-a[1]).map(([v]) => v);
 
     const report = {
       employee, agent_key: shift.agentKey, month,
       generated_at: new Date().toISOString(),
       generated_by: req.user.username,
       total_chats: totalChats,
+      chats_in_shift: chatsInShift,
       reviewed_chats: reviewedChats,
       missed_chats: missedChats,
       resolved_count: resolvedCount,
@@ -1774,8 +1776,9 @@ app.post("/api/reports/generate", authMiddleware, adminOnly, async (req, res) =>
         .map(([label, d]) => ({ label, avg: d.cnt > 0 ? +(d.sum/d.cnt).toFixed(2) : null, count: d.cnt })),
       avg_chat_duration_sec: durCount > 0 ? Math.round(totalDurSec/durCount) : null,
       avg_first_response_sec: firstResCount > 0 ? Math.round(totalFirstResSec/firstResCount) : null,
-      top_issues: freq(allIssues).slice(0, 5),
-      top_strengths: freq(allStrengths).slice(0, 3),
+      review_notes: allNotes,
+      top_issues: [],
+      top_strengths: [],
       admin_notes: "",
     };
 

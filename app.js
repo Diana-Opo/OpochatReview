@@ -1295,16 +1295,25 @@ function renderReportView(r) {
      </div>`
   ).join("");
 
+  const noReviewWarning = r.reviewed_chats === 0 && (r.chats_in_shift ?? r.total_chats) > 0
+    ? `<div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+        <span class="font-semibold">No reviewed chats found.</span>
+        ${r.chats_in_shift != null ? ` ${r.chats_in_shift} chat${r.chats_in_shift!==1?"s":""} found in shift hours` : ""}
+        — review chats first using the Chat Review page, then regenerate this report.
+       </div>` : "";
+
   return `<div class="space-y-5">
+    ${noReviewWarning}
     <div class="flex flex-wrap gap-3">
       ${[
-        ["Total Chats",   r.total_chats,          "text-blue-600"],
-        ["Reviewed",      r.reviewed_chats,        "text-purple-600"],
-        ["Missed",        r.missed_chats,          "text-red-500"],
-        ["Resolved",      (r.resolved_rate??0)+"%","text-green-600"],
+        ["Total Chats",   r.total_chats,                        "text-blue-600"],
+        ["In Shift",      r.chats_in_shift ?? "—",              "text-gray-600"],
+        ["Reviewed",      r.reviewed_chats,                     "text-purple-600"],
+        ["Missed",        r.missed_chats,                       "text-red-500"],
+        ["Resolved",      (r.resolved_rate??0)+"%",             "text-green-600"],
         ["Avg Duration",  fmtDuration(r.avg_chat_duration_sec), "text-gray-700"],
         ["First Response",fmtDuration(r.avg_first_response_sec),"text-gray-700"],
-      ].map(([l,v,c]) => `<div class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-center min-w-[90px]">
+      ].map(([l,v,c]) => `<div class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-center min-w-[80px]">
         <div class="text-xs text-gray-400 mb-1">${l}</div>
         <div class="text-xl font-black ${c}">${v ?? "—"}</div>
       </div>`).join("")}
@@ -1332,14 +1341,11 @@ function renderReportView(r) {
       <div class="flex gap-6 justify-around">${trend}</div>
     </div>` : ""}
 
-    ${r.top_issues?.length ? `<div class="bg-red-50 border border-red-100 rounded-xl p-4">
-      <p class="text-xs font-semibold text-red-600 uppercase mb-2">Common Issues</p>
-      <ul class="space-y-1">${r.top_issues.map(i => `<li class="text-xs text-red-700">• ${escHtml(i)}</li>`).join("")}</ul>
-    </div>` : ""}
-
-    ${r.top_strengths?.length ? `<div class="bg-green-50 border border-green-100 rounded-xl p-4">
-      <p class="text-xs font-semibold text-green-600 uppercase mb-2">Strengths</p>
-      <ul class="space-y-1">${r.top_strengths.map(i => `<li class="text-xs text-green-700">• ${escHtml(i)}</li>`).join("")}</ul>
+    ${r.review_notes?.length ? `<div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+      <p class="text-xs font-semibold text-gray-500 uppercase mb-3">Review Notes (${r.review_notes.length})</p>
+      <div class="space-y-2 max-h-48 overflow-y-auto pr-1">
+        ${r.review_notes.map((n,i) => `<div class="text-xs text-gray-600 border-l-2 border-gray-300 pl-2">${escHtml(n)}</div>`).join("")}
+      </div>
     </div>` : ""}
 
     <div class="bg-blue-50 border border-blue-100 rounded-xl p-4">
@@ -1598,12 +1604,13 @@ function downloadReportPdf() {
   <div class="hdr-badge">Generated ${new Date(r.generated_at).toLocaleDateString()}</div>
 </div>
 
-<div class="stats">
+<div class="stats" style="grid-template-columns:repeat(7,1fr)">
   ${[
-    ["Total Chats",    r.total_chats,                    "#2563eb"],
-    ["Reviewed",       r.reviewed_chats,                 "#7c3aed"],
-    ["Missed",         r.missed_chats,                   "#dc2626"],
-    ["Resolved",       (r.resolved_rate ?? 0) + "%",     "#16a34a"],
+    ["Total Chats",    r.total_chats,                         "#2563eb"],
+    ["In Shift",       r.chats_in_shift ?? "—",               "#374151"],
+    ["Reviewed",       r.reviewed_chats,                      "#7c3aed"],
+    ["Missed",         r.missed_chats,                        "#dc2626"],
+    ["Resolved",       (r.resolved_rate ?? 0) + "%",          "#16a34a"],
     ["Avg Duration",   fmtDuration(r.avg_chat_duration_sec),  "#374151"],
     ["First Response", fmtDuration(r.avg_first_response_sec), "#374151"],
   ].map(([l,v,c]) => `<div class="stat">
@@ -1637,14 +1644,9 @@ function downloadReportPdf() {
       </div>
     </div>` : ""}
 
-    ${r.top_issues?.length ? `<div class="sec" style="margin-top:10px">
-      <div class="sec-title">Common Issues</div>
-      <ul>${r.top_issues.map(i => `<li style="color:#dc2626">${escHtml(i)}</li>`).join("")}</ul>
-    </div>` : ""}
-
-    ${r.top_strengths?.length ? `<div class="sec" style="margin-top:10px">
-      <div class="sec-title">Strengths</div>
-      <ul>${r.top_strengths.map(i => `<li style="color:#16a34a">${escHtml(i)}</li>`).join("")}</ul>
+    ${r.review_notes?.length ? `<div class="sec" style="margin-top:10px">
+      <div class="sec-title">Review Notes (${r.review_notes.length})</div>
+      <ul>${r.review_notes.slice(0,8).map(n => `<li style="color:#374151;margin-bottom:4px">${escHtml(n)}</li>`).join("")}</ul>
     </div>` : ""}
 
     ${r.admin_notes ? `<div class="sec" style="margin-top:10px">
