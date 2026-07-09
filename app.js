@@ -1009,8 +1009,11 @@ async function loadDashboard() {
     setChartLoading(false);
     if (agentChart) agentChart.destroy();
     const ctx = document.getElementById("agentChart").getContext("2d");
-    const labels = d.employees.map(e => e.name);
-    const scores = d.employees.map(e => e.avg_score ?? 0);
+    const emps = d.employees;
+    const labels = emps.map(e => e.name);
+    const scores = emps.map(e => e.avg_score ?? 0);
+    const totals = emps.map(e => e.total ?? 0);
+    const reviewed = emps.map(e => e.reviewed ?? 0);
     const colors = scores.map(s => s >= 7 ? "#22c55e" : s >= 5 ? "#eab308" : "#ef4444");
     agentChart = new Chart(ctx, {
       type: "bar",
@@ -1025,11 +1028,25 @@ async function loadDashboard() {
         },
         plugins: {
           legend: { display: false },
-          tooltip: { callbacks: { label: ctx => `Score: ${ctx.parsed.y.toFixed(1)}  |  Reviewed: ${d.employees[ctx.dataIndex]?.total}` } },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const i = ctx.dataIndex;
+                const lines = [];
+                if (scores[i] > 0) lines.push(`Score: ${scores[i].toFixed(1)}`);
+                lines.push(`Total Chats: ${totals[i]}`);
+                if (reviewed[i] > 0) lines.push(`Reviewed: ${reviewed[i]}`);
+                return lines;
+              },
+            },
+          },
           datalabels: {
             anchor: "end", align: "end", offset: 2,
             color: "#374151", font: { weight: "bold", size: 12 },
-            formatter: v => v > 0 ? v.toFixed(1) : "—",
+            formatter: (v, ctx) => {
+              const i = ctx.dataIndex;
+              return (v > 0 ? v.toFixed(1) + "\n" : "") + `(${totals[i]})`;
+            },
           },
         },
       },

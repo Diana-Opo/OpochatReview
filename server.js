@@ -1419,74 +1419,87 @@ app.get("/api/stats", async (req, res) => {
 });
 
 // Dashboard stats for a given month (default: current month)
+// Fetches all chats from LiveChat + joins with reviews DB for accurate per-employee stats
 app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
   try {
-    const month = req.query.month || new Date().toISOString().slice(0, 7); // YYYY-MM
-    const shifts = await loadShifts();
+    const month = req.query.month || new Date().toISOString().slice(0, 7);
+    const [y, m] = month.split("-").map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    const dateFrom = `${month}-01`;
+    const dateTo   = `${month}-${String(lastDay).padStart(2,"0")}`;
 
-    let rows = [];
-    if (pool) {
-      const [y, m] = month.split("-").map(Number);
-      const nextMonth = m === 12 ? `${y+1}-01` : `${y}-${String(m+1).padStart(2,"0")}`;
-      const r = await pool.query(
-        `SELECT data FROM reviews WHERE updated_at >= $1 AND updated_at < $2`,
-        [`${month}-01`, `${nextMonth}-01`]
-      );
-      rows = r.rows.map(row => row.data);
-    } else {
-      const reviews = await loadReviews();
-      rows = Object.values(reviews);
-    }
+    const [reviews, shifts] = await Promise.all([loadReviews(), loadShifts()]);
 
-    // Map agent name → employee via shifts
-    function agentToEmployee(agentName) {
-      if (!agentName) return agentName;
+    // Map agent name → employee via shifts (same logic as frontend)
+    function agentToEmployee(agentName, dateStr) {
+      if (!agentName) return null;
       const lower = agentName.toLowerCase().trim();
       const first = lower.split(" ")[0];
-      const s = shifts.find(s => s.agentKey === lower || s.agentKey === first);
-      return s ? s.employee : agentName;
+      const hour = dateStr ? new Date(dateStr).getUTCHours() + 3.5 : -1; // approx Tehran
+      const byHour = shifts.find(s => (s.agentKey === lower || s.agentKey === first) && hour >= s.start && hour < s.end);
+      if (byHour) return byHour.employee;
+      const anyShift = shifts.find(s => s.agentKey === lower || s.agentKey === first);
+      return anyShift ? anyShift.employee : agentName;
     }
 
-    const byEmployee = {};
-    let totalReviewed = 0, totalResolved = 0;
-    const allScores = [];
+    // Fetch all pages from LiveChat for the month
+    const byEmployee = {}; // employee → { total, reviewedScores, resolved }
+    let totalChats = 0;
+    let pageId = null;
+    let firstPage = true;
 
-    for (const data of rows) {
-      if (!data || data.skipped) continue;
-      const empName = agentToEmployee(data._agent_name);
-      if (!byEmployee[empName]) byEmployee[empName] = { scores: [], resolved: 0, total: 0 };
-      const score = data.overall_score;
-      if (score != null && score > 0) {
-        byEmployee[empName].scores.push(score);
-        allScores.push(score);
+    do {
+      const body = pageId
+        ? { page_id: pageId }
+        : { filters: { from: dateFrom, to: dateTo }, limit: 100 };
+      const data = await lcPost("list_archives", body);
+      const chats = data.chats || [];
+      if (firstPage) { totalChats = data.found_chats ?? data.total_chats ?? chats.length; firstPage = false; }
+      pageId = data.next_page_id || null;
+
+      for (const c of chats) {
+        const thread = c.thread || (Array.isArray(c.threads) ? c.threads[0] : null) || {};
+        const users  = c.users || [];
+        const events = thread.events || [];
+        const startedAt = thread.created_at || null;
+
+        // Determine primary agent (same logic as /api/chats)
+        const assigneeId = thread?.assignee?.id;
+        const activeAgentId = events.find(e => {
+          const u = users.find(u2 => u2.id === e.author_id);
+          return u && u.type === "agent";
+        })?.author_id;
+        const agentUser = (assigneeId ? users.find(u => u.id === assigneeId) : null)
+          || (activeAgentId ? users.find(u => u.id === activeAgentId) : null);
+        if (!agentUser) continue;
+
+        const empName = agentToEmployee(agentUser.name, startedAt) || agentUser.name;
+        if (!byEmployee[empName]) byEmployee[empName] = { total: 0, scores: [], resolved: 0, reviewed: 0 };
+        byEmployee[empName].total++;
+
+        const review = reviews[thread.id] || reviews[c.id];
+        if (review && !review.skipped) {
+          byEmployee[empName].reviewed++;
+          if (review.overall_score > 0) byEmployee[empName].scores.push(review.overall_score);
+          if (review.resolved) byEmployee[empName].resolved++;
+        }
       }
-      if (data.resolved) { byEmployee[empName].resolved++; totalResolved++; }
-      byEmployee[empName].total++;
-      totalReviewed++;
-    }
+    } while (pageId);
+
+    const allScores = Object.values(byEmployee).flatMap(e => e.scores);
+    const totalReviewed = Object.values(byEmployee).reduce((s, e) => s + e.reviewed, 0);
+    const totalResolved = Object.values(byEmployee).reduce((s, e) => s + e.resolved, 0);
+    const avgScore = allScores.length ? +(allScores.reduce((a,b)=>a+b,0)/allScores.length).toFixed(1) : null;
 
     const employees = Object.entries(byEmployee)
-      .sort(([a], [b]) => a.localeCompare(b))
+      .sort(([a],[b]) => a.localeCompare(b))
       .map(([name, d]) => ({
         name,
         total: d.total,
+        reviewed: d.reviewed,
         avg_score: d.scores.length ? +(d.scores.reduce((a,b)=>a+b,0)/d.scores.length).toFixed(2) : null,
         resolved: d.resolved,
       }));
-
-    const avgScore = allScores.length ? +(allScores.reduce((a,b)=>a+b,0)/allScores.length).toFixed(1) : null;
-
-    // Lightweight LiveChat call — just to get found_chats count for current month
-    let totalChats = null;
-    try {
-      const [y, m] = month.split("-").map(Number);
-      const lastDay = new Date(y, m, 0).getDate();
-      const lcData = await lcPost("list_archives", {
-        filters: { from: `${month}-01T00:00:00Z`, to: `${month}-${String(lastDay).padStart(2,"0")}T23:59:59Z` },
-        limit: 1,
-      });
-      totalChats = lcData.found_chats ?? lcData.total_chats ?? null;
-    } catch {}
 
     res.json({ month, total_chats: totalChats, total_reviewed: totalReviewed, total_resolved: totalResolved, avg_score: avgScore, employees });
   } catch (e) { res.status(500).json({ error: e.message }); }
