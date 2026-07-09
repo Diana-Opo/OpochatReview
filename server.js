@@ -1400,14 +1400,45 @@ app.post("/api/review/:chatId", authMiddleware, async (req, res) => {
 
     // Server-side language penalty override — do not rely on Claude to apply it
     console.log(`[lang] prechatLang=${detectPrechatLanguage(events)} violations=${[...langViolations.entries()].map(([k,v])=>`${k}:${v.prechatLang}->${v.agentLang}`).join(',') || 'none'} agentCount=${agentCount}`);
+    // Agents who were in raw violations but filtered out = they can't speak customer's language → transfer was correct
+    const langCannotSpeak = new Set([...langViolationsRaw.keys()].filter(k => !langViolations.has(k)));
+
     if (agentCount > 1) {
       const perAgent = {};
       for (const [agentId, promise] of Object.entries(agentPromises)) {
         let ar = await promise;
-        // Try exact name, then first-word match
         const nameKey = (ar.agent_name || "").toLowerCase();
-        const v = langViolations.get(nameKey) || [...langViolations.entries()].find(([k]) => nameKey.startsWith(k) || k.startsWith(nameKey.split(" ")[0]))?.[1];
-        if (v) { ar = applyLanguagePenalty(ar, ar.agent_name, v); console.log(`[lang] penalty applied to ${ar.agent_name}`); }
+        // Check if agent cannot speak customer's language (filtered out from violations)
+        const cannotSpeak = langCannotSpeak.has(nameKey) ||
+          [...langCannotSpeak].some(k => nameKey.startsWith(k) || k.startsWith(nameKey.split(" ")[0]));
+        if (cannotSpeak) {
+          // Agent correctly transferred — override ALL scores to 10, only keep response_time
+          ar = {
+            ...ar,
+            accuracy_score: 10,
+            resolution_score: 10,
+            compliance_score: 10,
+            product_knowledge_score: 10,
+            satisfaction_score: 10,
+            language_score: 10,
+            tone_score: 10,
+            overall_score: Math.max(ar.overall_score || 0, 8),
+            accuracy_notes: "Agent correctly transferred chat — cannot evaluate content in unsupported language.",
+            resolution_notes: "Transfer to correct department is the complete resolution.",
+            compliance_notes: "Transferring was the only and correct action.",
+            product_knowledge_notes: "Cannot evaluate — agent does not support customer's language.",
+            satisfaction_notes: "Agent did the only thing they could do — transfer was correct.",
+            language_notes: "Agent correctly identified language barrier and transferred.",
+            tone_notes: ar.tone_notes,
+            issues: null,
+            _lang_transfer_override: true,
+          };
+          console.log(`[lang] transfer override applied to ${ar.agent_name}`);
+        } else {
+          // Check if violation exists (agent CAN speak language but didn't)
+          const v = langViolations.get(nameKey) || [...langViolations.entries()].find(([k]) => nameKey.startsWith(k) || k.startsWith(nameKey.split(" ")[0]))?.[1];
+          if (v) { ar = applyLanguagePenalty(ar, ar.agent_name, v); console.log(`[lang] penalty applied to ${ar.agent_name}`); }
+        }
         perAgent[agentId] = ar;
       }
       review.per_agent_reviews = perAgent;
