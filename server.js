@@ -903,13 +903,14 @@ LANGUAGE EVALUATION — DO THIS BEFORE SCORING ANYTHING:
   The agent is UNABLE to handle this chat. Transferring is the ONLY correct action.
 
   IF the agent informed the customer and transferred the chat:
-    → This is a PERFECT handling. Score accordingly:
-    → compliance_score: do NOT deduct anything — transfer was the correct action
-    → resolution_score: do NOT deduct anything — issue is now the receiving agent's responsibility
-    → tone_score: score based ONLY on how politely and professionally the agent communicated, NOT on the language barrier
-    → language_score: do NOT deduct — the agent cannot be expected to respond in a language outside their list
-    → satisfaction_score: do NOT deduct — the agent did everything they could
-    → Do NOT mention "unresolved", "no solution", "language mismatch" as issues in this case.
+    → This is a PERFECT and COMPLETE handling. The agent did the ONLY thing they could do.
+    → compliance_score: do NOT deduct — transferring was the correct and only action
+    → resolution_score: do NOT deduct — the issue is now the receiving team's responsibility; transfer IS the resolution
+    → product_knowledge_score: do NOT deduct — the agent cannot be expected to answer questions in a language they do not support; not answering the question and transferring IS the correct handling
+    → tone_score: score ONLY on politeness and professionalism of the agent's own messages
+    → language_score: do NOT deduct — agent cannot respond in a language outside their list
+    → satisfaction_score: do NOT deduct — agent did everything within their power
+    → Do NOT flag "no answer given", "issue unresolved", "did not address the question", "limited product knowledge" as issues — the agent had no other option.
     → ABSOLUTELY DO NOT apply the CRITICAL VIOLATION penalties below. They do not apply here.
 
   IF the agent did NOT transfer and instead tried to respond in the wrong language or stayed without acting:
