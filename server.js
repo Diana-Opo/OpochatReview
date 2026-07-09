@@ -1418,6 +1418,68 @@ app.get("/api/stats", async (req, res) => {
   res.json(result);
 });
 
+// Dashboard stats for a given month (default: current month)
+app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
+  try {
+    const month = req.query.month || new Date().toISOString().slice(0, 7); // YYYY-MM
+    const shifts = await loadShifts();
+
+    let rows = [];
+    if (pool) {
+      const [y, m] = month.split("-").map(Number);
+      const nextMonth = m === 12 ? `${y+1}-01` : `${y}-${String(m+1).padStart(2,"0")}`;
+      const r = await pool.query(
+        `SELECT data FROM reviews WHERE updated_at >= $1 AND updated_at < $2`,
+        [`${month}-01`, `${nextMonth}-01`]
+      );
+      rows = r.rows.map(row => row.data);
+    } else {
+      const reviews = await loadReviews();
+      rows = Object.values(reviews);
+    }
+
+    // Map agent name → employee via shifts
+    function agentToEmployee(agentName) {
+      if (!agentName) return agentName;
+      const lower = agentName.toLowerCase().trim();
+      const first = lower.split(" ")[0];
+      const s = shifts.find(s => s.agentKey === lower || s.agentKey === first);
+      return s ? s.employee : agentName;
+    }
+
+    const byEmployee = {};
+    let totalReviewed = 0, totalResolved = 0;
+    const allScores = [];
+
+    for (const data of rows) {
+      if (!data || data.skipped) continue;
+      const empName = agentToEmployee(data._agent_name);
+      if (!byEmployee[empName]) byEmployee[empName] = { scores: [], resolved: 0, total: 0 };
+      const score = data.overall_score;
+      if (score != null && score > 0) {
+        byEmployee[empName].scores.push(score);
+        allScores.push(score);
+      }
+      if (data.resolved) { byEmployee[empName].resolved++; totalResolved++; }
+      byEmployee[empName].total++;
+      totalReviewed++;
+    }
+
+    const employees = Object.entries(byEmployee)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, d]) => ({
+        name,
+        total: d.total,
+        avg_score: d.scores.length ? +(d.scores.reduce((a,b)=>a+b,0)/d.scores.length).toFixed(2) : null,
+        resolved: d.resolved,
+      }));
+
+    const avgScore = allScores.length ? +(allScores.reduce((a,b)=>a+b,0)/allScores.length).toFixed(1) : null;
+
+    res.json({ month, total_reviewed: totalReviewed, total_resolved: totalResolved, avg_score: avgScore, employees });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Debug: show exact agent names from LiveChat
 app.get("/api/agent-names", async (req, res) => {
   try {

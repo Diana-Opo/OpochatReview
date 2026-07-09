@@ -146,6 +146,7 @@ function showPage(name) {
     activeBtn.classList.add("bg-slate-700", "text-white");
     activeBtn.classList.remove("text-slate-300");
   }
+  if (name === "dashboard") loadDashboard();
   if (name === "reports") openReports();
   if (name === "employees") openSettings();
   localStorage.setItem("lastPage", name);
@@ -964,6 +965,71 @@ function updateChart() {
 
 function updatePagination() {
   // Pagination hidden from UI — all pages load automatically in background
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  const now = new Date();
+  const month = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+  const label = now.toLocaleString("en-US", { month: "long", year: "numeric" });
+
+  // Update header
+  const hdr = document.querySelector("#page-dashboard .px-6.py-4 h2");
+  if (hdr) hdr.textContent = `Dashboard — ${label}`;
+
+  // Loading state
+  ["statTotal","statReviewed","statAvg","statResolved"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = `<span class="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin align-middle"></span>`;
+  });
+  setChartLoading(true);
+
+  try {
+    const res = await authFetch(`/api/dashboard-stats?month=${month}`);
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+
+    document.getElementById("statTotal").textContent = "—";
+    document.getElementById("statReviewed").textContent = d.total_reviewed ?? "—";
+    document.getElementById("statAvg").textContent = d.avg_score != null ? d.avg_score + "/10" : "—";
+    document.getElementById("statResolved").textContent = d.total_resolved ?? "—";
+
+    // Chart
+    setChartLoading(false);
+    if (agentChart) agentChart.destroy();
+    const ctx = document.getElementById("agentChart").getContext("2d");
+    const labels = d.employees.map(e => e.name);
+    const scores = d.employees.map(e => e.avg_score ?? 0);
+    const colors = scores.map(s => s >= 7 ? "#22c55e" : s >= 5 ? "#eab308" : "#ef4444");
+    agentChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [{ label: "Avg Score", data: scores, backgroundColor: colors, borderRadius: 6 }],
+      },
+      options: {
+        scales: {
+          y: { min: 0, max: 10, grid: { color: "#f1f5f9" } },
+          x: { grid: { display: false } },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => `Score: ${ctx.parsed.y.toFixed(1)}  |  Reviewed: ${d.employees[ctx.dataIndex]?.total}` } },
+          datalabels: {
+            anchor: "end", align: "end", offset: 2,
+            color: "#374151", font: { weight: "bold", size: 12 },
+            formatter: v => v > 0 ? v.toFixed(1) : "—",
+          },
+        },
+      },
+      plugins: [ChartDataLabels],
+    });
+  } catch (e) {
+    setChartLoading(false);
+    ["statTotal","statReviewed","statAvg","statResolved"].forEach(id => {
+      const el = document.getElementById(id); if (el) el.textContent = "—";
+    });
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
