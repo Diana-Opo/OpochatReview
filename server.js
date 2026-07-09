@@ -1485,7 +1485,7 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       }
       try {
         const d = await lcPost("list_archives", {
-          filters: { from: lcFrom, to: lcTo, agents: [{ id: agentId }] },
+          filters: { from: lcFrom, to: lcTo, agents: { values: [agentId] } },
           limit: 1,
         });
         const total = d.found_chats ?? d.total_chats ?? 0;
