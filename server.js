@@ -1441,27 +1441,16 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
     const lcFrom = `${month}-01T00:00:00.000000+00:00`;
     const lcTo   = `${month}-${String(lastDay).padStart(2,"0")}T23:59:59.999999+00:00`;
 
-    const [reviews, shifts, agentsRaw] = await Promise.all([
-      loadReviews(),
-      loadShifts(),
-      lcPost("list_agents", {}, LC_CONFIG_API),
-    ]);
+    const [reviews, shifts] = await Promise.all([loadReviews(), loadShifts()]);
 
-    // Build set of active agent IDs (exclude suspended / deactivated)
-    const rawList = Array.isArray(agentsRaw) ? agentsRaw
-      : Array.isArray(agentsRaw?.agents) ? agentsRaw.agents
-      : Object.values(agentsRaw || {}).find(v => Array.isArray(v)) || [];
-    const activeAgentIds = new Set(
-      rawList.filter(a => !a.suspended).map(a => a.id)
-    );
-
-    // agent name → employee display name (via shifts table)
+    // Only count agents who are mapped in shifts table (= active employees)
+    // Suspended/deactivated agents not in shifts are excluded automatically
     function toEmp(agentName) {
       if (!agentName) return null;
       const low = agentName.toLowerCase().trim();
       const fst = low.split(" ")[0];
       const s = shifts.find(s => s.agentKey === low || s.agentKey === fst);
-      return s ? s.employee : agentName;
+      return s ? s.employee : null;
     }
 
     // per employee: { total, reviewed, scores[], resolved }
@@ -1484,8 +1473,8 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
         const users  = c.users || [];
         const events = thread.events || [];
 
-        // Count total chats for EVERY active agent who participated
-        const agentUsers = users.filter(u => u.type === "agent" && activeAgentIds.has(u.id));
+        // Count total chats for every agent mapped in shifts (active employees only)
+        const agentUsers = users.filter(u => u.type === "agent");
         for (const a of agentUsers) {
           const n = toEmp(a.name);
           if (!n) continue;
@@ -1493,10 +1482,10 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
           emp[n].total++;
         }
 
-        // Review/score attribution: primary active agent only
+        // Review/score attribution: primary agent only (must be mapped in shifts)
         const assigneeId = thread?.assignee?.id;
-        const firstAgentId = events.find(e => users.find(u => u.id === e.author_id && u.type === "agent" && activeAgentIds.has(u.id)))?.author_id;
-        const agent = (assigneeId && activeAgentIds.has(assigneeId) ? users.find(u => u.id === assigneeId) : null)
+        const firstAgentId = events.find(e => users.find(u => u.id === e.author_id && u.type === "agent"))?.author_id;
+        const agent = (assigneeId ? users.find(u => u.id === assigneeId) : null)
                    || (firstAgentId ? users.find(u => u.id === firstAgentId) : null);
         if (!agent) continue;
 
