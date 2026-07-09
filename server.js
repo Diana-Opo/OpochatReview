@@ -814,8 +814,8 @@ TAG CLARIFICATIONS (commonly confused tags — follow these exactly):
   const langList = agentLanguages.length > 0 ? agentLanguages.join(", ") : null;
   const groupList = agentGroups.length > 0 ? agentGroups.join(", ") : null;
   const langRule = langList
-    ? `AGENT LANGUAGES: This agent is designated to support: ${langList}. Apply the LANGUAGE ROUTING RULE accordingly. The language_score should reflect only whether the agent communicated well in their own supported language(s).`
-    : "";
+    ? `AGENT LANGUAGES: This agent is designated to support: ${langList}. Before scoring anything language-related, check whether the customer's language is in this list. If NOT in this list → the agent must transfer, not respond → award full marks for correctly transferring. If IN this list → the agent must respond in that language → penalize if they did not.`
+    : `AGENT LANGUAGES: Not specified. Do NOT apply any language penalties — skip all language-related deductions entirely.`;
   const groupRule = groupList
     ? `AGENT DEPARTMENT: This agent belongs to the "${groupList}" department. Apply the DEPARTMENT ROUTING RULES accordingly — evaluate whether topics in this chat are in scope for this agent's department.`
     : "";
@@ -1282,18 +1282,23 @@ app.post("/api/review/:chatId", authMiddleware, async (req, res) => {
 
     const langViolationsRaw = detectLanguageViolations(events, users);
     // Remove violations for agents whose language list does not include the customer's language.
-    // If the customer's language is not in the agent's list, the agent CANNOT respond in it —
-    // transferring is correct and must never be penalized.
     const langViolations = new Map();
     for (const [agentNameKey, violation] of langViolationsRaw.entries()) {
-      const shiftEntry = shifts3.find(s => {
-        const k = agentNameKey.toLowerCase().trim();
-        return k === s.agentKey || k === s.employee.toLowerCase() || k.split(" ")[0] === s.agentKey;
-      });
+      const k = agentNameKey.toLowerCase().trim();
+      const shiftEntry = shifts3.find(s =>
+        k === s.agentKey ||
+        k === s.employee.toLowerCase() ||
+        k.split(" ")[0] === s.agentKey ||
+        s.agentKey.split(" ")[0] === k.split(" ")[0]
+      );
       const agentLangs = (shiftEntry?.languages || []).map(l => l.toLowerCase());
-      // If agent has no language list configured → cannot determine capability → do NOT penalize
-      if (agentLangs.length === 0) continue;
-      const custLang = violation.prechatLang; // e.g. "farsi", "arabic", "english"
+      const custLang = violation.prechatLang;
+      console.log(`[lang-filter] agent="${agentNameKey}" shiftFound=${!!shiftEntry} agentLangs=${JSON.stringify(agentLangs)} custLang=${custLang}`);
+      // If agent has no language list → cannot determine → do NOT penalize
+      if (agentLangs.length === 0) {
+        console.log(`[lang-filter] SKIP penalty for "${agentNameKey}" — no language list configured`);
+        continue;
+      }
       const agentCanSpeak = agentLangs.some(l =>
         (custLang === "farsi"           && (l.includes("farsi") || l.includes("persian"))) ||
         (custLang === "arabic"          && l.includes("arabic")) ||
@@ -1301,7 +1306,10 @@ app.post("/api/review/:chatId", authMiddleware, async (req, res) => {
         (custLang === "farsi_or_arabic" && (l.includes("farsi") || l.includes("persian") || l.includes("arabic")))
       );
       if (agentCanSpeak) {
+        console.log(`[lang-filter] KEEP violation for "${agentNameKey}" — can speak ${custLang}`);
         langViolations.set(agentNameKey, violation);
+      } else {
+        console.log(`[lang-filter] SKIP penalty for "${agentNameKey}" — cannot speak ${custLang}, transfer was correct`);
       }
     }
     const langViolationNote = buildLanguageViolationNote(langViolations, events);
