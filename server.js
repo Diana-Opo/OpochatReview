@@ -1637,14 +1637,30 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       if (chatMonth !== month) continue;
 
       const agentName = rv._agent_name || "";
-      const empName = toEmp(agentName);
+      const low = agentName.toLowerCase().trim();
+      const fst = low.split(" ")[0];
+
+      // For shared accounts, use chat time to find the correct employee
+      const matchingShifts = shifts.filter(s => s.agentKey === low || s.agentKey === fst || s.agentKey.split(" ")[0] === fst);
+      if (!matchingShifts.length) continue;
+
+      let empName;
+      if (matchingShifts.length === 1) {
+        empName = matchingShifts[0].employee;
+      } else {
+        // Shared account — pick by Istanbul hour of the chat
+        const chatHour = rv._chat_date ? getIstHour(rv._chat_date) : -1;
+        const matched = chatHour >= 0 ? matchingShifts.find(s => chatHour >= s.start && chatHour < s.end) : null;
+        empName = (matched || matchingShifts[0]).employee;
+      }
+
       if (!empName || !emp[empName]) continue;
 
       emp[empName].reviewed++;
       if (rv.per_agent_reviews) {
-        const fst = agentName.toLowerCase().trim().split(" ")[0];
+        // For per-agent reviews, find the score for the primary agent (agentName)
         const pr = Object.values(rv.per_agent_reviews).find(r =>
-          r?.agent_name && r.agent_name.toLowerCase().trim().startsWith(fst)
+          r?.agent_name && (r.agent_name.toLowerCase().trim().startsWith(fst) || fst.startsWith(r.agent_name.toLowerCase().trim().split(" ")[0]))
         );
         if (pr?.overall_score > 0) emp[empName].scores.push(pr.overall_score);
         if (pr?.resolved) emp[empName].resolved++;
