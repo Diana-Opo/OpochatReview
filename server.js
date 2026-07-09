@@ -1441,11 +1441,13 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
     const lcFrom = `${month}-01T00:00:00.000000+00:00`;
     const lcTo   = `${month}-${String(lastDay).padStart(2,"0")}T23:59:59.999999+00:00`;
 
-    const [reviews, shifts] = await Promise.all([loadReviews(), loadShifts()]);
+    const [reviews, shifts, agentsRaw] = await Promise.all([
+      loadReviews(),
+      loadShifts(),
+      lcPost("list_agents", {}, LC_CONFIG_API),
+    ]);
 
-    console.log("[dashboard] shifts agentKeys:", shifts.map(s => `${s.agentKey}→${s.employee}`).join(", "));
-
-    // Map agent name → employee via shifts table (null if not found = excluded)
+    // name → employee display name via shifts
     function toEmp(agentName) {
       if (!agentName) return null;
       const low = agentName.toLowerCase().trim();
@@ -1454,96 +1456,69 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       return s ? s.employee : null;
     }
 
-    const allLCAgentNames = new Set();
+    // Build employeeName → LiveChat agentId map from list_agents
+    const rawAgentList = Array.isArray(agentsRaw) ? agentsRaw
+      : Array.isArray(agentsRaw?.agents) ? agentsRaw.agents
+      : Object.values(agentsRaw || {}).find(v => Array.isArray(v)) || [];
 
-    // per employee: { total, reviewed, scores[], resolved }
+    const empToAgentId = {};
+    for (const a of rawAgentList) {
+      const n = toEmp(a.name);
+      if (n && !empToAgentId[n]) empToAgentId[n] = a.id;
+    }
+    console.log("[dashboard] empToAgentId:", JSON.stringify(empToAgentId));
+
+    // Unique employees from shifts
+    const uniqueEmps = [...new Set(shifts.map(s => s.employee))];
+
+    // Total chats from one no-filter call
+    const firstPage = await lcPost("list_archives", { filters: { from: lcFrom, to: lcTo }, limit: 1 });
+    const totalChats = firstPage.found_chats ?? firstPage.total_chats ?? 0;
+
+    // Per-employee total: one LC call each (same filter as Chat Review) — run in parallel
+    const empTotals = await Promise.all(uniqueEmps.map(async empName => {
+      const agentId = empToAgentId[empName];
+      if (!agentId) return { empName, total: 0 };
+      try {
+        const d = await lcPost("list_archives", {
+          filters: { from: lcFrom, to: lcTo, agents: [{ id: agentId }] },
+          limit: 1,
+        });
+        return { empName, total: d.found_chats ?? 0 };
+      } catch { return { empName, total: 0 }; }
+    }));
+
+    // Build emp map — only include employees who had at least 1 chat
     const emp = {};
-    let totalChats = 0;
-    let pageId = null;
-    let firstPage = true;
-    // chatId → Set of employee names already counted (each employee counted once per chat)
-    const chatEmpCounted = new Map();
-    // threadIds already processed for review attribution
-    const processedThreadIds = new Set();
-
-    do {
-      const body = pageId
-        ? { page_id: pageId }
-        : { filters: { from: lcFrom, to: lcTo }, limit: 100 };
-      const data = await lcPost("list_archives", body);
-      const chats = data.chats || [];
-      if (firstPage) { totalChats = data.found_chats ?? data.total_chats ?? 0; firstPage = false; }
-      console.log(`[dashboard] page chats=${chats.length} found=${totalChats} nextPage=${data.next_page_id||null}`);
-      pageId = data.next_page_id || null;
-
-      for (const c of chats) {
-        const thread = c.thread || (Array.isArray(c.threads) ? c.threads[0] : null) || {};
-        const users  = c.users || [];
-        const events = thread.events || [];
-        const assigneeId = thread?.assignee?.id;
-
-        // Per-chat employee tracking: same employee counted max once per chat
-        if (!chatEmpCounted.has(c.id)) chatEmpCounted.set(c.id, new Set());
-        const countedForChat = chatEmpCounted.get(c.id);
-
-        // Collect agents active in THIS thread (assignee + event authors) by name→employee
-        const agentIdsInThread = new Set();
-        if (assigneeId) agentIdsInThread.add(assigneeId);
-        for (const e of events) {
-          const u = users.find(u => u.id === e.author_id && u.type === "agent");
-          if (u) agentIdsInThread.add(u.id);
-        }
-        for (const aid of agentIdsInThread) {
-          const u = users.find(u => u.id === aid);
-          if (u?.name) allLCAgentNames.add(u.name);
-        }
-
-        for (const agentId of agentIdsInThread) {
-          const u = users.find(u => u.id === agentId);
-          if (!u) continue;
-          const n = toEmp(u.name);
-          if (!n || countedForChat.has(n)) continue;
-          countedForChat.add(n);
-          if (!emp[n]) emp[n] = { total: 0, reviewed: 0, scores: [], resolved: 0 };
-          emp[n].total++;
-        }
-
-        // Review attribution: once per thread only
-        if (processedThreadIds.has(thread.id)) continue;
-        processedThreadIds.add(thread.id);
-
-        // Primary agent: assignee first, else first agent who sent an event
-        const assigneeUser = assigneeId ? users.find(u => u.id === assigneeId) : null;
-        const firstEventAgent = events.map(e => users.find(u => u.id === e.author_id && u.type === "agent")).find(Boolean);
-        const agent = assigneeUser || firstEventAgent;
-        if (!agent) continue;
-
-        const name = toEmp(agent.name);
-        if (!name) continue;
-        if (!emp[name]) emp[name] = { total: 0, reviewed: 0, scores: [], resolved: 0 };
-
-        const rv = reviews[thread.id] || reviews[c.id];
-        if (!rv || rv.skipped) continue;
-        emp[name].reviewed++;
-
-        // score: per-agent review if multi-agent, else overall
-        let ar = rv;
-        if (rv.per_agent_reviews) {
-          const low = agent.name.toLowerCase().trim();
-          const fst = low.split(" ")[0];
-          const pr = Object.values(rv.per_agent_reviews).find(r =>
-            r?.agent_name && r.agent_name.toLowerCase().trim().startsWith(fst)
-          );
-          if (pr) ar = pr;
-        }
-        if (ar.overall_score > 0) emp[name].scores.push(ar.overall_score);
-        if (ar.resolved) emp[name].resolved++;
-      }
-    } while (pageId);
-
-    console.log("[dashboard] all LC agent names:", [...allLCAgentNames].sort().join(", "));
-    console.log("[dashboard] unmatched agents:", [...allLCAgentNames].filter(n => !toEmp(n)).sort().join(", "));
+    for (const { empName, total } of empTotals) {
+      if (total > 0) emp[empName] = { total, reviewed: 0, scores: [], resolved: 0 };
+    }
     console.log("[dashboard] employee totals:", Object.entries(emp).map(([n,d])=>`${n}:${d.total}`).join(", "));
+    console.log("[dashboard] no agentId for:", uniqueEmps.filter(e => !empToAgentId[e]).join(", "));
+
+    // Scores/reviews: from our database filtered by month
+    for (const rv of Object.values(reviews)) {
+      if (!rv || rv.skipped) continue;
+      const chatMonth = (rv._chat_date || "").slice(0, 7);
+      if (chatMonth !== month) continue;
+
+      const agentName = rv._agent_name || "";
+      const empName = toEmp(agentName);
+      if (!empName || !emp[empName]) continue;
+
+      emp[empName].reviewed++;
+      if (rv.per_agent_reviews) {
+        const fst = agentName.toLowerCase().trim().split(" ")[0];
+        const pr = Object.values(rv.per_agent_reviews).find(r =>
+          r?.agent_name && r.agent_name.toLowerCase().trim().startsWith(fst)
+        );
+        if (pr?.overall_score > 0) emp[empName].scores.push(pr.overall_score);
+        if (pr?.resolved) emp[empName].resolved++;
+      } else {
+        if (rv.overall_score > 0) emp[empName].scores.push(rv.overall_score);
+        if (rv.resolved) emp[empName].resolved++;
+      }
+    }
 
     const allScores = Object.values(emp).flatMap(e => e.scores);
     const totalReviewed = Object.values(emp).reduce((s, e) => s + e.reviewed, 0);
