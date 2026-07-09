@@ -996,6 +996,10 @@ async function loadDashboard() {
   if (hdr) hdr.textContent = `Dashboard — ${label}`;
 
   // Loading state
+  const refreshBtn = document.getElementById("btnDashboardRefresh");
+  const refreshIcon = document.getElementById("dashRefreshIcon");
+  if (refreshBtn) refreshBtn.disabled = true;
+  if (refreshIcon) refreshIcon.classList.add("animate-spin");
   ["statTotal","statReviewed","statAvg","statResolved"].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.innerHTML = `<span class="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin align-middle"></span>`;
@@ -1065,6 +1069,11 @@ async function loadDashboard() {
     });
     if (agentChart) { agentChart.destroy(); agentChart = null; }
     showStatus("Dashboard error: " + e.message, "error");
+  } finally {
+    const refreshBtn = document.getElementById("btnDashboardRefresh");
+    const refreshIcon = document.getElementById("dashRefreshIcon");
+    if (refreshBtn) refreshBtn.disabled = false;
+    if (refreshIcon) refreshIcon.classList.remove("animate-spin");
   }
 }
 
