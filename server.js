@@ -1479,7 +1479,7 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       if (shiftList.length === 1 || !chatTime) return shiftList[0].employee;
       const iranMs = new Date(chatTime).getTime() + IRAN_OFFSET_MS;
       const iranHour = (iranMs / 3600000) % 24;
-      const s = shiftList.find(s => iranHour >= s.start_hour && iranHour < s.end_hour);
+      const s = shiftList.find(s => iranHour >= s.start && iranHour < s.end);
       return (s || shiftList[0]).employee;
     }
 
