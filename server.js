@@ -1474,7 +1474,10 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
     let totalChats = 0;
     let pageId = null;
     let firstPage = true;
-    const processedChatIds = new Set(); // avoid double-counting chats with multiple threads
+    // chatId → Set of employee names already counted (each employee counted once per chat)
+    const chatEmpCounted = new Map();
+    // threadIds already processed for review attribution
+    const processedThreadIds = new Set();
 
     do {
       const body = pageId
@@ -1487,34 +1490,33 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       pageId = data.next_page_id || null;
 
       for (const c of chats) {
-        if (processedChatIds.has(c.id)) continue;
-        processedChatIds.add(c.id);
-
         const thread = c.thread || (Array.isArray(c.threads) ? c.threads[0] : null) || {};
         const users  = c.users || [];
-
-        // Collect all agents from ALL threads of this chat
-        const allThreads = Array.isArray(c.threads) ? c.threads : (c.thread ? [c.thread] : [thread]);
+        const events = thread.events || [];
         const assigneeId = thread?.assignee?.id;
-        const chatAgentIds = new Set();
-        if (assigneeId) chatAgentIds.add(assigneeId);
-        for (const t of allThreads) {
-          if (t?.assignee?.id) chatAgentIds.add(t.assignee.id);
-          for (const e of (t.events || [])) {
-            if (agentIdToEmp[e.author_id]) chatAgentIds.add(e.author_id);
-          }
+
+        // Per-chat employee tracking: same employee counted max once per chat
+        if (!chatEmpCounted.has(c.id)) chatEmpCounted.set(c.id, new Set());
+        const countedForChat = chatEmpCounted.get(c.id);
+
+        // Collect agents from THIS thread's events + assignee
+        const threadAgentIds = new Set();
+        if (assigneeId) threadAgentIds.add(assigneeId);
+        for (const e of events) {
+          if (agentIdToEmp[e.author_id]) threadAgentIds.add(e.author_id);
         }
 
-        const countedEmps = new Set();
-        for (const agentId of chatAgentIds) {
+        for (const agentId of threadAgentIds) {
           const n = agentIdToEmp[agentId];
-          if (!n || countedEmps.has(n)) continue;
-          countedEmps.add(n);
+          if (!n || countedForChat.has(n)) continue;
+          countedForChat.add(n);
           if (!emp[n]) emp[n] = { total: 0, reviewed: 0, scores: [], resolved: 0 };
           emp[n].total++;
         }
 
-        const events = thread.events || [];
+        // Review attribution: once per thread only
+        if (processedThreadIds.has(thread.id)) continue;
+        processedThreadIds.add(thread.id);
 
         // Review/score attribution: primary agent only (assignee → first event sender)
         const firstAgentId = events.find(e => agentIdToEmp[e.author_id])?.author_id;
