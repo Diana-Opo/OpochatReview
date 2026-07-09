@@ -900,21 +900,24 @@ LANGUAGE EVALUATION — DO THIS BEFORE SCORING ANYTHING:
     - If the agent's language list is not provided → skip all language penalties entirely.
 
   ── IF THE CUSTOMER'S LANGUAGE IS NOT IN THE AGENT'S LIST ──────────────────
-  The agent is UNABLE to handle this chat. Transferring is the ONLY correct action.
+  STOP. The agent cannot read or understand what the customer wrote.
+  Do NOT evaluate content, issue, product knowledge, or anything the customer said.
+  The agent has exactly ONE job: transfer the chat to the correct department.
 
-  IF the agent informed the customer and transferred the chat:
-    → This is a PERFECT and COMPLETE handling. The agent did the ONLY thing they could do.
-    → compliance_score: do NOT deduct — transferring was the correct and only action
-    → resolution_score: do NOT deduct — the issue is now the receiving team's responsibility; transfer IS the resolution
-    → product_knowledge_score: do NOT deduct — the agent cannot be expected to answer questions in a language they do not support; not answering the question and transferring IS the correct handling
-    → tone_score: score ONLY on politeness and professionalism of the agent's own messages
-    → language_score: do NOT deduct — agent cannot respond in a language outside their list
-    → satisfaction_score: do NOT deduct — agent did everything within their power
-    → Do NOT flag "no answer given", "issue unresolved", "did not address the question", "limited product knowledge" as issues — the agent had no other option.
-    → ABSOLUTELY DO NOT apply the CRITICAL VIOLATION penalties below. They do not apply here.
+  IF the agent transferred the chat:
+    → accuracy_score = 10
+    → resolution_score = 10 (transfer IS the resolution)
+    → compliance_score = 10 (transfer was the only correct action)
+    → product_knowledge_score = 10 (agent cannot understand customer's language — not evaluable)
+    → satisfaction_score = 10
+    → language_score = 10
+    → tone_score = 10
+    → response_time_score: evaluate normally (was the transfer done quickly?)
+    → overall_score: 8 or higher — the ONLY possible deduction is slow response time
+    → issues: null — do NOT list any issues about content, resolution, knowledge, or language
 
-  IF the agent did NOT transfer and instead tried to respond in the wrong language or stayed without acting:
-    → penalize compliance_score and overall_score only.
+  IF the agent did NOT transfer (ignored the barrier, responded in wrong language, or closed without transferring):
+    → penalize compliance_score and overall_score.
 
   ── IF THE CUSTOMER'S LANGUAGE IS IN THE AGENT'S LIST ──────────────────────
   The agent MUST respond in that language. If they responded in a different language:
