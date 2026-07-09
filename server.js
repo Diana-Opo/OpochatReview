@@ -1501,6 +1501,83 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Backfill _agent_name + _chat_date into existing reviews without calling Claude
+app.post("/api/backfill-agent-names", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    // Load all reviews that are missing _agent_name
+    let toFix = {};
+    if (pool) {
+      const r = await pool.query(`SELECT chat_id, data FROM reviews WHERE data->>'_agent_name' IS NULL`);
+      r.rows.forEach(row => { toFix[row.chat_id] = row.data; });
+    } else {
+      const all = await loadReviews();
+      Object.entries(all).forEach(([k, v]) => { if (v && !v._agent_name) toFix[k] = v; });
+    }
+
+    const missingIds = Object.keys(toFix);
+    if (missingIds.length === 0) return res.json({ updated: 0, message: "All reviews already have agent info" });
+
+    console.log(`[backfill] ${missingIds.length} reviews missing _agent_name — scanning LiveChat...`);
+
+    // Paginate through LiveChat archives to find matching chats
+    let updated = 0;
+    let pageId = null;
+    const remaining = new Set(missingIds);
+
+    do {
+      const body = pageId ? { page_id: pageId } : { limit: 100 };
+      const data = await lcPost("list_archives", body);
+      const chats = data.chats || [];
+      pageId = data.next_page_id || null;
+
+      for (const c of chats) {
+        const thread = c.thread || (Array.isArray(c.threads) ? c.threads[0] : null) || {};
+        const users  = c.users || [];
+        const events = thread.events || [];
+        const chatKey = thread.id || c.id;
+
+        if (!remaining.has(chatKey) && !remaining.has(c.id)) continue;
+        const matchKey = remaining.has(chatKey) ? chatKey : c.id;
+
+        const assigneeId = thread?.assignee?.id;
+        const activeAgentId = events.find(e => {
+          const u = users.find(u2 => u2.id === e.author_id);
+          return u && u.type === "agent";
+        })?.author_id;
+        const agentUser = (assigneeId ? users.find(u => u.id === assigneeId) : null)
+          || (activeAgentId ? users.find(u => u.id === activeAgentId) : null);
+
+        if (!agentUser) continue;
+
+        const review = toFix[matchKey];
+        review._agent_name = agentUser.name;
+        review._agent_id   = agentUser.id;
+        review._chat_date  = thread.created_at || null;
+
+        if (pool) {
+          await pool.query(
+            `UPDATE reviews SET data = $1, updated_at = updated_at WHERE chat_id = $2`,
+            [review, matchKey]
+          );
+        }
+        remaining.delete(matchKey);
+        updated++;
+        if (remaining.size === 0) break;
+      }
+
+      if (remaining.size === 0) break;
+    } while (pageId);
+
+    if (!pool) await saveReviews({ ...await loadReviews(), ...toFix });
+
+    console.log(`[backfill] done — updated ${updated}/${missingIds.length}`);
+    res.json({ updated, total: missingIds.length, still_missing: remaining.size });
+  } catch (e) {
+    console.error("[backfill] error:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Debug: show exact agent names from LiveChat
 app.get("/api/agent-names", async (req, res) => {
   try {

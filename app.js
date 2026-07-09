@@ -1802,3 +1802,20 @@ async function deleteThisReport(employee, month) {
     else showStatus("Error: " + (data.error || "unknown"), "error");
   });
 }
+
+async function backfillAgentNames() {
+  const btn = document.getElementById("btnBackfill");
+  if (btn) btn.textContent = "…";
+  showStatus("Fetching agent info from LiveChat — this may take a minute…", "info");
+  try {
+    const res = await authFetch("/api/backfill-agent-names", { method: "POST" });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    showStatus(`Done — updated ${data.updated} of ${data.total} reviews. Refresh dashboard.`, "success");
+    loadDashboard();
+  } catch (e) {
+    showStatus("Backfill error: " + e.message, "error");
+  } finally {
+    if (btn) btn.textContent = "⚙";
+  }
+}
