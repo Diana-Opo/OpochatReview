@@ -1510,87 +1510,154 @@ function downloadReportPdf() {
     ["Resolution", s.resolution], ["Compliance", s.compliance],
     ["Product Knowledge", s.product_knowledge], ["Satisfaction", s.satisfaction], ["Language", s.language],
   ];
-  const scoreFill = v => v == null ? "" : `<div style="background:${v>=7?"#16a34a":v>=5?"#ca8a04":"#dc2626"};height:6px;border-radius:4px;width:${(v/10)*100}%"></div>`;
   const scHex = v => v == null ? "#9ca3af" : v >= 7 ? "#16a34a" : v >= 5 ? "#ca8a04" : "#dc2626";
+  const bar = v => v == null ? "" :
+    `<div style="flex:1;height:5px;background:#f3f4f6;border-radius:3px;overflow:hidden">
+       <div style="width:${(v/10)*100}%;height:100%;background:${scHex(v)};border-radius:3px"></div>
+     </div>`;
 
   const win = window.open("", "_blank");
   if (!win) { showStatus("Allow popups to download PDF", "error"); return; }
+
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <title>${r.employee} — ${monthLabel(r.month)}</title>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:Arial,sans-serif;max-width:680px;margin:36px auto;color:#1f2937;font-size:13px}
-    h1{font-size:22px;font-weight:900;margin-bottom:2px}
-    .sub{color:#6b7280;font-size:12px;margin-bottom:24px}
-    .stats{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px}
-    .stat{border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;text-align:center;min-width:88px}
-    .stat-l{font-size:10px;color:#9ca3af;text-transform:uppercase;font-weight:600;margin-bottom:4px}
-    .stat-v{font-size:20px;font-weight:900}
-    .section{margin-bottom:18px}
-    .sec-title{font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.05em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #f3f4f6}
-    .overall{font-size:32px;font-weight:900;margin-bottom:12px}
-    .srow{display:flex;align-items:center;gap:8px;margin-bottom:7px}
-    .slabel{font-size:11px;color:#6b7280;width:140px;flex-shrink:0}
-    .sbar{flex:1;height:6px;background:#f3f4f6;border-radius:4px}
-    .sval{font-size:11px;font-weight:700;width:28px;text-align:right}
-    .trend{display:flex;gap:16px;justify-content:space-around}
-    .tw-label{font-size:10px;color:#9ca3af;text-align:center;margin-bottom:3px}
-    .tw-val{font-size:22px;font-weight:900;text-align:center}
-    .tw-cnt{font-size:10px;color:#9ca3af;text-align:center}
-    ul{list-style:none}
-    li{font-size:11px;margin-bottom:3px}
-    .notes-box{background:#eff6ff;border-radius:8px;padding:10px 14px;font-size:12px;color:#1d4ed8}
-    @media print{body{margin:20px}button{display:none}}
-  </style></head><body>
-  <h1>${escHtml(r.employee)}</h1>
-  <p class="sub">${monthLabel(r.month)} &nbsp;·&nbsp; Generated ${new Date(r.generated_at).toLocaleDateString()}</p>
+<title>${escHtml(r.employee)} — ${monthLabel(r.month)}</title>
+<style>
+  @page { size: A4 portrait; margin: 14mm 16mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 11px;
+    color: #1f2937;
+    background: #fff;
+    width: 178mm;
+    margin: 0 auto;
+  }
 
-  <div class="stats">
-    ${[["Total Chats",r.total_chats,"#2563eb"],["Reviewed",r.reviewed_chats,"#7c3aed"],
-       ["Missed",r.missed_chats,"#dc2626"],["Resolved",(r.resolved_rate??0)+"%","#16a34a"],
-       ["Avg Duration",fmtDuration(r.avg_chat_duration_sec),"#374151"],
-       ["First Response",fmtDuration(r.avg_first_response_sec),"#374151"]]
-      .map(([l,v,c])=>`<div class="stat"><div class="stat-l">${l}</div><div class="stat-v" style="color:${c}">${v??'—'}</div></div>`).join("")}
+  /* Header */
+  .hdr { display: flex; justify-content: space-between; align-items: flex-start;
+         border-bottom: 2px solid #2563eb; padding-bottom: 8px; margin-bottom: 14px; }
+  .hdr-name { font-size: 20px; font-weight: 900; color: #111827; line-height: 1.1; }
+  .hdr-month { font-size: 12px; color: #6b7280; margin-top: 2px; }
+  .hdr-badge { background: #eff6ff; color: #2563eb; font-size: 9px; font-weight: 700;
+               text-transform: uppercase; letter-spacing: .06em;
+               padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
+
+  /* Stats row */
+  .stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-bottom: 14px; }
+  .stat { border: 1px solid #e5e7eb; border-radius: 7px; padding: 7px 6px; text-align: center; }
+  .stat-l { font-size: 8px; color: #9ca3af; text-transform: uppercase;
+             font-weight: 700; letter-spacing: .04em; margin-bottom: 4px; }
+  .stat-v { font-size: 15px; font-weight: 900; line-height: 1; }
+
+  /* Two-column layout */
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+
+  /* Section */
+  .sec { margin-bottom: 12px; }
+  .sec-title { font-size: 8px; font-weight: 700; text-transform: uppercase; color: #6b7280;
+               letter-spacing: .07em; margin-bottom: 8px;
+               padding-bottom: 4px; border-bottom: 1px solid #e5e7eb; }
+
+  /* Overall score */
+  .overall { font-size: 30px; font-weight: 900; line-height: 1; margin-bottom: 10px; }
+  .overall span { font-size: 13px; color: #9ca3af; font-weight: 400; }
+
+  /* Score rows */
+  .srow { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+  .slabel { font-size: 9.5px; color: #6b7280; width: 110px; flex-shrink: 0; }
+  .sval { font-size: 9.5px; font-weight: 700; width: 24px; text-align: right; flex-shrink: 0; }
+
+  /* Trend */
+  .trend { display: flex; gap: 8px; justify-content: space-around;
+           background: #f9fafb; border-radius: 8px; padding: 10px 6px; }
+  .tw { text-align: center; }
+  .tw-lbl { font-size: 8px; color: #9ca3af; margin-bottom: 3px; }
+  .tw-val { font-size: 18px; font-weight: 900; line-height: 1.1; }
+  .tw-cnt { font-size: 8px; color: #9ca3af; margin-top: 2px; }
+
+  /* Lists */
+  ul { list-style: none; }
+  li { font-size: 9.5px; margin-bottom: 3px; padding-left: 10px; position: relative; }
+  li::before { content: "•"; position: absolute; left: 0; }
+
+  /* Notes */
+  .notes-box { background: #eff6ff; border-radius: 6px; padding: 8px 10px;
+               font-size: 10px; color: #1d4ed8; line-height: 1.5; }
+
+  /* Footer */
+  .footer { margin-top: 14px; padding-top: 6px; border-top: 1px solid #e5e7eb;
+            font-size: 8px; color: #9ca3af; text-align: center; }
+</style>
+</head><body>
+
+<div class="hdr">
+  <div>
+    <div class="hdr-name">${escHtml(r.employee)}</div>
+    <div class="hdr-month">${monthLabel(r.month)} Performance Report</div>
   </div>
+  <div class="hdr-badge">Generated ${new Date(r.generated_at).toLocaleDateString()}</div>
+</div>
 
-  <div class="section">
-    <div class="sec-title">Score Breakdown</div>
-    <div class="overall" style="color:${scHex(s.overall)}">${s.overall?.toFixed(1)??"—"} <span style="font-size:16px;color:#9ca3af">/ 10</span></div>
-    ${scoreRows.map(([l,v])=>v==null?"":`<div class="srow">
-      <div class="slabel">${l}</div>
-      <div class="sbar">${scoreFill(v)}</div>
-      <div class="sval" style="color:${scHex(v)}">${v.toFixed(1)}</div>
-    </div>`).join("")}
-  </div>
+<div class="stats">
+  ${[
+    ["Total Chats",    r.total_chats,                    "#2563eb"],
+    ["Reviewed",       r.reviewed_chats,                 "#7c3aed"],
+    ["Missed",         r.missed_chats,                   "#dc2626"],
+    ["Resolved",       (r.resolved_rate ?? 0) + "%",     "#16a34a"],
+    ["Avg Duration",   fmtDuration(r.avg_chat_duration_sec),  "#374151"],
+    ["First Response", fmtDuration(r.avg_first_response_sec), "#374151"],
+  ].map(([l,v,c]) => `<div class="stat">
+    <div class="stat-l">${l}</div>
+    <div class="stat-v" style="color:${c}">${v ?? "—"}</div>
+  </div>`).join("")}
+</div>
 
-  ${r.score_trend?.length ? `<div class="section">
-    <div class="sec-title">Weekly Trend</div>
-    <div class="trend">
-      ${r.score_trend.map(w=>`<div>
-        <div class="tw-label">${escHtml(w.label)}</div>
-        <div class="tw-val" style="color:${scHex(w.avg)}">${w.avg!=null?w.avg.toFixed(1):"—"}</div>
-        <div class="tw-cnt">${w.count} chats</div>
+<div class="cols">
+  <div>
+    <div class="sec">
+      <div class="sec-title">Score Breakdown</div>
+      <div class="overall" style="color:${scHex(s.overall)}">${s.overall?.toFixed(1) ?? "—"} <span>/ 10</span></div>
+      ${scoreRows.map(([l,v]) => v == null ? "" : `<div class="srow">
+        <div class="slabel">${l}</div>
+        ${bar(v)}
+        <div class="sval" style="color:${scHex(v)}">${v.toFixed(1)}</div>
       </div>`).join("")}
     </div>
-  </div>` : ""}
+  </div>
 
-  ${r.top_issues?.length ? `<div class="section">
-    <div class="sec-title">Common Issues</div>
-    <ul>${r.top_issues.map(i=>`<li style="color:#dc2626">• ${escHtml(i)}</li>`).join("")}</ul>
-  </div>` : ""}
+  <div>
+    ${r.score_trend?.length ? `<div class="sec">
+      <div class="sec-title">Weekly Trend</div>
+      <div class="trend">
+        ${r.score_trend.map(w => `<div class="tw">
+          <div class="tw-lbl">${escHtml(w.label)}</div>
+          <div class="tw-val" style="color:${scHex(w.avg)}">${w.avg != null ? w.avg.toFixed(1) : "—"}</div>
+          <div class="tw-cnt">${w.count} chats</div>
+        </div>`).join("")}
+      </div>
+    </div>` : ""}
 
-  ${r.top_strengths?.length ? `<div class="section">
-    <div class="sec-title">Strengths</div>
-    <ul>${r.top_strengths.map(i=>`<li style="color:#16a34a">• ${escHtml(i)}</li>`).join("")}</ul>
-  </div>` : ""}
+    ${r.top_issues?.length ? `<div class="sec" style="margin-top:10px">
+      <div class="sec-title">Common Issues</div>
+      <ul>${r.top_issues.map(i => `<li style="color:#dc2626">${escHtml(i)}</li>`).join("")}</ul>
+    </div>` : ""}
 
-  ${r.admin_notes ? `<div class="section">
-    <div class="sec-title">Admin Notes</div>
-    <div class="notes-box">${escHtml(r.admin_notes)}</div>
-  </div>` : ""}
+    ${r.top_strengths?.length ? `<div class="sec" style="margin-top:10px">
+      <div class="sec-title">Strengths</div>
+      <ul>${r.top_strengths.map(i => `<li style="color:#16a34a">${escHtml(i)}</li>`).join("")}</ul>
+    </div>` : ""}
 
-  <script>setTimeout(()=>window.print(),400)<\/script>
-  </body></html>`);
+    ${r.admin_notes ? `<div class="sec" style="margin-top:10px">
+      <div class="sec-title">Manager Notes</div>
+      <div class="notes-box">${escHtml(r.admin_notes)}</div>
+    </div>` : ""}
+  </div>
+</div>
+
+<div class="footer">Chat Review Dashboard — ${escHtml(r.employee)} · ${monthLabel(r.month)}</div>
+
+<script>setTimeout(() => window.print(), 350)<\/script>
+</body></html>`);
   win.document.close();
 }
 
