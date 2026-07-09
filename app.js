@@ -228,6 +228,42 @@ function updateConfigPage(data) {
   });
 }
 
+async function syncLcAgents() {
+  const btn = document.getElementById("btnSyncAgents");
+  const icon = document.getElementById("syncAgentsIcon");
+  const status = document.getElementById("cfg-agents-status");
+  const list = document.getElementById("cfg-agents-list");
+  btn.disabled = true;
+  if (icon) icon.textContent = "...";
+  if (status) status.textContent = "Syncing...";
+  try {
+    const res = await authFetch("/api/agents");
+    const data = await res.json();
+    const agentArr = Array.isArray(data) ? data : (data.agents || []);
+    settingsAgents = agentArr;
+    agents = agentArr;
+    renderAgentFilter();
+
+    if (status) status.textContent = `${agentArr.length} agents synced from LiveChat`;
+    if (list) {
+      list.innerHTML = agentArr.map(a =>
+        `<div class="flex items-center gap-2 px-2 py-1 rounded-lg bg-gray-50 text-xs text-gray-700">
+          ${a.avatar ? `<img src="${escHtml(a.avatar)}" class="w-5 h-5 rounded-full object-cover shrink-0" />` : `<div class="w-5 h-5 rounded-full bg-slate-300 shrink-0"></div>`}
+          <span class="font-medium">${escHtml(a.name || "")}</span>
+          <span class="text-gray-400 ml-auto">${escHtml(a.id || "")}</span>
+        </div>`
+      ).join("");
+      list.classList.remove("hidden");
+    }
+    showStatus(`${agentArr.length} agents synced from LiveChat`, "success");
+  } catch (e) {
+    if (status) status.textContent = "Sync failed: " + e.message;
+    showStatus("Agent sync failed: " + e.message, "error");
+  }
+  btn.disabled = false;
+  if (icon) icon.textContent = "⟳";
+}
+
 async function refreshAllKnowledge() {
   const btn = document.getElementById("btnRefreshAllKb");
   const icon = document.getElementById("refreshAllIcon");
