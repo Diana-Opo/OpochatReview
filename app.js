@@ -1387,7 +1387,10 @@ function renderReportsAdmin(list) {
 
   const generatePanel = `
     <div class="bg-white rounded-2xl border border-gray-200 p-5 mb-6">
-      <p class="text-xs font-semibold text-gray-500 uppercase mb-3">Generate New Report</p>
+      <div class="flex items-center justify-between mb-3">
+        <p class="text-xs font-semibold text-gray-500 uppercase">Generate New Report</p>
+        <button onclick="deleteAllReports()" class="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition">🗑 Delete All Reports</button>
+      </div>
       <div class="flex flex-wrap gap-2 items-end">
         <div>
           <label class="text-xs text-gray-400 block mb-1">Employee</label>
@@ -1697,4 +1700,12 @@ async function saveReportNotes(employee, month) {
     method: "PATCH", body: JSON.stringify({ admin_notes: notes })
   });
   showStatus("Notes saved", "success");
+}
+
+async function deleteAllReports() {
+  if (!confirm("Delete ALL reports? This cannot be undone.")) return;
+  const res = await authFetch("/api/reports", { method: "DELETE" });
+  const data = await res.json();
+  if (data.ok) { showStatus("All reports deleted", "success"); openReports(); }
+  else showStatus("Error: " + (data.error || "unknown"), "error");
 }

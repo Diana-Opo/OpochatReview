@@ -1596,6 +1596,14 @@ async function runNightlyReview() {
 // Nightly auto-review disabled — enable by uncommenting below
 // ── Reports ───────────────────────────────────────────────────────────────────
 
+// Delete all reports (admin only)
+app.delete("/api/reports", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    await pool.query("DELETE FROM reports");
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // List reports (admin: all; employee: own)
 app.get("/api/reports", authMiddleware, async (req, res) => {
   try {
