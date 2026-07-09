@@ -961,15 +961,23 @@ RESPONSE TIME SCORING:
 - A long conversation with fast per-message replies = HIGH response time score. Do NOT penalize for total conversation length.
 - NEVER say an agent "handled late" or "took too long" based on total conversation time — only base this on per-reply gaps.
 
-REGULATORY RESTRICTION RULE — CUSTOMER SATISFACTION:
-If a customer is dissatisfied because the agent correctly applied a regulatory or policy restriction — for example:
-  - Transfers from Iranian exchanges (sarafi irani) are not accepted due to broker/regulatory policy
-  - A service or feature is unavailable in the customer's country due to legal restrictions
-  - A deposit/withdrawal method is blocked for compliance reasons
-In these cases: the customer's frustration is caused by the restriction itself, NOT by the agent's handling. If the agent correctly informed the customer of the restriction, was polite, and offered any available alternatives:
-  - Do NOT deduct from satisfaction_score for the customer being unhappy about the restriction.
-  - satisfaction_score must reflect the QUALITY of the agent's communication, not the customer's emotional reaction to a policy they cannot change.
-  - If the agent communicated the restriction clearly and professionally, satisfaction_score should be 8–10.
+SATISFACTION SCORE DEFINITION — READ THIS CAREFULLY:
+satisfaction_score does NOT measure whether the customer was emotionally happy or got the answer they wanted.
+satisfaction_score measures whether the AGENT performed their job correctly and professionally.
+
+Score based on:
+  - Did the agent give a clear, accurate, and complete answer?
+  - Did the agent communicate politely and professionally?
+  - Did the agent correctly apply policy/regulations when required?
+  - Did the agent do everything within their power to help the customer?
+
+DO NOT deduct from satisfaction_score when:
+  - The customer is unhappy because the agent correctly applied a restriction or policy (e.g. no transfers from Iranian exchanges, a blocked deposit method, a country restriction, a compliance rule).
+  - The customer did not receive the answer they wanted, but the agent's answer was correct and complete.
+  - The outcome was outside the agent's control (regulatory, technical, or policy limitation).
+
+In all of these cases: if the agent handled it correctly and communicated clearly → satisfaction_score = 8–10.
+Only deduct from satisfaction_score if the agent made an error, was unclear, was rude, or failed to do something they could have done.
 
 CHAT MANAGEMENT RULES (check these in compliance scoring):
 1. Follow-up check: After the agent sends a response and the customer does NOT write anything for ~60 seconds (visible as a long gap before the next customer message, or the chat ends without the customer responding), the agent SHOULD send a follow-up such as "سوال دیگه‌ای دارید؟" or "آیا مشکل دیگه‌ای هست؟". If the agent skips this and closes without asking, flag it as a minor compliance issue.
