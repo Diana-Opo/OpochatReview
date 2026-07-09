@@ -121,8 +121,12 @@ async function initApp() {
     if (e.target === document.getElementById("modal")) closeModal();
   });
 
-  // Default page
-  showPage("chats");
+  // Default page — restore last visited page
+  const lastPage = localStorage.getItem("lastPage");
+  const validPages = ["dashboard", "chats", "reports", "employees"];
+  const startPage = validPages.includes(lastPage) && (lastPage !== "employees" || currentUser.role === "admin")
+    ? lastPage : "chats";
+  showPage(startPage);
 }
 
 // ── Page navigation ───────────────────────────────────────────────────────────
@@ -144,6 +148,7 @@ function showPage(name) {
   }
   if (name === "reports") openReports();
   if (name === "employees") openSettings();
+  localStorage.setItem("lastPage", name);
 }
 
 // ── Knowledge Base ───────────────────────────────────────────────────────────
@@ -1397,6 +1402,7 @@ function renderReportsAdmin(list) {
           <select id="rptEmployee" class="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
             <option value="">Select...</option>
             ${[...new Map(agentShifts.map(s => [s.employee, s])).values()]
+              .sort((a, b) => a.employee.localeCompare(b.employee))
               .map(s => `<option value="${escHtml(s.employee)}">${escHtml(s.employee)}</option>`).join("")}
           </select>
         </div>
