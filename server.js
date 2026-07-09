@@ -1432,91 +1432,88 @@ app.get("/api/stats", async (req, res) => {
   res.json(result);
 });
 
-// Dashboard stats for a given month (default: current month)
-// Paginates LiveChat archives for the month, joins with reviews (including per_agent_reviews)
+// Dashboard stats for current month — independent of Chat Review page
 app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
   try {
     const month = req.query.month || new Date().toISOString().slice(0, 7);
     const [y, m] = month.split("-").map(Number);
     const lastDay = new Date(y, m, 0).getDate();
-    const dateFrom = `${month}-01`;
-    const dateTo   = `${month}-${String(lastDay).padStart(2,"0")}`;
+    const lcFrom = `${month}-01T00:00:00.000000+00:00`;
+    const lcTo   = `${month}-${String(lastDay).padStart(2,"0")}T23:59:59.999999+00:00`;
 
     const [reviews, shifts] = await Promise.all([loadReviews(), loadShifts()]);
 
-    function agentToEmployee(agentName) {
+    // agent name → employee display name (via shifts table)
+    function toEmp(agentName) {
       if (!agentName) return null;
-      const lower = agentName.toLowerCase().trim();
-      const first = lower.split(" ")[0];
-      const s = shifts.find(s => s.agentKey === lower || s.agentKey === first);
+      const low = agentName.toLowerCase().trim();
+      const fst = low.split(" ")[0];
+      const s = shifts.find(s => s.agentKey === low || s.agentKey === fst);
       return s ? s.employee : agentName;
     }
 
-    const byEmployee = {};
+    // per employee: { total, reviewed, scores[], resolved }
+    const emp = {};
     let totalChats = 0;
     let pageId = null;
-    let isFirst = true;
+    let firstPage = true;
 
     do {
-      const body = pageId ? { page_id: pageId } : { filters: { from: dateFrom + "T00:00:00.000000+00:00", to: dateTo + "T23:59:59.999999+00:00" }, limit: 100 };
+      const body = pageId
+        ? { page_id: pageId }
+        : { filters: { from: lcFrom, to: lcTo }, limit: 100 };
       const data = await lcPost("list_archives", body);
       const chats = data.chats || [];
-      if (isFirst) { totalChats = data.found_chats ?? data.total_chats ?? 0; isFirst = false; }
+      if (firstPage) { totalChats = data.found_chats ?? data.total_chats ?? 0; firstPage = false; }
       pageId = data.next_page_id || null;
 
       for (const c of chats) {
-        const thread  = c.thread || (Array.isArray(c.threads) ? c.threads[0] : null) || {};
-        const users   = c.users || [];
-        const events  = thread.events || [];
-        const review  = reviews[thread.id] || reviews[c.id];
+        const thread = c.thread || (Array.isArray(c.threads) ? c.threads[0] : null) || {};
+        const users  = c.users || [];
+        const events = thread.events || [];
 
-        // Primary agent = assignee, then first agent who sent a message (same as /api/chats)
+        // Primary agent: assignee → first agent who sent any event
         const assigneeId = thread?.assignee?.id;
-        const activeAgentId = events.find(e => {
-          const u = users.find(u2 => u2.id === e.author_id);
-          return u?.type === "agent";
-        })?.author_id;
-        const agentUser = (assigneeId ? users.find(u => u.id === assigneeId) : null)
-          || (activeAgentId ? users.find(u => u.id === activeAgentId) : null);
+        const firstAgentId = events.find(e => users.find(u => u.id === e.author_id && u.type === "agent"))?.author_id;
+        const agent = (assigneeId ? users.find(u => u.id === assigneeId) : null)
+                   || (firstAgentId ? users.find(u => u.id === firstAgentId) : null);
+        if (!agent) continue;
 
-        if (!agentUser) continue;
+        const name = toEmp(agent.name);
+        if (!name) continue;
+        if (!emp[name]) emp[name] = { total: 0, reviewed: 0, scores: [], resolved: 0 };
+        emp[name].total++;
 
-        const empName = agentToEmployee(agentUser.name) || agentUser.name;
-        if (!byEmployee[empName]) byEmployee[empName] = { total: 0, scores: [], resolved: 0 };
-        byEmployee[empName].total++;
+        const rv = reviews[thread.id] || reviews[c.id];
+        if (!rv || rv.skipped) continue;
+        emp[name].reviewed++;
 
-        if (!review || review.skipped) continue;
-
-        // For score: use per-agent review if exists (multi-agent chats), else overall
-        let ar = review;
-        if (review.per_agent_reviews) {
-          const agentLower = agentUser.name.toLowerCase().trim();
-          const agentFirst = agentLower.split(" ")[0];
-          const pr = Object.values(review.per_agent_reviews).find(r =>
-            r?.agent_name && (
-              r.agent_name.toLowerCase().trim() === agentLower ||
-              r.agent_name.toLowerCase().trim().startsWith(agentFirst)
-            )
+        // score: per-agent review if multi-agent, else overall
+        let ar = rv;
+        if (rv.per_agent_reviews) {
+          const low = agent.name.toLowerCase().trim();
+          const fst = low.split(" ")[0];
+          const pr = Object.values(rv.per_agent_reviews).find(r =>
+            r?.agent_name && r.agent_name.toLowerCase().trim().startsWith(fst)
           );
           if (pr) ar = pr;
         }
-
-        if (ar.overall_score > 0) byEmployee[empName].scores.push(ar.overall_score);
-        if (ar.resolved) byEmployee[empName].resolved++;
+        if (ar.overall_score > 0) emp[name].scores.push(ar.overall_score);
+        if (ar.resolved) emp[name].resolved++;
       }
     } while (pageId);
 
-    const reviewedScores = Object.values(byEmployee).flatMap(e => e.scores);
-    const totalReviewed = reviewedScores.length;
-    const totalResolved = Object.values(byEmployee).reduce((s, e) => s + e.resolved, 0);
-    const avgScore = reviewedScores.length ? +(reviewedScores.reduce((a,b)=>a+b,0)/reviewedScores.length).toFixed(1) : null;
+    const allScores = Object.values(emp).flatMap(e => e.scores);
+    const totalReviewed = Object.values(emp).reduce((s, e) => s + e.reviewed, 0);
+    const totalResolved = Object.values(emp).reduce((s, e) => s + e.resolved, 0);
+    const avgScore = allScores.length ? +(allScores.reduce((a,b)=>a+b,0)/allScores.length).toFixed(1) : null;
 
-    const employees = Object.entries(byEmployee)
+    const employees = Object.entries(emp)
       .sort(([a],[b]) => a.localeCompare(b))
       .map(([name, d]) => ({
         name,
         total: d.total,
-        reviewed: d.scores.length,
+        reviewed: d.reviewed,
         avg_score: d.scores.length ? +(d.scores.reduce((a,b)=>a+b,0)/d.scores.length).toFixed(2) : null,
         resolved: d.resolved,
       }));
