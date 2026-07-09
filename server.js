@@ -1506,23 +1506,25 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
         continue;
       }
 
-      if (shiftList.length === 1) {
-        // Single employee → one fast call
+      const uniqueEmpsForKey = [...new Set(shiftList.map(s => s.employee))];
+
+      if (uniqueEmpsForKey.length === 1) {
+        // Single employee (may have multiple shift rows for groups/hours) → one fast call
         try {
           const d = await lcPost("list_archives", {
             filters: { from: lcFrom, to: lcTo, agents: { values: [agentEmail] } },
             limit: 1,
           });
           const total = d.found_chats ?? 0;
-          const empName = shiftList[0].employee;
+          const empName = uniqueEmpsForKey[0];
           if (total > 0) emp[empName] = { total, reviewed: 0, scores: [], resolved: 0 };
           console.log(`[dashboard] ${empName}: ${total}`);
         } catch(e) {
-          console.log(`[dashboard] error ${shiftList[0].employee}:`, e.message);
+          console.log(`[dashboard] error ${uniqueEmpsForKey[0]}:`, e.message);
         }
       } else {
-        // Shared account → paginate and split by shift time
-        console.log(`[dashboard] shared ${key}: ${shiftList.map(s=>s.employee).join("/")} — paginating`);
+        // Truly shared account (multiple employees) → paginate and split by shift time
+        console.log(`[dashboard] shared ${key}: ${uniqueEmpsForKey.join("/")} — paginating`);
         let pid = null;
         do {
           const body = pid
@@ -1532,13 +1534,17 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
           pid = data.next_page_id || null;
           for (const c of data.chats || []) {
             const thread = c.thread || (c.threads?.[0]) || {};
-            const chatTime = thread.created_at || c.created_at;
+            // Try multiple time fields to find when this chat occurred
+            const chatTime = thread.created_at
+              || thread.events?.[0]?.created_at
+              || c.created_at;
             const empName = empAtTime(shiftList, chatTime);
             if (!emp[empName]) emp[empName] = { total: 0, reviewed: 0, scores: [], resolved: 0 };
             emp[empName].total++;
+            if (!chatTime) console.log(`[dashboard] shared chat ${c.id} has no time — fallback to ${empName}`);
           }
         } while (pid);
-        shiftList.forEach(s => console.log(`[dashboard] ${s.employee}: ${emp[s.employee]?.total ?? 0}`));
+        uniqueEmpsForKey.forEach(n => console.log(`[dashboard] ${n}: ${emp[n]?.total ?? 0}`));
       }
     }
 
