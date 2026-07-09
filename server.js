@@ -1282,7 +1282,30 @@ app.post("/api/review/:chatId", authMiddleware, async (req, res) => {
       return res.json(skippedReview);
     }
 
-    const langViolations = detectLanguageViolations(events, users);
+    const langViolationsRaw = detectLanguageViolations(events, users);
+    // Remove violations for agents whose language list does not include the customer's language.
+    // If the customer's language is not in the agent's list, the agent CANNOT respond in it —
+    // transferring is correct and must never be penalized.
+    const langViolations = new Map();
+    for (const [agentNameKey, violation] of langViolationsRaw.entries()) {
+      const shiftEntry = shifts3.find(s => {
+        const k = agentNameKey.toLowerCase().trim();
+        return k === s.agentKey || k === s.employee.toLowerCase() || k.split(" ")[0] === s.agentKey;
+      });
+      const agentLangs = (shiftEntry?.languages || []).map(l => l.toLowerCase());
+      const custLang = violation.prechatLang; // e.g. "farsi", "arabic", "english"
+      const agentCanSpeak =
+        agentLangs.length === 0 || // no list = assume all
+        agentLangs.some(l => l.includes(custLang) || custLang.includes(l) ||
+          (custLang === "farsi_or_arabic" && (l.includes("farsi") || l.includes("arabic") || l.includes("persian"))) ||
+          (custLang === "farsi" && (l.includes("farsi") || l.includes("persian"))) ||
+          (custLang === "arabic" && l.includes("arabic")) ||
+          (custLang === "english" && l.includes("english"))
+        );
+      if (agentCanSpeak) {
+        langViolations.set(agentNameKey, violation);
+      }
+    }
     const langViolationNote = buildLanguageViolationNote(events, users);
     const transcript = langViolationNote + buildTranscript(events, users);
     const supervisorNotes = extractSupervisorNotes(events, users);
