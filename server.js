@@ -1441,13 +1441,9 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
     const lcFrom = `${month}-01T00:00:00.000000+00:00`;
     const lcTo   = `${month}-${String(lastDay).padStart(2,"0")}T23:59:59.999999+00:00`;
 
-    const [reviews, shifts, agentsRaw] = await Promise.all([
-      loadReviews(),
-      loadShifts(),
-      lcPost("list_agents", {}, LC_CONFIG_API),
-    ]);
+    const [reviews, shifts] = await Promise.all([loadReviews(), loadShifts()]);
 
-    // Build agentId → employeeName map (exact ID match — avoids first-name ambiguity)
+    // Map agent name → employee via shifts table (null if not found = excluded)
     function toEmp(agentName) {
       if (!agentName) return null;
       const low = agentName.toLowerCase().trim();
@@ -1455,19 +1451,6 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       const s = shifts.find(s => s.agentKey === low || s.agentKey === fst);
       return s ? s.employee : null;
     }
-
-    const rawAgentList = Array.isArray(agentsRaw) ? agentsRaw
-      : Array.isArray(agentsRaw?.agents) ? agentsRaw.agents
-      : Object.values(agentsRaw || {}).find(v => Array.isArray(v)) || [];
-
-    // agentId → employee display name (only active, non-suspended agents)
-    const agentIdToEmp = {};
-    for (const a of rawAgentList) {
-      if (a.suspended) continue;
-      const n = toEmp(a.name);
-      if (n) agentIdToEmp[a.id] = n;
-    }
-    console.log("[dashboard] agentIdToEmp:", JSON.stringify(agentIdToEmp).slice(0, 400));
 
     // per employee: { total, reviewed, scores[], resolved }
     const emp = {};
@@ -1499,15 +1482,18 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
         if (!chatEmpCounted.has(c.id)) chatEmpCounted.set(c.id, new Set());
         const countedForChat = chatEmpCounted.get(c.id);
 
-        // Collect agents from THIS thread's events + assignee
-        const threadAgentIds = new Set();
-        if (assigneeId) threadAgentIds.add(assigneeId);
+        // Collect agents active in THIS thread (assignee + event authors) by name→employee
+        const agentIdsInThread = new Set();
+        if (assigneeId) agentIdsInThread.add(assigneeId);
         for (const e of events) {
-          if (agentIdToEmp[e.author_id]) threadAgentIds.add(e.author_id);
+          const u = users.find(u => u.id === e.author_id && u.type === "agent");
+          if (u) agentIdsInThread.add(u.id);
         }
 
-        for (const agentId of threadAgentIds) {
-          const n = agentIdToEmp[agentId];
+        for (const agentId of agentIdsInThread) {
+          const u = users.find(u => u.id === agentId);
+          if (!u) continue;
+          const n = toEmp(u.name);
           if (!n || countedForChat.has(n)) continue;
           countedForChat.add(n);
           if (!emp[n]) emp[n] = { total: 0, reviewed: 0, scores: [], resolved: 0 };
@@ -1518,13 +1504,13 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
         if (processedThreadIds.has(thread.id)) continue;
         processedThreadIds.add(thread.id);
 
-        // Review/score attribution: primary agent only (assignee → first event sender)
-        const firstAgentId = events.find(e => agentIdToEmp[e.author_id])?.author_id;
-        const primaryAgentId = (assigneeId && agentIdToEmp[assigneeId]) ? assigneeId : firstAgentId;
-        const agent = primaryAgentId ? users.find(u => u.id === primaryAgentId) : null;
+        // Primary agent: assignee first, else first agent who sent an event
+        const assigneeUser = assigneeId ? users.find(u => u.id === assigneeId) : null;
+        const firstEventAgent = events.map(e => users.find(u => u.id === e.author_id && u.type === "agent")).find(Boolean);
+        const agent = assigneeUser || firstEventAgent;
         if (!agent) continue;
 
-        const name = agentIdToEmp[agent.id] || toEmp(agent.name);
+        const name = toEmp(agent.name);
         if (!name) continue;
         if (!emp[name]) emp[name] = { total: 0, reviewed: 0, scores: [], resolved: 0 };
 
