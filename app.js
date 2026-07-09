@@ -1000,7 +1000,7 @@ async function loadDashboard() {
     const d = await res.json();
     if (d.error) throw new Error(d.error);
 
-    document.getElementById("statTotal").textContent = "—";
+    document.getElementById("statTotal").textContent = d.total_chats ?? "—";
     document.getElementById("statReviewed").textContent = d.total_reviewed ?? "—";
     document.getElementById("statAvg").textContent = d.avg_score != null ? d.avg_score + "/10" : "—";
     document.getElementById("statResolved").textContent = d.total_resolved ?? "—";

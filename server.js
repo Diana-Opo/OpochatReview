@@ -1476,7 +1476,19 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
 
     const avgScore = allScores.length ? +(allScores.reduce((a,b)=>a+b,0)/allScores.length).toFixed(1) : null;
 
-    res.json({ month, total_reviewed: totalReviewed, total_resolved: totalResolved, avg_score: avgScore, employees });
+    // Lightweight LiveChat call — just to get found_chats count for current month
+    let totalChats = null;
+    try {
+      const [y, m] = month.split("-").map(Number);
+      const lastDay = new Date(y, m, 0).getDate();
+      const lcData = await lcPost("list_archives", {
+        filters: { from: `${month}-01T00:00:00Z`, to: `${month}-${String(lastDay).padStart(2,"0")}T23:59:59Z` },
+        limit: 1,
+      });
+      totalChats = lcData.found_chats ?? lcData.total_chats ?? null;
+    } catch {}
+
+    res.json({ month, total_chats: totalChats, total_reviewed: totalReviewed, total_resolved: totalResolved, avg_score: avgScore, employees });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
