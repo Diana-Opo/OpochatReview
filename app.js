@@ -1527,9 +1527,14 @@ async function viewSavedReport(employee, month) {
           <p class="text-xs text-gray-400">${monthLabel(month)} — Generated ${new Date(report.generated_at).toLocaleString()}</p>
         </div>
       </div>
-      <button onclick="downloadReportPdf()" class="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium px-3 py-2 rounded-lg transition">
-        ⬇ Download PDF
-      </button>
+      <div class="flex items-center gap-2">
+        <button onclick="downloadReportPdf()" class="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium px-3 py-2 rounded-lg transition">
+          ⬇ Download PDF
+        </button>
+        ${currentUser?.role === "admin" ? `<button onclick="deleteThisReport('${escHtml(employee)}','${escHtml(month)}')" class="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-500 text-xs font-medium px-3 py-2 rounded-lg transition">
+          🗑 Delete
+        </button>` : ""}
+      </div>
     </div>
     <div class="p-6">${renderReportView(report)}</div>`;
 }
@@ -1666,13 +1671,39 @@ async function saveReportNotes(employee, month) {
   showStatus("Notes saved", "success");
 }
 
-function deleteAllReports() {
+let _confirmCallback = null;
+
+function showConfirmModal(message, callback) {
+  document.getElementById("confirmModalMsg").textContent = message;
+  _confirmCallback = callback;
   document.getElementById("confirmModal").classList.remove("hidden");
 }
-async function confirmDeleteAllReports() {
+
+function closeConfirmModal() {
   document.getElementById("confirmModal").classList.add("hidden");
-  const res = await authFetch("/api/reports", { method: "DELETE" });
-  const data = await res.json();
-  if (data.ok) { showStatus("All reports deleted", "success"); openReports(); }
-  else showStatus("Error: " + (data.error || "unknown"), "error");
+  _confirmCallback = null;
+}
+
+async function runConfirmAction() {
+  document.getElementById("confirmModal").classList.add("hidden");
+  if (_confirmCallback) await _confirmCallback();
+  _confirmCallback = null;
+}
+
+function deleteAllReports() {
+  showConfirmModal("This action cannot be undone. All generated reports will be permanently deleted.", async () => {
+    const res = await authFetch("/api/reports", { method: "DELETE" });
+    const data = await res.json();
+    if (data.ok) { showStatus("All reports deleted", "success"); openReports(); }
+    else showStatus("Error: " + (data.error || "unknown"), "error");
+  });
+}
+
+async function deleteThisReport(employee, month) {
+  showConfirmModal(`Delete the report for ${employee} — ${monthLabel(month)}? This cannot be undone.`, async () => {
+    const res = await authFetch(`/api/reports/${encodeURIComponent(employee)}/${encodeURIComponent(month)}`, { method: "DELETE" });
+    const data = await res.json();
+    if (data.ok) { showStatus("Report deleted", "success"); openReports(); }
+    else showStatus("Error: " + (data.error || "unknown"), "error");
+  });
 }

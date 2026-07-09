@@ -1604,6 +1604,13 @@ app.delete("/api/reports", authMiddleware, adminOnly, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.delete("/api/reports/:employee/:month", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    await pool.query("DELETE FROM reports WHERE employee=$1 AND month=$2", [req.params.employee, req.params.month]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // List reports (admin: all; employee: own)
 app.get("/api/reports", authMiddleware, async (req, res) => {
   try {
