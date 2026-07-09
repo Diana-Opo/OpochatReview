@@ -980,6 +980,7 @@ DO NOT deduct from satisfaction_score when:
   - The agent explained the steps clearly but the customer did not follow through, did not cooperate, or stopped responding before completing the process. The incomplete outcome is the customer's responsibility, not the agent's.
   - The agent correctly stated that an investigation or process takes time (e.g. "this requires time to investigate", "we will follow up"). If this is an accurate statement and the customer is unhappy about the timeline, that is the customer's reaction to reality — not the agent's failure.
   - The agent closed the chat after the customer stopped responding (no reply after follow-up). Closing an inactive chat is correct procedure — do not deduct satisfaction for the customer's non-response.
+  - The customer left the chat or was disconnected. A customer leaving does NOT indicate dissatisfaction — their connection may have been lost (network issue, browser closed, etc.). Do NOT treat "customer left the chat" as a signal of poor satisfaction. Evaluate satisfaction only on the quality of the agent's responses, not on how the chat ended.
 
 In all of these cases: if the agent handled it correctly and communicated clearly → satisfaction_score = 8–10.
 Only deduct from satisfaction_score if the agent made an error, was unclear, was rude, or failed to do something they could have done.
