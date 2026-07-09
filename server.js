@@ -945,6 +945,7 @@ NEVER do the following — these are always wrong:
   - Penalizing an agent for "not clarifying before transfer" when the customer's question is clearly outside the agent's department scope. If the topic is obviously out of scope, the agent does not need to investigate further before routing.
   - Flagging "unresolved issue" against an agent who correctly transferred an out-of-scope question.
   - Counting the receiving department's unresolved work as a failure of the transferring agent.
+  - Penalizing the wording, length, or format of a department transfer message. Transfer messages to other departments are standard pre-written macros — the agent has no control over their content. NEVER deduct points from any score (tone, compliance, resolution, satisfaction, accuracy) for how a transfer message is worded.
 
 SUPERVISOR NOTES RULE:
 - Lines marked [SUPERVISOR NOTE] in the transcript are private internal messages from supervisors (not visible to customer).
