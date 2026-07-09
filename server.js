@@ -1366,6 +1366,20 @@ app.post("/api/review/:chatId", authMiddleware, async (req, res) => {
       }
     }
 
+    // Enrich review with agent + date metadata for dashboard queries
+    const assigneeId2 = thread?.assignee?.id;
+    const activeAgentId2 = events.find(e => {
+      const u = users.find(u2 => u2.id === e.author_id);
+      return u && u.type === "agent";
+    })?.author_id;
+    const primaryAgent = (assigneeId2 ? users.find(u => u.id === assigneeId2) : null)
+      || (activeAgentId2 ? users.find(u => u.id === activeAgentId2) : null);
+    if (primaryAgent) {
+      review._agent_name = primaryAgent.name;
+      review._agent_id   = primaryAgent.id;
+    }
+    review._chat_date = thread.created_at || null;
+
     const reviews = await loadReviews();
     const reviewKey = thread_id || chatId;
     reviews[reviewKey] = review;
@@ -1419,7 +1433,7 @@ app.get("/api/stats", async (req, res) => {
 });
 
 // Dashboard stats for a given month (default: current month)
-// Fetches all chats from LiveChat + joins with reviews DB for accurate per-employee stats
+// Uses reviews DB (with _agent_name stored since last fix) + one LC call for total count
 app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
   try {
     const month = req.query.month || new Date().toISOString().slice(0, 7);
@@ -1428,66 +1442,42 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
     const dateFrom = `${month}-01`;
     const dateTo   = `${month}-${String(lastDay).padStart(2,"0")}`;
 
-    const [reviews, shifts] = await Promise.all([loadReviews(), loadShifts()]);
+    const shifts = await loadShifts();
 
-    // Map agent name → employee via shifts (same logic as frontend)
     function agentToEmployee(agentName, dateStr) {
-      if (!agentName) return null;
+      if (!agentName) return agentName;
       const lower = agentName.toLowerCase().trim();
       const first = lower.split(" ")[0];
-      const hour = dateStr ? new Date(dateStr).getUTCHours() + 3.5 : -1; // approx Tehran
-      const byHour = shifts.find(s => (s.agentKey === lower || s.agentKey === first) && hour >= s.start && hour < s.end);
-      if (byHour) return byHour.employee;
       const anyShift = shifts.find(s => s.agentKey === lower || s.agentKey === first);
       return anyShift ? anyShift.employee : agentName;
     }
 
-    // Fetch all pages from LiveChat for the month
-    const byEmployee = {}; // employee → { total, reviewedScores, resolved }
-    let totalChats = 0;
-    let pageId = null;
-    let firstPage = true;
+    // Read reviews for the month from DB
+    let reviewRows = [];
+    if (pool) {
+      const r = await pool.query(
+        `SELECT data FROM reviews WHERE updated_at >= $1 AND updated_at < $2`,
+        [dateFrom, `${y}-${String(m === 12 ? 1 : m+1).padStart(2,"0")}-01`]
+      );
+      reviewRows = r.rows.map(row => row.data).filter(Boolean);
+    } else {
+      const all = await loadReviews();
+      reviewRows = Object.values(all);
+    }
 
-    do {
-      const body = pageId
-        ? { page_id: pageId }
-        : { filters: { from: dateFrom, to: dateTo }, limit: 100 };
-      const data = await lcPost("list_archives", body);
-      const chats = data.chats || [];
-      if (firstPage) { totalChats = data.found_chats ?? data.total_chats ?? chats.length; firstPage = false; }
-      pageId = data.next_page_id || null;
-
-      for (const c of chats) {
-        const thread = c.thread || (Array.isArray(c.threads) ? c.threads[0] : null) || {};
-        const users  = c.users || [];
-        const events = thread.events || [];
-        const startedAt = thread.created_at || null;
-
-        // Determine primary agent (same logic as /api/chats)
-        const assigneeId = thread?.assignee?.id;
-        const activeAgentId = events.find(e => {
-          const u = users.find(u2 => u2.id === e.author_id);
-          return u && u.type === "agent";
-        })?.author_id;
-        const agentUser = (assigneeId ? users.find(u => u.id === assigneeId) : null)
-          || (activeAgentId ? users.find(u => u.id === activeAgentId) : null);
-        if (!agentUser) continue;
-
-        const empName = agentToEmployee(agentUser.name, startedAt) || agentUser.name;
-        if (!byEmployee[empName]) byEmployee[empName] = { total: 0, scores: [], resolved: 0, reviewed: 0 };
-        byEmployee[empName].total++;
-
-        const review = reviews[thread.id] || reviews[c.id];
-        if (review && !review.skipped) {
-          byEmployee[empName].reviewed++;
-          if (review.overall_score > 0) byEmployee[empName].scores.push(review.overall_score);
-          if (review.resolved) byEmployee[empName].resolved++;
-        }
-      }
-    } while (pageId);
+    const byEmployee = {};
+    for (const rv of reviewRows) {
+      if (!rv || rv.skipped) continue;
+      const empName = agentToEmployee(rv._agent_name) || rv._agent_name;
+      if (!empName) continue;
+      if (!byEmployee[empName]) byEmployee[empName] = { scores: [], resolved: 0, total: 0 };
+      byEmployee[empName].total++;
+      if (rv.overall_score > 0) byEmployee[empName].scores.push(rv.overall_score);
+      if (rv.resolved) byEmployee[empName].resolved++;
+    }
 
     const allScores = Object.values(byEmployee).flatMap(e => e.scores);
-    const totalReviewed = Object.values(byEmployee).reduce((s, e) => s + e.reviewed, 0);
+    const totalReviewed = Object.values(byEmployee).reduce((s, e) => s + e.total, 0);
     const totalResolved = Object.values(byEmployee).reduce((s, e) => s + e.resolved, 0);
     const avgScore = allScores.length ? +(allScores.reduce((a,b)=>a+b,0)/allScores.length).toFixed(1) : null;
 
@@ -1496,10 +1486,16 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       .map(([name, d]) => ({
         name,
         total: d.total,
-        reviewed: d.reviewed,
         avg_score: d.scores.length ? +(d.scores.reduce((a,b)=>a+b,0)/d.scores.length).toFixed(2) : null,
         resolved: d.resolved,
       }));
+
+    // Single lightweight LC call for total chat count
+    let totalChats = null;
+    try {
+      const lcData = await lcPost("list_archives", { filters: { from: dateFrom, to: dateTo }, limit: 1 });
+      totalChats = lcData.found_chats ?? lcData.total_chats ?? null;
+    } catch {}
 
     res.json({ month, total_chats: totalChats, total_reviewed: totalReviewed, total_resolved: totalResolved, avg_score: avgScore, employees });
   } catch (e) { res.status(500).json({ error: e.message }); }
