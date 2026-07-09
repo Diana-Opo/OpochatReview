@@ -1433,7 +1433,7 @@ app.get("/api/stats", async (req, res) => {
 });
 
 // Dashboard stats for a given month (default: current month)
-// Uses reviews DB (with _agent_name stored since last fix) + one LC call for total count
+// Paginates LiveChat archives for the month, joins with reviews (including per_agent_reviews)
 app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
   try {
     const month = req.query.month || new Date().toISOString().slice(0, 7);
@@ -1442,73 +1442,93 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
     const dateFrom = `${month}-01`;
     const dateTo   = `${month}-${String(lastDay).padStart(2,"0")}`;
 
-    const shifts = await loadShifts();
+    const [reviews, shifts] = await Promise.all([loadReviews(), loadShifts()]);
 
-    function agentToEmployee(agentName, dateStr) {
-      if (!agentName) return agentName;
+    function agentToEmployee(agentName) {
+      if (!agentName) return null;
       const lower = agentName.toLowerCase().trim();
       const first = lower.split(" ")[0];
-      const anyShift = shifts.find(s => s.agentKey === lower || s.agentKey === first);
-      return anyShift ? anyShift.employee : agentName;
-    }
-
-    const nextMonth = `${y}-${String(m === 12 ? 1 : m+1).padStart(2,"0")}-01`;
-
-    // Read reviews for the month — filter by _chat_date (stored in JSONB) when available,
-    // fall back to updated_at for older reviews that don't have _chat_date yet
-    let reviewRows = [];
-    if (pool) {
-      const r = await pool.query(
-        `SELECT data FROM reviews
-         WHERE (
-           (data->>'_chat_date' IS NOT NULL AND data->>'_chat_date' >= $1 AND data->>'_chat_date' < $2)
-           OR
-           (data->>'_chat_date' IS NULL AND updated_at >= $1::timestamptz AND updated_at < $2::timestamptz)
-         )`,
-        [dateFrom, nextMonth]
-      );
-      reviewRows = r.rows.map(row => row.data).filter(Boolean);
-    } else {
-      const all = await loadReviews();
-      reviewRows = Object.values(all).filter(rv => {
-        if (!rv) return false;
-        const d = rv._chat_date || null;
-        if (d) return d >= dateFrom && d < nextMonth;
-        return true; // include all if no date
-      });
+      const s = shifts.find(s => s.agentKey === lower || s.agentKey === first);
+      return s ? s.employee : agentName;
     }
 
     const byEmployee = {};
-    for (const rv of reviewRows) {
-      if (!rv || rv.skipped) continue;
-      const empName = agentToEmployee(rv._agent_name) || rv._agent_name;
-      if (!empName) continue;
-      if (!byEmployee[empName]) byEmployee[empName] = { scores: [], resolved: 0, total: 0 };
-      byEmployee[empName].total++;
-      if (rv.overall_score > 0) byEmployee[empName].scores.push(rv.overall_score);
-      if (rv.resolved) byEmployee[empName].resolved++;
-    }
+    let totalChats = 0;
+    let pageId = null;
+    let isFirst = true;
 
-    const allScores = Object.values(byEmployee).flatMap(e => e.scores);
-    const totalReviewed = Object.values(byEmployee).reduce((s, e) => s + e.total, 0);
+    do {
+      const body = pageId ? { page_id: pageId } : { filters: { from: dateFrom, to: dateTo }, limit: 100 };
+      const data = await lcPost("list_archives", body);
+      const chats = data.chats || [];
+      if (isFirst) { totalChats = data.found_chats ?? data.total_chats ?? 0; isFirst = false; }
+      pageId = data.next_page_id || null;
+
+      for (const c of chats) {
+        const thread  = c.thread || (Array.isArray(c.threads) ? c.threads[0] : null) || {};
+        const users   = c.users || [];
+        const events  = thread.events || [];
+        const startedAt = thread.created_at || null;
+        const review  = reviews[thread.id] || reviews[c.id];
+
+        // Build full list of agents who participated in this chat (same as allAgentsInThread)
+        const agentUserIds = new Set(
+          events
+            .filter(e => { const u = users.find(u2 => u2.id === e.author_id); return u?.type === "agent"; })
+            .map(e => e.author_id)
+        );
+        if (thread?.assignee?.id) agentUserIds.add(thread.assignee.id);
+
+        const chatAgents = [...agentUserIds]
+          .map(id => users.find(u => u.id === id))
+          .filter(Boolean);
+
+        if (chatAgents.length === 0) {
+          // No agent found — still count toward total under "Unknown" but skip review
+          continue;
+        }
+
+        for (const agentUser of chatAgents) {
+          const empName = agentToEmployee(agentUser.name) || agentUser.name;
+          if (!byEmployee[empName]) byEmployee[empName] = { total: 0, scores: [], resolved: 0 };
+          byEmployee[empName].total++;
+
+          if (!review || review.skipped) continue;
+
+          // Try per-agent review first, fall back to overall
+          let ar = review;
+          if (review.per_agent_reviews) {
+            const agentLower = agentUser.name.toLowerCase().trim();
+            const agentFirst = agentLower.split(" ")[0];
+            const pr = Object.values(review.per_agent_reviews).find(r =>
+              r && r.agent_name && (
+                r.agent_name.toLowerCase().trim() === agentLower ||
+                r.agent_name.toLowerCase().trim().startsWith(agentFirst)
+              )
+            );
+            if (pr) ar = pr;
+          }
+
+          if (ar.overall_score > 0) byEmployee[empName].scores.push(ar.overall_score);
+          if (ar.resolved) byEmployee[empName].resolved++;
+        }
+      }
+    } while (pageId);
+
+    const reviewedScores = Object.values(byEmployee).flatMap(e => e.scores);
+    const totalReviewed = reviewedScores.length;
     const totalResolved = Object.values(byEmployee).reduce((s, e) => s + e.resolved, 0);
-    const avgScore = allScores.length ? +(allScores.reduce((a,b)=>a+b,0)/allScores.length).toFixed(1) : null;
+    const avgScore = reviewedScores.length ? +(reviewedScores.reduce((a,b)=>a+b,0)/reviewedScores.length).toFixed(1) : null;
 
     const employees = Object.entries(byEmployee)
       .sort(([a],[b]) => a.localeCompare(b))
       .map(([name, d]) => ({
         name,
         total: d.total,
+        reviewed: d.scores.length,
         avg_score: d.scores.length ? +(d.scores.reduce((a,b)=>a+b,0)/d.scores.length).toFixed(2) : null,
         resolved: d.resolved,
       }));
-
-    // Single lightweight LC call for total chat count
-    let totalChats = null;
-    try {
-      const lcData = await lcPost("list_archives", { filters: { from: dateFrom, to: dateTo }, limit: 1 });
-      totalChats = lcData.found_chats ?? lcData.total_chats ?? null;
-    } catch {}
 
     res.json({ month, total_chats: totalChats, total_reviewed: totalReviewed, total_resolved: totalResolved, avg_score: avgScore, employees });
   } catch (e) { res.status(500).json({ error: e.message }); }
