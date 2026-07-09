@@ -118,11 +118,6 @@ async function initApp() {
   loadKnowledgeStatus();
   document.getElementById("btnLoad").addEventListener("click", () => loadChats(null));
   document.getElementById("btnReviewAll").addEventListener("click", reviewAllVisible);
-  if (currentUser?.role !== "admin") {
-    document.getElementById("btnRefreshKb").style.display = "none";
-  } else {
-    document.getElementById("btnRefreshKb").addEventListener("click", refreshKnowledge);
-  }
   document.getElementById("modal").addEventListener("click", (e) => {
     if (e.target === document.getElementById("modal")) closeModal();
   });
