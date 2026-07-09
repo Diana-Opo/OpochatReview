@@ -1471,22 +1471,31 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
     // Unique employees from shifts
     const uniqueEmps = [...new Set(shifts.map(s => s.employee))];
 
-    // Total chats from one no-filter call
+    // Total chats + per-employee counts sequentially to avoid rate limiting
     const firstPage = await lcPost("list_archives", { filters: { from: lcFrom, to: lcTo }, limit: 1 });
     const totalChats = firstPage.found_chats ?? firstPage.total_chats ?? 0;
 
-    // Per-employee total: one LC call each (same filter as Chat Review) — run in parallel
-    const empTotals = await Promise.all(uniqueEmps.map(async empName => {
+    const empTotals = [];
+    for (const empName of uniqueEmps) {
       const agentId = empToAgentId[empName];
-      if (!agentId) return { empName, total: 0 };
+      if (!agentId) {
+        console.log(`[dashboard] no agentId for: ${empName}`);
+        empTotals.push({ empName, total: 0 });
+        continue;
+      }
       try {
         const d = await lcPost("list_archives", {
           filters: { from: lcFrom, to: lcTo, agents: [{ id: agentId }] },
           limit: 1,
         });
-        return { empName, total: d.found_chats ?? 0 };
-      } catch { return { empName, total: 0 }; }
-    }));
+        const total = d.found_chats ?? d.total_chats ?? 0;
+        console.log(`[dashboard] ${empName} (${agentId}): ${total}`);
+        empTotals.push({ empName, total });
+      } catch(e) {
+        console.log(`[dashboard] error for ${empName}:`, e.message);
+        empTotals.push({ empName, total: 0 });
+      }
+    }
 
     // Build emp map — only include employees who had at least 1 chat
     const emp = {};
