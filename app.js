@@ -1708,8 +1708,11 @@ async function saveReportNotes(employee, month) {
   showStatus("Notes saved", "success");
 }
 
-async function deleteAllReports() {
-  if (!confirm("Delete ALL reports? This cannot be undone.")) return;
+function deleteAllReports() {
+  document.getElementById("confirmModal").classList.remove("hidden");
+}
+async function confirmDeleteAllReports() {
+  document.getElementById("confirmModal").classList.add("hidden");
   const res = await authFetch("/api/reports", { method: "DELETE" });
   const data = await res.json();
   if (data.ok) { showStatus("All reports deleted", "success"); openReports(); }
