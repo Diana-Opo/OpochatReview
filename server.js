@@ -1468,50 +1468,41 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
         const thread  = c.thread || (Array.isArray(c.threads) ? c.threads[0] : null) || {};
         const users   = c.users || [];
         const events  = thread.events || [];
-        const startedAt = thread.created_at || null;
         const review  = reviews[thread.id] || reviews[c.id];
 
-        // Build full list of agents who participated in this chat (same as allAgentsInThread)
-        const agentUserIds = new Set(
-          events
-            .filter(e => { const u = users.find(u2 => u2.id === e.author_id); return u?.type === "agent"; })
-            .map(e => e.author_id)
-        );
-        if (thread?.assignee?.id) agentUserIds.add(thread.assignee.id);
+        // Primary agent = assignee, then first agent who sent a message (same as /api/chats)
+        const assigneeId = thread?.assignee?.id;
+        const activeAgentId = events.find(e => {
+          const u = users.find(u2 => u2.id === e.author_id);
+          return u?.type === "agent";
+        })?.author_id;
+        const agentUser = (assigneeId ? users.find(u => u.id === assigneeId) : null)
+          || (activeAgentId ? users.find(u => u.id === activeAgentId) : null);
 
-        const chatAgents = [...agentUserIds]
-          .map(id => users.find(u => u.id === id))
-          .filter(Boolean);
+        if (!agentUser) continue;
 
-        if (chatAgents.length === 0) {
-          // No agent found — still count toward total under "Unknown" but skip review
-          continue;
+        const empName = agentToEmployee(agentUser.name) || agentUser.name;
+        if (!byEmployee[empName]) byEmployee[empName] = { total: 0, scores: [], resolved: 0 };
+        byEmployee[empName].total++;
+
+        if (!review || review.skipped) continue;
+
+        // For score: use per-agent review if exists (multi-agent chats), else overall
+        let ar = review;
+        if (review.per_agent_reviews) {
+          const agentLower = agentUser.name.toLowerCase().trim();
+          const agentFirst = agentLower.split(" ")[0];
+          const pr = Object.values(review.per_agent_reviews).find(r =>
+            r?.agent_name && (
+              r.agent_name.toLowerCase().trim() === agentLower ||
+              r.agent_name.toLowerCase().trim().startsWith(agentFirst)
+            )
+          );
+          if (pr) ar = pr;
         }
 
-        for (const agentUser of chatAgents) {
-          const empName = agentToEmployee(agentUser.name) || agentUser.name;
-          if (!byEmployee[empName]) byEmployee[empName] = { total: 0, scores: [], resolved: 0 };
-          byEmployee[empName].total++;
-
-          if (!review || review.skipped) continue;
-
-          // Try per-agent review first, fall back to overall
-          let ar = review;
-          if (review.per_agent_reviews) {
-            const agentLower = agentUser.name.toLowerCase().trim();
-            const agentFirst = agentLower.split(" ")[0];
-            const pr = Object.values(review.per_agent_reviews).find(r =>
-              r && r.agent_name && (
-                r.agent_name.toLowerCase().trim() === agentLower ||
-                r.agent_name.toLowerCase().trim().startsWith(agentFirst)
-              )
-            );
-            if (pr) ar = pr;
-          }
-
-          if (ar.overall_score > 0) byEmployee[empName].scores.push(ar.overall_score);
-          if (ar.resolved) byEmployee[empName].resolved++;
-        }
+        if (ar.overall_score > 0) byEmployee[empName].scores.push(ar.overall_score);
+        if (ar.resolved) byEmployee[empName].resolved++;
       }
     } while (pageId);
 
