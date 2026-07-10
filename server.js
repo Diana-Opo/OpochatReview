@@ -1342,12 +1342,49 @@ app.post("/api/review/:chatId", authMiddleware, async (req, res) => {
     console.log(`[lang] prechatLang=${detectPrechatLanguage(events)} violations=${[...langViolations.entries()].map(([k,v])=>`${k}:${v.prechatLang}->${v.agentLang}`).join(',') || 'none'} agentCount=${agentCount}`);
     const langCannotSpeak = new Set([...langViolationsRaw.keys()].filter(k => !langViolations.has(k)));
 
+    // Proactive check: if an agent's language list does NOT include the customer's language,
+    // they MUST transfer regardless — add to cannotSpeak even if no violation was detected
+    // (e.g. agent transferred silently and detectLanguageViolations never flagged them)
+    const custLangGlobal = detectPrechatLanguage(events);
+    if (custLangGlobal) {
+      for (const [, seg] of Object.entries(agentSegments)) {
+        const nk = seg.name.toLowerCase().trim();
+        if (langCannotSpeak.has(nk)) continue;
+        if ([...langViolations.keys()].some(k => nk === k || nk.split(" ")[0] === k.split(" ")[0])) continue;
+        const se = shifts3.find(s => nk === s.agentKey || nk.split(" ")[0] === s.agentKey || s.agentKey.split(" ")[0] === nk.split(" ")[0]);
+        const al = (se?.languages || []).map(l => l.toLowerCase());
+        if (al.length === 0) continue;
+        const sf = al.some(l => l.includes("farsi") || l.includes("persian"));
+        const sa = al.some(l => l.includes("arabic"));
+        const sen = al.some(l => l.includes("english"));
+        const canSpeak =
+          (custLangGlobal === "farsi"           && sf)  ||
+          (custLangGlobal === "arabic"          && sa)  ||
+          (custLangGlobal === "english"         && sen) ||
+          (custLangGlobal === "farsi_or_arabic" && sf && sa);
+        if (!canSpeak) {
+          langCannotSpeak.add(nk);
+          console.log(`[lang] proactive cannotSpeak: ${seg.name} langs=${JSON.stringify(al)} custLang=${custLangGlobal}`);
+        }
+      }
+    }
+
     let review;
 
     if (agentCount <= 1) {
       // Single-agent: one overall Claude call
       review = await reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes);
-      if (langViolations.size > 0) {
+      if (langCannotSpeak.size > 0) {
+        // Agent cannot speak customer's language → transfer was correct → override all scores
+        review = {
+          ...review,
+          accuracy_score: 10, resolution_score: 10, compliance_score: 10,
+          product_knowledge_score: 10, satisfaction_score: 10, language_score: 10, tone_score: 10,
+          overall_score: Math.max(review.overall_score || 0, 8),
+          issues: null, _lang_transfer_override: true,
+        };
+        console.log(`[lang] single-agent transfer override applied`);
+      } else if (langViolations.size > 0) {
         const [firstKey, firstV] = [...langViolations.entries()][0];
         review = applyLanguagePenalty(review, firstKey, firstV);
         console.log(`[lang] single-agent penalty applied`);
