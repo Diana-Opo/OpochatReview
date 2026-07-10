@@ -1984,6 +1984,6 @@ async function backfillAgentNames() {
   } catch (e) {
     showStatus("Backfill error: " + e.message, "error");
   } finally {
-    if (btn) btn.textContent = "⚙";
+    if (btn) btn.textContent = "⚙ Run";
   }
 }

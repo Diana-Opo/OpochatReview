@@ -53,10 +53,6 @@
         <p id="sidebarRole" class="text-slate-500 text-xs capitalize"></p>
       </div>
       <div class="flex items-center gap-2 mt-1">
-        <button onclick="backfillAgentNames()" id="btnBackfill" title="Fix dashboard data (one-time)"
-          class="admin-only hidden text-xs text-slate-400 hover:text-amber-300 bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded-lg transition" >
-          ⚙
-        </button>
         <button onclick="openChangePassword()"
           class="text-xs text-slate-400 hover:text-blue-400 bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded-lg transition" title="Change password">
           🔑
@@ -311,6 +307,20 @@
               <span id="cfg-tg-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
             </div>
             <p class="text-xs text-gray-400">Last fetched: <span id="cfg-tg-fetched">—</span></p>
+          </div>
+
+          <!-- Fix Dashboard Data -->
+          <div class="bg-white rounded-2xl border border-gray-200 p-5">
+            <div class="flex items-center justify-between">
+              <div>
+                <h3 class="font-semibold text-gray-800 text-sm">Fix Dashboard Data</h3>
+                <p class="text-xs text-gray-400 mt-0.5">Re-assigns agent names on existing reviews — run once if bar chart is missing agents</p>
+              </div>
+              <button onclick="backfillAgentNames()" id="btnBackfill"
+                class="flex items-center gap-1.5 text-xs bg-amber-50 text-amber-700 hover:bg-amber-100 px-3 py-1.5 rounded-lg transition font-medium">
+                ⚙ Run
+              </button>
+            </div>
           </div>
 
         </div>
