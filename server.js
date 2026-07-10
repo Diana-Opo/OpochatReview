@@ -1417,11 +1417,14 @@ app.post("/api/review/:chatId", authMiddleware, async (req, res) => {
         const sf = al.some(l => l.includes("farsi") || l.includes("persian"));
         const sa = al.some(l => l.includes("arabic"));
         const sen = al.some(l => l.includes("english"));
+        // For "farsi_or_arabic" detected from message text (ambiguous — can't tell Farsi from Arabic),
+        // treat agent as able to speak if they know EITHER — don't override scores for ambiguous language.
+        // Only override when prechat form explicitly says "farsi" and agent doesn't know it.
         const canSpeak =
           (custLangGlobal === "farsi"           && sf)  ||
           (custLangGlobal === "arabic"          && sa)  ||
           (custLangGlobal === "english"         && sen) ||
-          (custLangGlobal === "farsi_or_arabic" && sf && sa);
+          (custLangGlobal === "farsi_or_arabic" && (sf || sa));
         if (!canSpeak) {
           langCannotSpeak.add(nk);
           console.log(`[lang] proactive cannotSpeak: ${seg.name} langs=${JSON.stringify(al)} custLang=${custLangGlobal}`);
