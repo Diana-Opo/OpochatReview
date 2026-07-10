@@ -720,25 +720,15 @@ function buildAgentSegments(events, users, shifts, chatStartedAt) {
   const segments = {};
   const agentUsers = users.filter(u => u.type === "agent");
 
-  // Pre-populate: only from agents who actually sent messages OR are named in system_messages.
-  // Do NOT add all group-queue agents — a group transfer just means the chat went to a queue,
-  // only the agent who actually picks it up (sends a message) should be reviewed.
+  // Pre-populate: ONLY agents who actually sent at least one public message.
+  // Do NOT add agents just because their name appears in a system_message — they may have
+  // been assigned or mentioned but never engaged with the customer.
   for (const e of events) {
     const isPrivate = e.visibility === "agents" || e.type === "annotation";
-    if (!isPrivate) {
+    if (!isPrivate && e.type === "message") {
       const user = users.find(u => u.id === e.author_id);
       if (user?.type === "agent" && !segments[user.id]) {
         segments[user.id] = { id: user.id, name: user.name, events: [], supervisorNotes: [], responded: false };
-      }
-    }
-    if (e.type === "system_message" && e.text) {
-      const lower = e.text.toLowerCase();
-      for (const a of agentUsers) {
-        // Only add if the agent is explicitly named (e.g. "assigned to X", "X joined") — not a group transfer
-        const isGroupTransfer = !!extractTransferGroup(e.text);
-        if (!isGroupTransfer && !segments[a.id] && lower.includes(a.name.toLowerCase())) {
-          segments[a.id] = { id: a.id, name: a.name, events: [], supervisorNotes: [], responded: false };
-        }
       }
     }
   }
