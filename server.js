@@ -1097,7 +1097,7 @@ ${transcript}`;
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 
-app.get("/api/debug-chat/:chatId", async (req, res) => {
+app.get("/api/debug-chat/:chatId", authMiddleware, adminOnly, async (req, res) => {
   try {
     const { chatId } = req.params;
     const { thread_id } = req.query;
@@ -1132,16 +1132,6 @@ app.get("/api/debug-chat/:chatId", async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
-});
-
-app.get("/api/debug-env", (req, res) => {
-  res.json({
-    account_id: process.env.LIVECHAT_ACCOUNT_ID || "NOT SET",
-    pat_length: (process.env.LIVECHAT_PAT || "").length,
-    pat_preview: (process.env.LIVECHAT_PAT || "").slice(0, 15) + "...",
-    database_url: process.env.DATABASE_URL ? "SET (length " + process.env.DATABASE_URL.length + ")" : "NOT SET",
-    db_pool: pool ? "active" : "null (file fallback)",
-  });
 });
 
 // Get all agents
@@ -1582,13 +1572,13 @@ app.post("/api/review/:chatId", authMiddleware, async (req, res) => {
 });
 
 // Get all saved reviews
-app.get("/api/reviews", async (req, res) => {
+app.get("/api/reviews", authMiddleware, async (req, res) => {
   const reviews = await loadReviews();
   res.json(reviews);
 });
 
 // Stats per agent
-app.get("/api/stats", async (req, res) => {
+app.get("/api/stats", authMiddleware, async (req, res) => {
   const reviews = await loadReviews();
   const { date_from, date_to, agent_id } = req.query;
 
@@ -1870,7 +1860,7 @@ app.post("/api/backfill-agent-names", authMiddleware, adminOnly, async (req, res
 });
 
 // Debug: show exact agent names from LiveChat
-app.get("/api/agent-names", async (req, res) => {
+app.get("/api/agent-names", authMiddleware, adminOnly, async (req, res) => {
   try {
     const data = await lcPost("list_agents", {}, LC_CONFIG_API);
     let list = Array.isArray(data) ? data : data?.agents || Object.values(data).find(v => Array.isArray(v)) || [];
@@ -1929,7 +1919,7 @@ app.post("/api/agent-shifts", authMiddleware, adminOnly, async (req, res) => {
 });
 
 // Discover Telegram group IDs (call after adding bot to groups)
-app.get("/api/telegram-setup", async (req, res) => {
+app.get("/api/telegram-setup", authMiddleware, adminOnly, async (req, res) => {
   if (!TELEGRAM_BOT_TOKEN) return res.json({ error: "TELEGRAM_BOT_TOKEN not set in .env" });
   try {
     const r = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?limit=100`);
@@ -1957,7 +1947,7 @@ app.post("/api/refresh-knowledge", authMiddleware, async (req, res) => {
 });
 
 // Knowledge status
-app.get("/api/knowledge-status", (req, res) => {
+app.get("/api/knowledge-status", authMiddleware, (req, res) => {
   res.json({ lastFetched: kb.lastFetched, knowledge: kb.knowledge.length, campaigns: kb.campaigns.length, telegram: kb.telegram.length, protocol: kb.protocol.length, macros: kb.macros.length, tags: kb.tags.length });
 });
 
