@@ -1,3 +1,10 @@
+function togglePw(btn) {
+  const inp = btn.previousElementSibling;
+  const show = inp.type === "password";
+  inp.type = show ? "text" : "password";
+  btn.textContent = show ? "🙈" : "👁";
+}
+
 // ── State ────────────────────────────────────────────────────────────────────
 let chats = [];
 let agents = [];
@@ -1404,7 +1411,7 @@ function shiftRowHtml(s) {
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${groupCheckboxesHtml(s.groups)}</div></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${languageCheckboxesHtml(s.languages)}</div></td>
     <td class="py-2 pr-3"><input class="sr-username w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" value="${escHtml(s.username || "")}" placeholder="username" autocomplete="off" /></td>
-    <td class="py-2 pr-3"><input class="sr-password w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" type="password" placeholder="••••••" autocomplete="new-password" /></td>
+    <td class="py-2 pr-3"><div class="relative w-24"><input class="sr-password w-full border border-gray-200 rounded-lg px-2 py-1.5 pr-7 text-sm" type="password" placeholder="••••••" autocomplete="new-password" /><button type="button" tabindex="-1" onclick="togglePw(this)" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">👁</button></div></td>
     <td class="py-2 pr-3">
       <select class="sr-role border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
         <option value="user" ${(s.userRole || "user") !== "admin" ? "selected" : ""}>User</option>
@@ -1431,7 +1438,7 @@ function addShiftRow() {
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${groupCheckboxesHtml([])}</div></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${languageCheckboxesHtml([])}</div></td>
     <td class="py-2 pr-3"><input class="sr-username w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" placeholder="username" autocomplete="off" /></td>
-    <td class="py-2 pr-3"><input class="sr-password w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" type="password" placeholder="••••••" autocomplete="new-password" /></td>
+    <td class="py-2 pr-3"><div class="relative w-24"><input class="sr-password w-full border border-gray-200 rounded-lg px-2 py-1.5 pr-7 text-sm" type="password" placeholder="••••••" autocomplete="new-password" /><button type="button" tabindex="-1" onclick="togglePw(this)" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">👁</button></div></td>
     <td class="py-2 pr-3">
       <select class="sr-role border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
         <option value="user" selected>User</option>
