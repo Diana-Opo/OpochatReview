@@ -677,13 +677,19 @@ function buildLanguageViolationNote(filteredViolations, events) {
   return `⚠ SYSTEM NOTE: Pre-Chat Form language = ${prechatLang?.toUpperCase()}. Language mismatch detected for some agents.\n\n`;
 }
 
+function toIstanbulTime(iso) {
+  if (!iso) return "";
+  const ist = new Date(new Date(iso).getTime() + 3 * 60 * 60 * 1000);
+  return ist.toISOString().replace("T", " ").slice(0, 16);
+}
+
 function buildTranscript(events, users) {
   const lines = [];
   for (const e of events) {
     const user = users.find((u) => u.id === e.author_id);
     const role = user?.type || "unknown";
     const name = user?.name || e.author_id;
-    const ts = e.created_at || "";
+    const ts = e.created_at ? toIstanbulTime(e.created_at) : "";
 
     if (e.type === "filled_form" && Array.isArray(e.fields) && e.fields.length) {
       const fields = e.fields
