@@ -232,7 +232,8 @@ async function loadKnowledgeStatus() {
 async function refreshKnowledge() {
   const btn = document.getElementById("btnRefreshKb");
   btn.disabled = true;
-  document.getElementById("kbStatus").textContent = "...";
+  const kbEl = document.getElementById("kbStatus");
+  if (kbEl) kbEl.textContent = "...";
   try {
     const res = await authFetch("/api/refresh-knowledge", { method: "POST" });
     const data = await res.json();
@@ -259,8 +260,10 @@ function updateKbStatus(data) {
   if (hasProt) parts.push("Proto✓");
   if (hasMacros) parts.push("Macros✓");
   if (hasTags) parts.push("Tags✓");
-  kb.textContent = parts.length ? parts.join(" ") : "No data";
-  kb.title = `Last fetched: ${data.lastFetched || "never"}\nKnowledge: ${data.knowledge} chars\nCampaigns: ${data.campaigns} chars\nTelegram: ${data.telegram} chars\nProtocol: ${data.protocol} chars`;
+  if (kb) {
+    kb.textContent = parts.length ? parts.join(" ") : "No data";
+    kb.title = `Last fetched: ${data.lastFetched || "never"}\nKnowledge: ${data.knowledge} chars\nCampaigns: ${data.campaigns} chars\nTelegram: ${data.telegram} chars\nProtocol: ${data.protocol} chars`;
+  }
   updateConfigPage(data);
 }
 
