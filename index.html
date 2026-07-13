@@ -244,7 +244,10 @@
                 <h3 class="font-semibold text-gray-800 text-sm">Knowledge Base</h3>
                 <p class="text-xs text-gray-400 mt-0.5">Google Docs — product info, account types, rules</p>
               </div>
-              <span id="cfg-kb-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+              <div class="flex items-center gap-2">
+                <span id="cfg-kb-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+                <button onclick="refreshOneSource('kb',this)" class="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
+              </div>
             </div>
             <p class="text-xs text-gray-400">Last fetched: <span id="cfg-kb-fetched">—</span></p>
           </div>
@@ -256,7 +259,10 @@
                 <h3 class="font-semibold text-gray-800 text-sm">Campaigns</h3>
                 <p class="text-xs text-gray-400 mt-0.5">Google Sheets — active promotions & bonuses</p>
               </div>
-              <span id="cfg-camp-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+              <div class="flex items-center gap-2">
+                <span id="cfg-camp-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+                <button onclick="refreshOneSource('campaigns',this)" class="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
+              </div>
             </div>
             <p class="text-xs text-gray-400">Last fetched: <span id="cfg-camp-fetched">—</span></p>
           </div>
@@ -268,7 +274,10 @@
                 <h3 class="font-semibold text-gray-800 text-sm">Macros</h3>
                 <p class="text-xs text-gray-400 mt-0.5">Google Sheets — standard agent response macros</p>
               </div>
-              <span id="cfg-macros-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+              <div class="flex items-center gap-2">
+                <span id="cfg-macros-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+                <button onclick="refreshOneSource('macros',this)" class="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
+              </div>
             </div>
             <p class="text-xs text-gray-400">Last fetched: <span id="cfg-macros-fetched">—</span></p>
           </div>
@@ -280,7 +289,10 @@
                 <h3 class="font-semibold text-gray-800 text-sm">Tags</h3>
                 <p class="text-xs text-gray-400 mt-0.5">Google Sheets — chat classification tags</p>
               </div>
-              <span id="cfg-tags-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+              <div class="flex items-center gap-2">
+                <span id="cfg-tags-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+                <button onclick="refreshOneSource('tags',this)" class="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
+              </div>
             </div>
             <p class="text-xs text-gray-400">Last fetched: <span id="cfg-tags-fetched">—</span></p>
           </div>
@@ -292,7 +304,10 @@
                 <h3 class="font-semibold text-gray-800 text-sm">Protocol Docs</h3>
                 <p class="text-xs text-gray-400 mt-0.5">Google Docs — internal agent protocols & guidelines</p>
               </div>
-              <span id="cfg-proto-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+              <div class="flex items-center gap-2">
+                <span id="cfg-proto-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+                <button onclick="refreshOneSource('protocol',this)" class="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
+              </div>
             </div>
             <p class="text-xs text-gray-400">Last fetched: <span id="cfg-proto-fetched">—</span></p>
           </div>
@@ -304,7 +319,10 @@
                 <h3 class="font-semibold text-gray-800 text-sm">Telegram Updates</h3>
                 <p class="text-xs text-gray-400 mt-0.5">Telegram channel — latest team announcements</p>
               </div>
-              <span id="cfg-tg-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+              <div class="flex items-center gap-2">
+                <span id="cfg-tg-badge" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">—</span>
+                <button onclick="refreshOneSource('telegram',this)" class="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
+              </div>
             </div>
             <p class="text-xs text-gray-400">Last fetched: <span id="cfg-tg-fetched">—</span></p>
           </div>

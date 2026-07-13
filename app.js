@@ -333,6 +333,20 @@ async function syncLcAgents() {
   if (icon) icon.textContent = "⟳";
 }
 
+async function refreshOneSource(source, btnEl) {
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = "…"; }
+  try {
+    const res = await authFetch(`/api/refresh-knowledge/${source}`, { method: "POST" });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    updateKbStatus(data);
+    showStatus(`${source} refreshed`, "success");
+  } catch (e) {
+    showStatus(`Refresh failed: ${e.message}`, "error");
+  }
+  if (btnEl) { btnEl.disabled = false; btnEl.textContent = "⟳"; }
+}
+
 async function refreshAllKnowledge() {
   const btn = document.getElementById("btnRefreshAllKb");
   const icon = document.getElementById("refreshAllIcon");

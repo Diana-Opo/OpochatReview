@@ -1936,7 +1936,49 @@ app.get("/api/telegram-setup", authMiddleware, adminOnly, async (req, res) => {
   }
 });
 
-// Refresh knowledge base from Google Docs/Sheets
+// Refresh a single knowledge source
+app.post("/api/refresh-knowledge/:source", authMiddleware, async (req, res) => {
+  const { source } = req.params;
+  const headers = { "User-Agent": "Mozilla/5.0" };
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  try {
+    if (source === "kb") {
+      const r = await fetch(GDOC_KNOWLEDGE_URL, { headers });
+      if (!r.ok) throw new Error(`Fetch failed: ${r.status}`);
+      kb.knowledge = await r.text();
+      await fs.writeFile(path.join(DATA_DIR, "knowledge.txt"), kb.knowledge);
+    } else if (source === "campaigns") {
+      const r = await fetch(GSHEET_CAMPAIGNS_URL, { headers });
+      if (!r.ok) throw new Error(`Fetch failed: ${r.status}`);
+      kb.campaigns = await r.text();
+      await fs.writeFile(path.join(DATA_DIR, "campaigns.csv"), kb.campaigns);
+    } else if (source === "macros") {
+      const r = await fetch(GSHEET_MACROS_URL, { headers });
+      if (!r.ok) throw new Error(`Fetch failed: ${r.status}`);
+      kb.macros = await r.text();
+      await fs.writeFile(path.join(DATA_DIR, "macros.csv"), kb.macros);
+    } else if (source === "tags") {
+      const r = await fetch(GSHEET_TAGS_URL, { headers });
+      if (!r.ok) throw new Error(`Fetch failed: ${r.status}`);
+      kb.tags = await r.text();
+      await fs.writeFile(path.join(DATA_DIR, "tags.csv"), kb.tags);
+    } else if (source === "protocol") {
+      await fetchProtocolDocs();
+    } else if (source === "telegram") {
+      await importTelegramExport();
+      if (TELEGRAM_BOT_TOKEN) await pollTelegram();
+      kb.telegram = await fs.readFile(path.join(DATA_DIR, "telegram_updates.txt"), "utf8").catch(() => "");
+    } else {
+      return res.status(400).json({ error: "Unknown source: " + source });
+    }
+    kb.lastFetched = new Date().toISOString();
+    res.json({ ok: true, lastFetched: kb.lastFetched, knowledge: kb.knowledge.length, campaigns: kb.campaigns.length, telegram: kb.telegram.length, protocol: kb.protocol.length, macros: kb.macros.length, tags: kb.tags.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Refresh all knowledge base sources
 app.post("/api/refresh-knowledge", authMiddleware, async (req, res) => {
   try {
     await loadKnowledge();
