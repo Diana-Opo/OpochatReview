@@ -178,6 +178,15 @@ async function initApp() {
     document.querySelectorAll(".admin-only").forEach(el => el.classList.remove("hidden"));
   }
 
+  // Navigate to correct page immediately — before any async calls so there's no flash
+  const lastPage = localStorage.getItem("lastPage");
+  const validPages = ["dashboard", "chats", "reports", "report-monthly", "employees", "config"];
+  const adminPages = ["employees", "config"];
+  const startPage = validPages.includes(lastPage) && (!adminPages.includes(lastPage) || currentUser.role === "admin")
+    ? lastPage : "chats";
+  showPage(startPage);
+
+  // Load agents + shifts in background (populate filter dropdowns)
   await loadAgents();
   try { const r = await authFetch("/api/agent-shifts"); agentShifts = await r.json(); } catch {}
   renderAgentFilter();
@@ -187,14 +196,6 @@ async function initApp() {
   document.getElementById("modal").addEventListener("click", (e) => {
     if (e.target === document.getElementById("modal")) closeModal();
   });
-
-  // Default page — restore last visited page
-  const lastPage = localStorage.getItem("lastPage");
-  const validPages = ["dashboard", "chats", "reports", "report-monthly", "employees", "config"];
-  const adminPages = ["employees", "config"];
-  const startPage = validPages.includes(lastPage) && (!adminPages.includes(lastPage) || currentUser.role === "admin")
-    ? lastPage : "chats";
-  showPage(startPage);
 }
 
 // ── Page navigation ───────────────────────────────────────────────────────────
