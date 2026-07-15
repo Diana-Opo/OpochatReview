@@ -407,12 +407,16 @@ function resolveEmployeeFilter() {
   return agent?.id || null;
 }
 
-function agentMatchesShift(agentName, shift, platform) {
+function agentMatchesShift(agentName, shift, platform, agentEmail) {
   if (!agentName || !shift) return false;
   if (platform === "chatwoot") {
     if (!shift.chatwootAgentId) return false;
     const cwId = shift.chatwootAgentId.toLowerCase().trim();
     const n = agentName.toLowerCase().trim();
+    if (agentEmail) {
+      const e = agentEmail.toLowerCase().trim();
+      if (cwId === e) return true;
+    }
     return cwId === n || cwId.split("@")[0] === n || cwId === n.split("@")[0];
   }
   const k = agentName.toLowerCase().trim();
@@ -425,7 +429,7 @@ function applyEmployeeHourFilter(list) {
     const h = getTehranHour(c.started_at);
     if (h < activeEmployeeShift.start || h >= activeEmployeeShift.end) return false;
     const chatAgents = c.agents || [];
-    return chatAgents.some(a => agentMatchesShift(a.name, activeEmployeeShift, c.platform));
+    return chatAgents.some(a => agentMatchesShift(a.name, activeEmployeeShift, c.platform, a.email));
   });
 }
 
@@ -640,7 +644,7 @@ function renderTable() {
     } else {
       agentNames = allAgents.map(a => a.name).join(", ") || "—";
       const empNames = allAgents.length > 0
-        ? [...new Set(allAgents.map(a => getEmployeeName(a.name, chat.started_at, chat.platform) || a.name))].join(", ")
+        ? [...new Set(allAgents.map(a => getEmployeeName(a.name, chat.started_at, chat.platform, a.email) || a.name))].join(", ")
         : "—";
       employeeNameHtml = `<span class="font-medium text-gray-800">${empNames}</span>`;
     }
@@ -1135,7 +1139,7 @@ function updateStats() {
   document.getElementById("statResolved").textContent = resolved || "—";
 }
 
-function getEmployeeName(agentName, dateStr, platform) {
+function getEmployeeName(agentName, dateStr, platform, agentEmail) {
   if (!agentName || !dateStr) return agentName || null;
   const full = agentName.toLowerCase().trim();
   const first = full.split(" ")[0];
@@ -1145,6 +1149,7 @@ function getEmployeeName(agentName, dateStr, platform) {
     if (platform === "chatwoot") {
       if (!s.chatwootAgentId) return false;
       const cwId = s.chatwootAgentId.toLowerCase().trim();
+      if (agentEmail && cwId === agentEmail.toLowerCase().trim()) return true;
       return cwId === full || cwId.split("@")[0] === first;
     }
     return s.agentKey === full || s.agentKey === first;
@@ -1152,8 +1157,8 @@ function getEmployeeName(agentName, dateStr, platform) {
   return match ? match.employee : agentName;
 }
 
-function getEmployeeNameForChart(agentName, dateStr, platform) {
-  const matched = getEmployeeName(agentName, dateStr, platform);
+function getEmployeeNameForChart(agentName, dateStr, platform, agentEmail) {
+  const matched = getEmployeeName(agentName, dateStr, platform, agentEmail);
   if (matched !== agentName) return matched;
   const full = (agentName || "").toLowerCase().trim();
   const first = full.split(" ")[0];
@@ -1161,6 +1166,7 @@ function getEmployeeNameForChart(agentName, dateStr, platform) {
     if (platform === "chatwoot") {
       if (!s.chatwootAgentId) return false;
       const cwId = s.chatwootAgentId.toLowerCase().trim();
+      if (agentEmail && cwId === agentEmail.toLowerCase().trim()) return true;
       return cwId === full || cwId.split("@")[0] === first;
     }
     return s.agentKey === full || s.agentKey === first;
@@ -1187,7 +1193,7 @@ function updateChart() {
     if (!primaryAgent) continue;
     const emp = activeEmployeeShift
       ? activeEmployeeShift.employee
-      : getEmployeeNameForChart(primaryAgent.name, chat.started_at, chat.platform);
+      : getEmployeeNameForChart(primaryAgent.name, chat.started_at, chat.platform, primaryAgent.email);
 
     if (!activeEmployeeShift) {
       totalByEmployee[emp] = (totalByEmployee[emp] || 0) + 1;
@@ -1435,16 +1441,30 @@ function showStatus(msg, type) {
 
 // ── Settings Modal ────────────────────────────────────────────────────────────
 let settingsAgents = [];
+let cwAgents = [];
+
+function cwAgentOptionsHtml(selectedEmail) {
+  const sel = (selectedEmail || "").toLowerCase().trim();
+  const opts = cwAgents.map(a => {
+    const val = (a.email || "").toLowerCase().trim();
+    const isSelected = val === sel ? "selected" : "";
+    return `<option value="${escHtml(a.email)}" ${isSelected}>${escHtml(a.name)}</option>`;
+  });
+  return `<option value="">— CW Agent —</option>` + opts.join("");
+}
 
 async function openSettings() {
   if (agents.length > 0) settingsAgents = agents;
   try {
-    const [shiftsRes, usersRes] = await Promise.all([
+    const [shiftsRes, usersRes, cwAgentsRes] = await Promise.all([
       authFetch("/api/agent-shifts"),
       authFetch("/api/app-users"),
+      authFetch("/api/chatwoot-agents"),
     ]);
     const fresh = await shiftsRes.json();
     const appUsers = await usersRes.json();
+    const cwList = await cwAgentsRes.json();
+    if (Array.isArray(cwList)) cwAgents = cwList;
     if (Array.isArray(fresh)) {
       const userMap = {}, roleMap = {};
       if (Array.isArray(appUsers)) appUsers.forEach(u => {
@@ -1527,7 +1547,11 @@ function shiftRowHtml(s) {
         ${agentOptionsHtml(s.agentKey || "")}
       </select>
     </td>
-    <td class="py-2 pr-3"><input class="sr-cw-agent w-32 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" value="${escHtml(s.chatwootAgentId || "")}" placeholder="CW email/name" /></td>
+    <td class="py-2 pr-3">
+      <select class="sr-cw-agent w-36 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-teal-300">
+        ${cwAgentOptionsHtml(s.chatwootAgentId || "")}
+      </select>
+    </td>
     <td class="py-2 pr-3"><input class="sr-start w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23" value="${s.start ?? 8}" /></td>
     <td class="py-2 pr-3"><input class="sr-end w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" value="${s.end ?? 16}" /></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${groupCheckboxesHtml(s.groups)}</div></td>
@@ -1555,7 +1579,11 @@ function addShiftRow() {
         ${agentOptionsHtml("")}
       </select>
     </td>
-    <td class="py-2 pr-3"><input class="sr-cw-agent w-32 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" placeholder="CW email/name" /></td>
+    <td class="py-2 pr-3">
+      <select class="sr-cw-agent w-36 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-teal-300">
+        ${cwAgentOptionsHtml("")}
+      </select>
+    </td>
     <td class="py-2 pr-3"><input class="sr-start w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23" value="8" /></td>
     <td class="py-2 pr-3"><input class="sr-end w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" value="16" /></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${groupCheckboxesHtml([])}</div></td>

@@ -1390,6 +1390,18 @@ app.get("/api/chats/:chatId", authMiddleware, async (req, res) => {
 // ── Chatwoot endpoints ────────────────────────────────────────────────────────
 
 // List Chatwoot conversations with date filter
+app.get("/api/chatwoot-agents", authMiddleware, async (req, res) => {
+  if (!chatwootEnabled()) return res.json([]);
+  try {
+    const agents = await cwGet("/agents");
+    const list = Array.isArray(agents) ? agents.map(a => ({ id: a.id, name: a.name, email: a.email })) : [];
+    res.json(list);
+  } catch (e) {
+    console.error("[chatwoot-agents]", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/api/chatwoot-chats", authMiddleware, async (req, res) => {
   if (!chatwootEnabled()) return res.json({ chats: [], total_chats: 0, enabled: false });
   try {
@@ -1425,8 +1437,8 @@ app.get("/api/chatwoot-chats", authMiddleware, async (req, res) => {
         id: convId,
         thread_id: convId,
         platform: "chatwoot",
-        agent: assignee ? { id: String(assignee.id), name: assignee.name } : null,
-        agents: assignee ? [{ id: String(assignee.id), name: assignee.name }] : [],
+        agent: assignee ? { id: String(assignee.id), name: assignee.name, email: assignee.email || "" } : null,
+        agents: assignee ? [{ id: String(assignee.id), name: assignee.name, email: assignee.email || "" }] : [],
         customer_name: sender?.name || null,
         started_at: cwTimestamp(conv.created_at),
         ended_at: cwTimestamp(conv.resolved_at),
