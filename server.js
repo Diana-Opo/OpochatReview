@@ -1506,6 +1506,18 @@ app.get("/api/chatwoot-chats/:convId", authMiddleware, async (req, res) => {
     const sender = convData.meta?.sender || null;
 
     const rawMessages = (messagesData.payload || []).sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+
+    // Determine primary agent from actual message senders, not just current assignee
+    // (assignee can change after chat ends via transfer/reassign)
+    const agentMsgSenders = {};
+    rawMessages.filter(m => m.message_type === 1 && !m.private && m.sender?.id).forEach(m => {
+      const id = String(m.sender.id);
+      if (!agentMsgSenders[id]) agentMsgSenders[id] = { id, name: m.sender.name, email: m.sender.email || "", count: 0 };
+      agentMsgSenders[id].count++;
+    });
+    const actualAgentList = Object.values(agentMsgSenders).sort((a, b) => b.count - a.count);
+    const primaryAgent = actualAgentList[0] || assignee;
+
     const messages = rawMessages
       .filter(m => m.content)
       .map(msg => {
@@ -1515,14 +1527,17 @@ app.get("/api/chatwoot-chats/:convId", authMiddleware, async (req, res) => {
         }
         const isPrivate = msg.private === true;
         const isAgent = msg.message_type === 1;
-        const senderName = msg.sender?.name || (isAgent ? (assignee?.name || "Agent") : (sender?.name || "Customer"));
+        const senderName = msg.sender?.name || (isAgent ? (primaryAgent?.name || "Agent") : (sender?.name || "Customer"));
+        const segAgent = isAgent && !isPrivate && msg.sender?.id
+          ? { id: String(msg.sender.id), name: msg.sender.name }
+          : null;
         return {
           author_type: isPrivate ? "supervisor" : (isAgent ? "agent" : "customer"),
           author_name: senderName,
           content: msg.content,
           created_at: msgTime,
           is_private: isPrivate,
-          segment_agent: isAgent && !isPrivate ? (assignee ? { id: String(assignee.id), name: assignee.name } : null) : null,
+          segment_agent: segAgent,
           event_type: "message",
         };
       });
@@ -1531,8 +1546,10 @@ app.get("/api/chatwoot-chats/:convId", authMiddleware, async (req, res) => {
       id: convId,
       thread_id: convId,
       platform: "chatwoot",
-      agent: assignee ? { id: String(assignee.id), name: assignee.name } : null,
-      agents: assignee ? [{ id: String(assignee.id), name: assignee.name }] : [],
+      agent: primaryAgent ? { id: String(primaryAgent.id), name: primaryAgent.name, email: primaryAgent.email || "" } : null,
+      agents: actualAgentList.length > 0
+        ? actualAgentList.map(a => ({ id: String(a.id), name: a.name, email: a.email }))
+        : (assignee ? [{ id: String(assignee.id), name: assignee.name, email: assignee.email || "" }] : []),
       customer_name: sender?.name || null,
       started_at: cwTimestamp(convData.created_at),
       ended_at: cwTimestamp(convData.resolved_at),
@@ -1575,6 +1592,16 @@ app.post("/api/review/cw/:convId", authMiddleware, async (req, res) => {
       return res.json(skipped);
     }
 
+    // Determine primary agent from actual message senders (not current assignee which may have changed)
+    const agentMsgMap = {};
+    rawMessages.filter(m => m.message_type === 1 && !m.private && m.sender?.id).forEach(m => {
+      const id = String(m.sender.id);
+      if (!agentMsgMap[id]) agentMsgMap[id] = { id, name: m.sender.name, email: m.sender.email || "", count: 0 };
+      agentMsgMap[id].count++;
+    });
+    const actualAgents = Object.values(agentMsgMap).sort((a, b) => b.count - a.count);
+    const primaryAgent = actualAgents[0] || assignee;
+
     const supervisorNotes = rawMessages
       .filter(m => m.private === true)
       .map(m => ({ author: m.sender?.name || "Supervisor", text: m.content, created_at: cwTimestamp(m.created_at) }));
@@ -1584,15 +1611,15 @@ app.post("/api/review/cw/:convId", authMiddleware, async (req, res) => {
       .map(msg => {
         const isAgent = msg.message_type === 1;
         const who = isAgent
-          ? `Agent (${msg.sender?.name || assignee?.name || "Agent"})`
+          ? `Agent (${msg.sender?.name || primaryAgent?.name || "Agent"})`
           : `Customer (${msg.sender?.name || sender?.name || "Customer"})`;
         return `${who}: ${msg.content}`;
       })
       .join("\n");
 
-    // Match agent to employee via chatwootAgentId
-    const agentEmail = (assignee?.email || "").toLowerCase().trim();
-    const agentNameLow = (assignee?.name || "").toLowerCase().trim();
+    // Match agent to employee via chatwootAgentId (use primary agent who actually sent messages)
+    const agentEmail = (primaryAgent?.email || "").toLowerCase().trim();
+    const agentNameLow = (primaryAgent?.name || "").toLowerCase().trim();
     const matchShift = shifts.find(s => {
       if (!s.chatwootAgentId) return false;
       const cwId = s.chatwootAgentId.toLowerCase().trim();
@@ -1601,12 +1628,12 @@ app.post("/api/review/cw/:convId", authMiddleware, async (req, res) => {
 
     const review = await reviewWithClaude(
       transcript, `cw:${convId}`, createdAt, supervisorNotes,
-      assignee?.name || null, matchShift?.languages || [], matchShift?.groups || []
+      primaryAgent?.name || null, matchShift?.languages || [], matchShift?.groups || []
     );
 
     review.reviewed_at = new Date().toISOString();
-    review._agent_name = assignee?.name || null;
-    review._agent_id   = String(assignee?.id || "");
+    review._agent_name = primaryAgent?.name || null;
+    review._agent_id   = String(primaryAgent?.id || "");
     review._chat_date  = createdAt;
     review._platform   = "chatwoot";
     review._employee   = matchShift?.employee || null;
