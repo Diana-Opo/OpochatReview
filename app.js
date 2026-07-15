@@ -412,11 +412,9 @@ function agentMatchesShift(agentName, shift, platform, agentEmail) {
   if (platform === "chatwoot") {
     if (!shift.chatwootAgentId) return false;
     const cwId = shift.chatwootAgentId.toLowerCase().trim();
+    // Email exact match — no hour restriction needed (unique identity)
+    if (agentEmail && cwId === agentEmail.toLowerCase().trim()) return true;
     const n = agentName.toLowerCase().trim();
-    if (agentEmail) {
-      const e = agentEmail.toLowerCase().trim();
-      if (cwId === e) return true;
-    }
     return cwId === n || cwId.split("@")[0] === n || cwId === n.split("@")[0];
   }
   const k = agentName.toLowerCase().trim();
@@ -1163,34 +1161,34 @@ function getEmployeeName(agentName, dateStr, platform, agentEmail) {
   const full = agentName.toLowerCase().trim();
   const first = full.split(" ")[0];
   const h = getTehranHour(dateStr);
-  const match = agentShifts.find(s => {
-    if (h < s.start || h >= s.end) return false;
-    if (platform === "chatwoot") {
+
+  if (platform === "chatwoot") {
+    // Email is a unique identity on CW — match without hour check
+    if (agentEmail) {
+      const email = agentEmail.toLowerCase().trim();
+      const m = agentShifts.find(s => s.chatwootAgentId && s.chatwootAgentId.toLowerCase().trim() === email);
+      if (m) return m.employee;
+    }
+    // Fallback: name match respects shift hours
+    const m2 = agentShifts.find(s => {
+      if (h < s.start || h >= s.end) return false;
       if (!s.chatwootAgentId) return false;
       const cwId = s.chatwootAgentId.toLowerCase().trim();
-      if (agentEmail && cwId === agentEmail.toLowerCase().trim()) return true;
       return cwId === full || cwId.split("@")[0] === first;
-    }
+    });
+    return m2 ? m2.employee : agentName;
+  }
+
+  const match = agentShifts.find(s => {
+    if (h < s.start || h >= s.end) return false;
     return s.agentKey === full || s.agentKey === first;
   });
   return match ? match.employee : agentName;
 }
 
 function getEmployeeNameForChart(agentName, dateStr, platform, agentEmail) {
-  const matched = getEmployeeName(agentName, dateStr, platform, agentEmail);
-  if (matched !== agentName) return matched;
-  const full = (agentName || "").toLowerCase().trim();
-  const first = full.split(" ")[0];
-  const anyShift = agentShifts.find(s => {
-    if (platform === "chatwoot") {
-      if (!s.chatwootAgentId) return false;
-      const cwId = s.chatwootAgentId.toLowerCase().trim();
-      if (agentEmail && cwId === agentEmail.toLowerCase().trim()) return true;
-      return cwId === full || cwId.split("@")[0] === first;
-    }
-    return s.agentKey === full || s.agentKey === first;
-  });
-  return anyShift ? anyShift.employee : agentName;
+  // getEmployeeName already handles CW email match without hour check
+  return getEmployeeName(agentName, dateStr, platform, agentEmail);
 }
 
 function updateChart() {
