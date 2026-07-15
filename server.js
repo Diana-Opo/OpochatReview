@@ -258,6 +258,18 @@ function cwTimestamp(val) {
   return typeof val === "number" ? new Date(val * 1000).toISOString() : val;
 }
 
+// Chatwoot filter only accepts YYYY-MM-DD (not full ISO).
+// date_from ISO (already UTC-shifted) → extract date ("2026-07-14T21:00Z" → "2026-07-14")
+// date_to ISO → extract date + 1 day ("2026-07-15T20:59Z" → "2026-07-16")
+function cwFilterDateFrom(isoStr) {
+  return isoStr.split("T")[0];
+}
+function cwFilterDateTo(isoStr) {
+  const d = new Date(isoStr.split("T")[0] + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().split("T")[0];
+}
+
 const DATA_DIR = path.join(__dirname, "data");
 const GDOC_KNOWLEDGE_URL = "https://docs.google.com/document/d/14iBZtfOXkPTb_ZYM4zSIAZOqdZ_VZeoKW0zJiNHXSIs/export?format=txt";
 const GSHEET_CAMPAIGNS_URL = "https://docs.google.com/spreadsheets/d/1wp0FGyJe2LnMr2BMR42EiIQPrALrZcbNrN5qCg2q5X4/export?format=csv";
@@ -1411,8 +1423,8 @@ app.get("/api/chatwoot-chats", authMiddleware, async (req, res) => {
     const filterPayload = [
       { attribute_key: "status", filter_operator: "equal_to", values: ["resolved"], query_operator: date_from || date_to ? "AND" : null },
     ];
-    if (date_from) filterPayload.push({ attribute_key: "created_at", filter_operator: "is_greater_than", values: [date_from], query_operator: date_to ? "AND" : null });
-    if (date_to)   filterPayload.push({ attribute_key: "created_at", filter_operator: "is_less_than", values: [date_to], query_operator: null });
+    if (date_from) filterPayload.push({ attribute_key: "created_at", filter_operator: "is_greater_than", values: [cwFilterDateFrom(date_from)], query_operator: date_to ? "AND" : null });
+    if (date_to)   filterPayload.push({ attribute_key: "created_at", filter_operator: "is_less_than", values: [cwFilterDateTo(date_to)], query_operator: null });
 
     let allConvs = [];
     let page = 1;
@@ -2010,8 +2022,8 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       try {
         const cwFilter = [
           { attribute_key: "status", filter_operator: "equal_to", values: ["resolved"], query_operator: "AND" },
-          { attribute_key: "created_at", filter_operator: "is_greater_than", values: [lcFrom], query_operator: "AND" },
-          { attribute_key: "created_at", filter_operator: "is_less_than", values: [lcTo], query_operator: null },
+          { attribute_key: "created_at", filter_operator: "is_greater_than", values: [cwFilterDateFrom(lcFrom)], query_operator: "AND" },
+          { attribute_key: "created_at", filter_operator: "is_less_than", values: [cwFilterDateTo(lcTo)], query_operator: null },
         ];
         let cwPage = 1, cwAll = [], cwTotal = 0;
         while (true) {
