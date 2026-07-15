@@ -114,7 +114,7 @@
       </div>
 
       <!-- ── CHAT REVIEW ─────────────────────────────────────────────────── -->
-      <div id="page-chats" class="hidden">
+      <div id="page-chats" class="hidden relative">
         <div class="px-6 py-4 bg-white border-b border-gray-200">
           <div class="flex flex-wrap items-center gap-2">
             <input type="date" id="dateFrom" class="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300" />
@@ -139,6 +139,11 @@
             </button>
             <span id="chatCount" class="hidden text-xs text-gray-400 font-medium ml-1"></span>
           </div>
+        </div>
+        <!-- Loading overlay -->
+        <div id="chatsLoadingOverlay" class="hidden absolute inset-0 bg-white/80 backdrop-blur-sm z-20 flex flex-col items-center justify-center gap-3">
+          <div class="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+          <span id="chatsLoadingText" class="text-sm text-gray-500 font-medium">Loading chats...</span>
         </div>
         <div class="p-5">
           <div class="bg-white rounded-2xl border border-gray-200 overflow-hidden">

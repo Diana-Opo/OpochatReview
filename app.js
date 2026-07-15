@@ -463,6 +463,8 @@ async function loadChats(pageId) {
   const to = document.getElementById("dateTo").value;
   const agentId = resolveEmployeeFilter();
 
+  if (!pageId) setChatsLoading(true, "Loading chats...");
+
   const params = new URLSearchParams();
   if (from) params.set("date_from", iranDayToUtc(from, false));
   if (to)   params.set("date_to",   iranDayToUtc(to, true));
@@ -519,10 +521,32 @@ async function loadChats(pageId) {
       updateStats();
       if (!pageId) updateChart();
     }
-    // Fetch Chatwoot chats in parallel on first page load
-    if (!pageId) fetchChatwootChats(from, to);
+
+    // Fetch Chatwoot chats and wait before hiding loading overlay
+    if (!pageId) {
+      setChatsLoading(true, "Loading Chatwoot chats...");
+      await fetchChatwootChats(from, to);
+      setChatsLoading(false);
+    }
   } catch (e) {
+    setChatsLoading(false);
     showStatus("Error: " + e.message, "error");
+  }
+}
+
+function setChatsLoading(on, text) {
+  const overlay = document.getElementById("chatsLoadingOverlay");
+  const btn = document.getElementById("btnLoad");
+  const controls = ["dateFrom","dateTo","agentFilter","platformFilter","btnRefreshList"];
+  if (on) {
+    overlay?.classList.remove("hidden");
+    if (text) { const t = document.getElementById("chatsLoadingText"); if (t) t.textContent = text; }
+    if (btn) { btn.disabled = true; btn.classList.add("opacity-50","cursor-not-allowed"); }
+    controls.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = true; });
+  } else {
+    overlay?.classList.add("hidden");
+    if (btn) { btn.disabled = false; btn.classList.remove("opacity-50","cursor-not-allowed"); }
+    controls.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = false; });
   }
 }
 
