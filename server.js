@@ -2267,7 +2267,9 @@ app.get("/api/agent-names", authMiddleware, adminOnly, async (req, res) => {
 async function loadShifts() {
   if (pool) {
     try {
-      const r = await pool.query("SELECT employee, agent_key, start_hour, end_hour, groups, languages, chatwoot_agent_id FROM agent_shifts ORDER BY id");
+      // Add show_in_chart column if it doesn't exist yet
+      await pool.query("ALTER TABLE agent_shifts ADD COLUMN IF NOT EXISTS show_in_chart BOOLEAN NOT NULL DEFAULT TRUE").catch(() => {});
+      const r = await pool.query("SELECT employee, agent_key, start_hour, end_hour, groups, languages, chatwoot_agent_id, show_in_chart FROM agent_shifts ORDER BY id");
       if (r.rows.length > 0) return r.rows.map(row => ({
         employee: row.employee,
         agentKey: row.agent_key,
@@ -2276,6 +2278,7 @@ async function loadShifts() {
         groups: Array.isArray(row.groups) ? row.groups : [],
         languages: Array.isArray(row.languages) ? row.languages : [],
         chatwootAgentId: row.chatwoot_agent_id || "",
+        showInChart: row.show_in_chart !== false,
       }));
     } catch {}
   }
@@ -2287,11 +2290,12 @@ async function loadShifts() {
 
 async function saveShifts(shifts) {
   if (pool) {
+    await pool.query("ALTER TABLE agent_shifts ADD COLUMN IF NOT EXISTS show_in_chart BOOLEAN NOT NULL DEFAULT TRUE").catch(() => {});
     await pool.query("TRUNCATE agent_shifts RESTART IDENTITY");
     for (const s of shifts) {
       await pool.query(
-        `INSERT INTO agent_shifts (employee, agent_key, start_hour, end_hour, groups, languages, chatwoot_agent_id) VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7)`,
-        [s.employee, s.agentKey, s.start, s.end, JSON.stringify(Array.isArray(s.groups) ? s.groups : []), JSON.stringify(Array.isArray(s.languages) ? s.languages : []), s.chatwootAgentId || ""]
+        `INSERT INTO agent_shifts (employee, agent_key, start_hour, end_hour, groups, languages, chatwoot_agent_id, show_in_chart) VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8)`,
+        [s.employee, s.agentKey, s.start, s.end, JSON.stringify(Array.isArray(s.groups) ? s.groups : []), JSON.stringify(Array.isArray(s.languages) ? s.languages : []), s.chatwootAgentId || "", s.showInChart !== false]
       );
     }
     return;
