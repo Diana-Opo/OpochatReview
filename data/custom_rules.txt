@@ -1,0 +1,25 @@
+# Custom Review Rules — OPO Finance Support
+
+These rules describe how OPO broker works. Follow them exactly when scoring agents.
+
+---
+
+## COMMISSION RULE
+
+At OPO broker, commission is deducted ONLY when a position is OPENED.
+When a position is CLOSED, there is NO commission.
+
+This applies to ALL account types including ECN.
+
+So for any trade:
+- Entry (open) → commission deducted once
+- Exit (close) → no commission, zero
+
+An agent who tells the customer "commission is only charged when you open the position"
+or "there is no commission when closing" is giving a 100% correct answer.
+
+Do NOT penalize the agent for this explanation.
+Do NOT suggest the agent's answer is wrong or misleading.
+The agent's answer IS the correct OPO policy.
+
+---

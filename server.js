@@ -281,7 +281,7 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const TELEGRAM_CHAT_IDS = (process.env.TELEGRAM_CHAT_IDS || "").split(",").map(s => s.trim()).filter(Boolean);
 const PROTOCOL_DOC_IDS = (process.env.PROTOCOL_DOC_IDS || "").split(",").map(s => s.trim()).filter(Boolean);
 
-let kb = { knowledge: "", campaigns: "", telegram: "", protocol: "", macros: "", tags: "", lastFetched: null };
+let kb = { knowledge: "", campaigns: "", telegram: "", protocol: "", macros: "", tags: "", customRules: "", lastFetched: null };
 let telegramOffset = 0;
 
 app.use(express.json());
@@ -460,6 +460,10 @@ async function loadKnowledge() {
   } catch {
     kb.knowledge = await fs.readFile(path.join(DATA_DIR, "knowledge.txt"), "utf8").catch(() => "");
   }
+
+  // Load permanent custom rules (git-tracked, never overwritten)
+  kb.customRules = await fs.readFile(path.join(DATA_DIR, "custom_rules.txt"), "utf8").catch(() => "");
+  if (kb.customRules) console.log("[kb] custom_rules.txt loaded");
 
   // Fetch Google Sheets campaigns
   try {
@@ -936,6 +940,9 @@ async function reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNot
 }
 
 async function _reviewWithClaude(transcript, chatId, chatStartedAt, supervisorNotes = [], agentName = null, agentLanguages = [], agentGroups = []) {
+  const customRulesSection = kb.customRules
+    ? `\nCUSTOM REVIEW RULES — HIGH PRIORITY (apply these BEFORE any other rule; do NOT penalize agents for following them correctly):\n${kb.customRules}\n`
+    : "";
   const knowledgeSection = kb.knowledge
     ? `\nKNOWLEDGE BASE:\n${kb.knowledge.slice(0, 3000)}\n`
     : "";
@@ -974,8 +981,14 @@ TAG CLARIFICATIONS (commonly confused tags — follow these exactly):
     : "";
 
   const prompt = `You are a QA reviewer for a forex broker support team. Be concise.
+
+OPO BROKER COMMISSION RULE (mandatory — ignore your general knowledge about ECN accounts):
+At OPO, commission is charged ONLY when a position is OPENED. Closing a position costs ZERO commission.
+This is different from other brokers. Do NOT compare to industry standard or other brokers.
+If an agent says "commission is only on entry" or gives a one-sided commission amount — that is CORRECT OPO policy. Do NOT penalize it.
+
 CHAT DATE: ${chatStartedAt || "unknown"}
-${agentContext}${knowledgeSection}${campaignsSection}${telegramSection}${protocolSection}${macrosSection}${tagsSection ? (isPerAgent ? "" : tagsSection) : ""}
+${agentContext}${customRulesSection}${knowledgeSection}${campaignsSection}${telegramSection}${protocolSection}${macrosSection}${tagsSection ? (isPerAgent ? "" : tagsSection) : ""}
 Score the agent on 8 criteria. Write ALL notes, comments, issues, strengths, and summaries in ENGLISH only — regardless of what language the chat was in. Keep each note to 1 sentence max.
 
 LOST CHAT RULE: If the agent's assigned portion shows customer messages but ZERO responses from the agent, it means the agent lost/abandoned the chat. In this case: response_time_score = 0, overall_score must reflect this failure heavily, and notes must clearly state the agent did not respond and lost the chat.
