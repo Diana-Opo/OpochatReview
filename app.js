@@ -1702,6 +1702,7 @@ async function saveSettings() {
       showStatus("Saved", "success");
       renderAgentFilter();
       renderTable();
+      updateChart();
     } else {
       showStatus("Save failed: " + (data.error || "unknown"), "error");
     }
