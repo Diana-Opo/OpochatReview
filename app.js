@@ -407,8 +407,14 @@ function resolveEmployeeFilter() {
   return agent?.id || null;
 }
 
-function agentMatchesShift(agentName, shift) {
+function agentMatchesShift(agentName, shift, platform) {
   if (!agentName || !shift) return false;
+  if (platform === "chatwoot") {
+    if (!shift.chatwootAgentId) return false;
+    const cwId = shift.chatwootAgentId.toLowerCase().trim();
+    const n = agentName.toLowerCase().trim();
+    return cwId === n || cwId.split("@")[0] === n || cwId === n.split("@")[0];
+  }
   const k = agentName.toLowerCase().trim();
   return k === shift.agentKey || k.split(" ")[0] === shift.agentKey;
 }
@@ -418,10 +424,32 @@ function applyEmployeeHourFilter(list) {
   return list.filter(c => {
     const h = getTehranHour(c.started_at);
     if (h < activeEmployeeShift.start || h >= activeEmployeeShift.end) return false;
-    // Only show chats where this employee's agent actually responded (is in chat.agents)
     const chatAgents = c.agents || [];
-    return chatAgents.some(a => agentMatchesShift(a.name, activeEmployeeShift));
+    return chatAgents.some(a => agentMatchesShift(a.name, activeEmployeeShift, c.platform));
   });
+}
+
+// ── Chatwoot integration ──────────────────────────────────────────────────────
+async function fetchChatwootChats(from, to) {
+  try {
+    const params = new URLSearchParams();
+    if (from) params.set("date_from", iranDayToUtc(from, false));
+    if (to)   params.set("date_to",   iranDayToUtc(to, true));
+    const res = await authFetch("/api/chatwoot-chats?" + params);
+    const data = await res.json();
+    if (!data.enabled || !data.chats?.length) return;
+    data.chats.forEach(c => {
+      const k = c.thread_id || c.id;
+      const idx = allChats.findIndex(x => (x.thread_id || x.id) === k && x.platform === "chatwoot");
+      if (idx !== -1) allChats[idx] = c; else allChats.push(c);
+    });
+    totalChats += data.total_chats || 0;
+    renderTable();
+    updateStats();
+    updateChart();
+  } catch (e) {
+    console.warn("[CW] fetch failed:", e.message);
+  }
 }
 
 // ── Chats ─────────────────────────────────────────────────────────────────────
@@ -487,6 +515,8 @@ async function loadChats(pageId) {
       updateStats();
       if (!pageId) updateChart();
     }
+    // Fetch Chatwoot chats in parallel on first page load
+    if (!pageId) fetchChatwootChats(from, to);
   } catch (e) {
     showStatus("Error: " + e.message, "error");
   }
@@ -610,12 +640,13 @@ function renderTable() {
     } else {
       agentNames = allAgents.map(a => a.name).join(", ") || "—";
       const empNames = allAgents.length > 0
-        ? [...new Set(allAgents.map(a => getEmployeeName(a.name, chat.started_at) || a.name))].join(", ")
+        ? [...new Set(allAgents.map(a => getEmployeeName(a.name, chat.started_at, chat.platform) || a.name))].join(", ")
         : "—";
       employeeNameHtml = `<span class="font-medium text-gray-800">${empNames}</span>`;
     }
 
     const isAdmin = currentUser?.role === "admin";
+    const isCW = chat.platform === "chatwoot";
     const reReviewBtn = isAdmin ? `<button onclick="reviewChat('${chat.id}','${chat.thread_id||''}',this)" class="text-xs text-gray-400 hover:text-orange-500 px-1" title="Re-review">↺</button>` : "";
     const actionBtn = r
       ? `<div class="flex items-center gap-1" onclick="event.stopPropagation()">
@@ -626,16 +657,20 @@ function renderTable() {
         ? `<button onclick="reviewChat('${chat.id}','${chat.thread_id||''}',this)" class="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded hover:bg-blue-100">Review</button>`
         : `<span class="text-gray-300 text-xs">—</span>`;
 
+    const platformBadge = isCW
+      ? `<span class="text-xs bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded font-semibold">CW</span>`
+      : `<span class="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-semibold">LC</span>`;
+
     const rowKey = chat.thread_id || chat.id;
     return `<tr class="chat-row border-b border-gray-50" id="row-${rowKey}" onclick="openModal('${chat.id}','${chat.thread_id||""}')">
       <td class="px-4 py-3">
         <div class="flex flex-col gap-0.5">
           <div class="flex items-center gap-1">
-            <span class="text-gray-300 text-xs">T:</span>
+            ${platformBadge}
             <span class="font-mono text-xs text-gray-400">${chat.thread_id || chat.id}</span>
-            <button onclick="event.stopPropagation();copyId('${chat.thread_id || chat.id}')" title="Copy thread ID" class="shrink-0 text-gray-300 hover:text-blue-500 px-1 text-sm leading-none">⎘</button>
+            <button onclick="event.stopPropagation();copyId('${chat.thread_id || chat.id}')" title="Copy ID" class="shrink-0 text-gray-300 hover:text-blue-500 px-1 text-sm leading-none">⎘</button>
           </div>
-          ${chat.id !== chat.thread_id ? `<div class="flex items-center gap-1">
+          ${!isCW && chat.id !== chat.thread_id ? `<div class="flex items-center gap-1">
             <span class="text-gray-200 text-xs">C:</span>
             <span class="font-mono text-xs text-gray-300">${chat.id}</span>
             <button onclick="event.stopPropagation();copyId('${chat.id}')" title="Copy container ID" class="shrink-0 text-gray-200 hover:text-gray-400 px-1 text-xs leading-none">⎘</button>
@@ -662,9 +697,12 @@ async function reviewChat(chatId, threadId, btn) {
   const actionCell = document.getElementById("action-" + rowKey);
   if (actionCell) actionCell.innerHTML = `<span class="spinner"></span>`;
 
+  const chatObj = allChats.find(c => (c.thread_id || c.id) === rowKey);
+  const isCW = chatObj?.platform === "chatwoot";
+
   try {
-    const qs = threadId ? `?thread_id=${threadId}` : "";
-    const res = await authFetch(`/api/review/${chatId}${qs}`, { method: "POST" });
+    const url = isCW ? `/api/review/cw/${chatId}` : `/api/review/${chatId}${threadId ? `?thread_id=${threadId}` : ""}`;
+    const res = await authFetch(url, { method: "POST" });
     const review = await res.json();
     if (review.error) throw new Error(review.error);
 
@@ -776,8 +814,10 @@ async function reviewAllVisible() {
         const rk = tid || chat.id;
         const actionCell = document.getElementById("action-" + rk);
         try {
-          const qs = tid ? `?thread_id=${tid}` : "";
-          const res = await authFetch(`/api/review/${chat.id}${qs}`, { method: "POST" });
+          const url = chat.platform === "chatwoot"
+            ? `/api/review/cw/${chat.id}`
+            : `/api/review/${chat.id}${tid ? `?thread_id=${tid}` : ""}`;
+          const res = await authFetch(url, { method: "POST" });
           const review = await res.json();
           if (!review.error) {
             done++;
@@ -805,6 +845,45 @@ async function reviewAllVisible() {
     }
   } while (pageId);
 
+  // Also review Chatwoot chats already loaded in allChats
+  const cwPending = allChats.filter(c => {
+    if (c.platform !== "chatwoot") return false;
+    if (!c.review) return true;
+    if (c.review.skipped) return false;
+    if (c.review.per_agent_reviews && Object.values(c.review.per_agent_reviews).some(r => r?._error)) return true;
+    return false;
+  });
+  const CW_BATCH = 3;
+  for (let i = 0; i < cwPending.length; i += CW_BATCH) {
+    const batch = cwPending.slice(i, i + CW_BATCH);
+    batch.forEach(chat => {
+      const cell = document.getElementById("action-" + chat.id);
+      if (cell) cell.innerHTML = `<span class="spinner"></span>`;
+    });
+    showStatus(`Reviewing CW... ${done} done, ${failed} failed`, "info");
+    await Promise.all(batch.map(async chat => {
+      const actionCell = document.getElementById("action-" + chat.id);
+      try {
+        const res = await authFetch(`/api/review/cw/${chat.id}`, { method: "POST" });
+        const review = await res.json();
+        if (!review.error) {
+          done++;
+          const local = allChats.find(c => c.id === chat.id && c.platform === "chatwoot");
+          if (local) local.review = review;
+          const scoreEl = document.getElementById("score-" + chat.id);
+          const statusEl = document.getElementById("status-" + chat.id);
+          if (scoreEl) scoreEl.innerHTML = review.skipped ? `<span class="text-xs text-gray-400 italic">No msg</span>` : scorePill(review.overall_score);
+          if (statusEl) statusEl.innerHTML = review.skipped ? `<span class="text-gray-300 text-xs">—</span>` :
+            `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "✓" : "✗"}</span>`;
+          if (actionCell) actionCell.innerHTML = review.skipped ? `<span class="text-xs text-gray-400">—</span>` :
+            `<div class="flex items-center gap-1"><button onclick="openModal('${chat.id}','${chat.id}')" class="text-xs text-blue-500 hover:underline">View</button></div>`;
+        } else { failed++; if (actionCell) actionCell.innerHTML = `<span class="text-xs text-red-400">Failed</span>`; }
+      } catch { failed++; if (actionCell) actionCell.innerHTML = `<span class="text-xs text-red-400">Error</span>`; }
+    }));
+    updateStats();
+    updateChart();
+  }
+
   btn.disabled = false;
   btn.textContent = "Review All with AI";
   btn.classList.replace("bg-gray-400", "bg-green-600");
@@ -819,9 +898,14 @@ async function openModal(chatId, threadId) {
   content.innerHTML = `<div class="p-10 text-center text-gray-400">Loading…</div>`;
   modal.classList.remove("hidden");
 
+  const rowKey = threadId || chatId;
+  const cachedChat = allChats.find(c => (c.thread_id || c.id) === rowKey);
+  const isCW = cachedChat?.platform === "chatwoot";
+
   try {
-    const qs = threadId ? `?thread_id=${threadId}` : "";
-    const res = await authFetch(`/api/chats/${chatId}${qs}`);
+    const res = isCW
+      ? await authFetch(`/api/chatwoot-chats/${chatId}`)
+      : await authFetch(`/api/chats/${chatId}${threadId ? `?thread_id=${threadId}` : ""}`);
     const chat = await res.json();
     if (chat.error) throw new Error(chat.error);
 
@@ -1011,9 +1095,12 @@ async function openModal(chatId, threadId) {
 
 async function reviewChatModal(chatId, threadId) {
   document.getElementById("modalContent").innerHTML = `<div class="p-10 text-center text-gray-400"><span class="spinner"></span> Reviewing with AI...</div>`;
+  const rowKey = threadId || chatId;
+  const chatObj = allChats.find(c => (c.thread_id || c.id) === rowKey);
+  const isCW = chatObj?.platform === "chatwoot";
   try {
-    const qs = threadId ? `?thread_id=${threadId}` : "";
-    const res = await authFetch(`/api/review/${chatId}${qs}`, { method: "POST" });
+    const url = isCW ? `/api/review/cw/${chatId}` : `/api/review/${chatId}${threadId ? `?thread_id=${threadId}` : ""}`;
+    const res = await authFetch(url, { method: "POST" });
     const review = await res.json();
     if (review.error) throw new Error(review.error);
     const rowKey = threadId || chatId;
@@ -1048,23 +1135,36 @@ function updateStats() {
   document.getElementById("statResolved").textContent = resolved || "—";
 }
 
-function getEmployeeName(agentName, dateStr) {
+function getEmployeeName(agentName, dateStr, platform) {
   if (!agentName || !dateStr) return agentName || null;
   const full = agentName.toLowerCase().trim();
   const first = full.split(" ")[0];
   const h = getTehranHour(dateStr);
-  const match = agentShifts.find(s => (s.agentKey === full || s.agentKey === first) && h >= s.start && h < s.end);
+  const match = agentShifts.find(s => {
+    if (h < s.start || h >= s.end) return false;
+    if (platform === "chatwoot") {
+      if (!s.chatwootAgentId) return false;
+      const cwId = s.chatwootAgentId.toLowerCase().trim();
+      return cwId === full || cwId.split("@")[0] === first;
+    }
+    return s.agentKey === full || s.agentKey === first;
+  });
   return match ? match.employee : agentName;
 }
 
-function getEmployeeNameForChart(agentName, dateStr) {
-  // Try hour-matched shift first
-  const matched = getEmployeeName(agentName, dateStr);
-  if (matched !== agentName) return matched; // found a shift match
-  // Fallback: find any shift for this agent (ignore hour) so agent names don't appear as separate bars
+function getEmployeeNameForChart(agentName, dateStr, platform) {
+  const matched = getEmployeeName(agentName, dateStr, platform);
+  if (matched !== agentName) return matched;
   const full = (agentName || "").toLowerCase().trim();
   const first = full.split(" ")[0];
-  const anyShift = agentShifts.find(s => s.agentKey === full || s.agentKey === first);
+  const anyShift = agentShifts.find(s => {
+    if (platform === "chatwoot") {
+      if (!s.chatwootAgentId) return false;
+      const cwId = s.chatwootAgentId.toLowerCase().trim();
+      return cwId === full || cwId.split("@")[0] === first;
+    }
+    return s.agentKey === full || s.agentKey === first;
+  });
   return anyShift ? anyShift.employee : agentName;
 }
 
@@ -1087,7 +1187,7 @@ function updateChart() {
     if (!primaryAgent) continue;
     const emp = activeEmployeeShift
       ? activeEmployeeShift.employee
-      : getEmployeeNameForChart(primaryAgent.name, chat.started_at);
+      : getEmployeeNameForChart(primaryAgent.name, chat.started_at, chat.platform);
 
     if (!activeEmployeeShift) {
       totalByEmployee[emp] = (totalByEmployee[emp] || 0) + 1;
@@ -1427,6 +1527,7 @@ function shiftRowHtml(s) {
         ${agentOptionsHtml(s.agentKey || "")}
       </select>
     </td>
+    <td class="py-2 pr-3"><input class="sr-cw-agent w-32 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" value="${escHtml(s.chatwootAgentId || "")}" placeholder="CW email/name" /></td>
     <td class="py-2 pr-3"><input class="sr-start w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23" value="${s.start ?? 8}" /></td>
     <td class="py-2 pr-3"><input class="sr-end w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" value="${s.end ?? 16}" /></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${groupCheckboxesHtml(s.groups)}</div></td>
@@ -1454,6 +1555,7 @@ function addShiftRow() {
         ${agentOptionsHtml("")}
       </select>
     </td>
+    <td class="py-2 pr-3"><input class="sr-cw-agent w-32 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" placeholder="CW email/name" /></td>
     <td class="py-2 pr-3"><input class="sr-start w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23" value="8" /></td>
     <td class="py-2 pr-3"><input class="sr-end w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" value="16" /></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${groupCheckboxesHtml([])}</div></td>
@@ -1479,6 +1581,7 @@ async function saveSettings() {
   rows.forEach(row => {
     const employee = row.querySelector(".sr-employee").value.trim();
     const agentKey = row.querySelector(".sr-agent").value.trim();
+    const chatwootAgentId = row.querySelector(".sr-cw-agent")?.value.trim() || "";
     const start = parseInt(row.querySelector(".sr-start").value) || 0;
     const end = parseInt(row.querySelector(".sr-end").value) || 24;
     const groups = [...row.querySelectorAll(".sr-group:checked")].map(cb => cb.value);
@@ -1487,7 +1590,7 @@ async function saveSettings() {
     const password = row.querySelector(".sr-password")?.value || "";
     const role = row.querySelector(".sr-role")?.value || "user";
     if (!employee || !agentKey) return;
-    newShifts.push({ employee, agentKey, start, end, groups, languages, username });
+    newShifts.push({ employee, agentKey, chatwootAgentId, start, end, groups, languages, username });
     if (username && password) userUpdates.push({ username, password, employee_name: employee });
     if (username) roleUpdates.push({ username, role });
   });

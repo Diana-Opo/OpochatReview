@@ -119,6 +119,7 @@ if (process.env.DATABASE_URL) {
       `);
       await pool.query(`ALTER TABLE agent_shifts ADD COLUMN IF NOT EXISTS groups JSONB DEFAULT '[]'`);
       await pool.query(`ALTER TABLE agent_shifts ADD COLUMN IF NOT EXISTS languages JSONB DEFAULT '[]'`);
+      await pool.query(`ALTER TABLE agent_shifts ADD COLUMN IF NOT EXISTS chatwoot_agent_id VARCHAR(255) DEFAULT ''`);
       console.log("[db] agent_shifts table ready");
       // Seed from file if empty
       const cnt = await pool.query("SELECT COUNT(*) FROM agent_shifts");
@@ -176,6 +177,39 @@ if (process.env.DATABASE_URL) {
 }
 const LC_API = "https://api.livechatinc.com/v3.6/agent/action";
 const LC_CONFIG_API = "https://api.livechatinc.com/v3.6/configuration/action";
+
+// ── Chatwoot config ───────────────────────────────────────────────────────────
+const CHATWOOT_BASE_URL = (process.env.CHATWOOT_BASE_URL || "").replace(/\/$/, "");
+const CHATWOOT_ACCOUNT_ID = process.env.CHATWOOT_ACCOUNT_ID || "";
+const CHATWOOT_API_TOKEN = process.env.CHATWOOT_API_TOKEN || "";
+function chatwootEnabled() { return !!(CHATWOOT_BASE_URL && CHATWOOT_ACCOUNT_ID && CHATWOOT_API_TOKEN); }
+
+async function cwGet(path, params = {}) {
+  const url = new URL(`${CHATWOOT_BASE_URL}/api/v1/accounts/${CHATWOOT_ACCOUNT_ID}${path}`);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
+  const r = await fetch(url.toString(), {
+    headers: { "api_access_token": CHATWOOT_API_TOKEN, "Content-Type": "application/json" },
+  });
+  if (!r.ok) { const e = await r.text(); throw new Error(`Chatwoot GET ${path} ${r.status}: ${e.slice(0, 200)}`); }
+  return r.json();
+}
+
+async function cwPost(path, body, params = {}) {
+  const url = new URL(`${CHATWOOT_BASE_URL}/api/v1/accounts/${CHATWOOT_ACCOUNT_ID}${path}`);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
+  const r = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "api_access_token": CHATWOOT_API_TOKEN, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) { const e = await r.text(); throw new Error(`Chatwoot POST ${path} ${r.status}: ${e.slice(0, 200)}`); }
+  return r.json();
+}
+
+function cwTimestamp(val) {
+  if (!val) return null;
+  return typeof val === "number" ? new Date(val * 1000).toISOString() : val;
+}
 
 const DATA_DIR = path.join(__dirname, "data");
 const GDOC_KNOWLEDGE_URL = "https://docs.google.com/document/d/14iBZtfOXkPTb_ZYM4zSIAZOqdZ_VZeoKW0zJiNHXSIs/export?format=txt";
@@ -1202,6 +1236,7 @@ app.get("/api/chats", authMiddleware, async (req, res) => {
       return {
         id: c.id,
         thread_id: thread.id || null,
+        platform: "livechat",
         agent: agentUser ? { id: agentUser.id, name: agentUser.name } : null,
         agents: allAgents,
         customer_name: customerUser?.name || null,
@@ -1301,6 +1336,194 @@ app.get("/api/chats/:chatId", authMiddleware, async (req, res) => {
       review: reviews[thread.id] || reviews[data.id] || null,
     });
   } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Chatwoot endpoints ────────────────────────────────────────────────────────
+
+// List Chatwoot conversations with date filter
+app.get("/api/chatwoot-chats", authMiddleware, async (req, res) => {
+  if (!chatwootEnabled()) return res.json({ chats: [], total_chats: 0, enabled: false });
+  try {
+    const { date_from, date_to } = req.query;
+    const [reviews, shifts] = await Promise.all([loadReviews(), loadShifts()]);
+
+    const filterPayload = [
+      { attribute_key: "status", filter_operator: "equal_to", values: ["resolved"], query_operator: date_from || date_to ? "AND" : null },
+    ];
+    if (date_from) filterPayload.push({ attribute_key: "created_at", filter_operator: "greater_than", values: [date_from], query_operator: date_to ? "AND" : null });
+    if (date_to)   filterPayload.push({ attribute_key: "created_at", filter_operator: "less_than_equal_to", values: [date_to], query_operator: null });
+
+    let allConvs = [];
+    let page = 1;
+    let totalCount = 0;
+    while (true) {
+      const data = await cwPost("/conversations/filter", { payload: filterPayload }, { page });
+      const inner = data.data || data;
+      const convs = inner.payload || inner.conversations || [];
+      if (page === 1) totalCount = inner.meta?.total_count ?? convs.length;
+      if (!convs.length) break;
+      allConvs = allConvs.concat(convs);
+      if (convs.length < 25 || allConvs.length >= totalCount) break;
+      page++;
+    }
+
+    const chats = allConvs.map(conv => {
+      const convId = String(conv.id);
+      const assignee = conv.meta?.assignee || null;
+      const sender = conv.meta?.sender || null;
+      const cwKey = `cw:${convId}`;
+      return {
+        id: convId,
+        thread_id: convId,
+        platform: "chatwoot",
+        agent: assignee ? { id: String(assignee.id), name: assignee.name } : null,
+        agents: assignee ? [{ id: String(assignee.id), name: assignee.name }] : [],
+        customer_name: sender?.name || null,
+        started_at: cwTimestamp(conv.created_at),
+        ended_at: cwTimestamp(conv.resolved_at),
+        applied_tags: conv.labels || [],
+        review: reviews[cwKey] || null,
+      };
+    });
+
+    res.json({ chats, total_chats: totalCount, enabled: true });
+  } catch (e) {
+    console.error("[chatwoot-chats]", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Single Chatwoot conversation with messages
+app.get("/api/chatwoot-chats/:convId", authMiddleware, async (req, res) => {
+  if (!chatwootEnabled()) return res.status(404).json({ error: "Chatwoot not configured" });
+  try {
+    const { convId } = req.params;
+    const [convData, messagesData, reviews] = await Promise.all([
+      cwGet(`/conversations/${convId}`),
+      cwGet(`/conversations/${convId}/messages`),
+      loadReviews(),
+    ]);
+
+    const assignee = convData.meta?.assignee || null;
+    const sender = convData.meta?.sender || null;
+
+    const rawMessages = (messagesData.payload || []).sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+    const messages = rawMessages
+      .filter(m => m.content)
+      .map(msg => {
+        const msgTime = cwTimestamp(msg.created_at);
+        if (msg.message_type === 2) {
+          return { author_type: "system", author_name: "System", content: msg.content, created_at: msgTime, is_private: false, event_type: "system_message" };
+        }
+        const isPrivate = msg.private === true;
+        const isAgent = msg.message_type === 1;
+        const senderName = msg.sender?.name || (isAgent ? (assignee?.name || "Agent") : (sender?.name || "Customer"));
+        return {
+          author_type: isPrivate ? "supervisor" : (isAgent ? "agent" : "customer"),
+          author_name: senderName,
+          content: msg.content,
+          created_at: msgTime,
+          is_private: isPrivate,
+          segment_agent: isAgent && !isPrivate ? (assignee ? { id: String(assignee.id), name: assignee.name } : null) : null,
+          event_type: "message",
+        };
+      });
+
+    res.json({
+      id: convId,
+      thread_id: convId,
+      platform: "chatwoot",
+      agent: assignee ? { id: String(assignee.id), name: assignee.name } : null,
+      agents: assignee ? [{ id: String(assignee.id), name: assignee.name }] : [],
+      customer_name: sender?.name || null,
+      started_at: cwTimestamp(convData.created_at),
+      ended_at: cwTimestamp(convData.resolved_at),
+      applied_tags: convData.labels || [],
+      messages,
+      review: reviews[`cw:${convId}`] || null,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Review a Chatwoot conversation with Claude AI
+app.post("/api/review/cw/:convId", authMiddleware, async (req, res) => {
+  if (!chatwootEnabled()) return res.status(404).json({ error: "Chatwoot not configured" });
+  try {
+    const { convId } = req.params;
+    console.log(`[review-cw] fetching conversation ${convId}`);
+
+    const [convData, messagesData, shifts] = await Promise.all([
+      cwGet(`/conversations/${convId}`),
+      cwGet(`/conversations/${convId}/messages`),
+      loadShifts(),
+    ]);
+
+    const assignee = convData.meta?.assignee || null;
+    const sender = convData.meta?.sender || null;
+    const createdAt = cwTimestamp(convData.created_at);
+
+    const rawMessages = (messagesData.payload || [])
+      .filter(m => m.content && m.message_type !== 2)
+      .sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+
+    const customerMessages = rawMessages.filter(m => m.message_type === 0 && !m.private);
+    if (customerMessages.length === 0) {
+      const skipped = { skipped: true, reason: "Customer left without sending any message" };
+      const reviews = await loadReviews();
+      reviews[`cw:${convId}`] = skipped;
+      await saveReviews(reviews);
+      return res.json(skipped);
+    }
+
+    const supervisorNotes = rawMessages
+      .filter(m => m.private === true)
+      .map(m => ({ author: m.sender?.name || "Supervisor", text: m.content, created_at: cwTimestamp(m.created_at) }));
+
+    const transcript = rawMessages
+      .filter(m => !m.private)
+      .map(msg => {
+        const isAgent = msg.message_type === 1;
+        const who = isAgent
+          ? `Agent (${msg.sender?.name || assignee?.name || "Agent"})`
+          : `Customer (${msg.sender?.name || sender?.name || "Customer"})`;
+        return `${who}: ${msg.content}`;
+      })
+      .join("\n");
+
+    // Match agent to employee via chatwootAgentId
+    const agentEmail = (assignee?.email || "").toLowerCase().trim();
+    const agentNameLow = (assignee?.name || "").toLowerCase().trim();
+    const matchShift = shifts.find(s => {
+      if (!s.chatwootAgentId) return false;
+      const cwId = s.chatwootAgentId.toLowerCase().trim();
+      return cwId === agentEmail || cwId === agentNameLow || cwId.split("@")[0] === agentNameLow;
+    });
+
+    const review = await reviewWithClaude(
+      transcript, `cw:${convId}`, createdAt, supervisorNotes,
+      assignee?.name || null, matchShift?.languages || [], matchShift?.groups || []
+    );
+
+    review.reviewed_at = new Date().toISOString();
+    review._agent_name = assignee?.name || null;
+    review._agent_id   = String(assignee?.id || "");
+    review._chat_date  = createdAt;
+    review._platform   = "chatwoot";
+    review._employee   = matchShift?.employee || null;
+
+    const cwKey = `cw:${convId}`;
+    const reviews = await loadReviews();
+    reviews[cwKey] = review;
+    await saveReviews(reviews);
+
+    console.log(`[review-cw] done for ${cwKey}, overall: ${review.overall_score}`);
+    res.json(review);
+  } catch (e) {
+    console.log(`[review-cw] ERROR:`, e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -1670,7 +1893,7 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
 
     // Total chats (no agent filter)
     const firstPage = await lcPost("list_archives", { filters: { from: lcFrom, to: lcTo }, limit: 1 });
-    const totalChats = firstPage.found_chats ?? firstPage.total_chats ?? 0;
+    let totalChats = firstPage.found_chats ?? firstPage.total_chats ?? 0;
 
     const emp = {};
 
@@ -1723,37 +1946,79 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
     }
 
 
+    // Chatwoot totals
+    if (chatwootEnabled()) {
+      try {
+        const cwFilter = [
+          { attribute_key: "status", filter_operator: "equal_to", values: ["resolved"], query_operator: "AND" },
+          { attribute_key: "created_at", filter_operator: "greater_than", values: [lcFrom], query_operator: "AND" },
+          { attribute_key: "created_at", filter_operator: "less_than_equal_to", values: [lcTo], query_operator: null },
+        ];
+        let cwPage = 1, cwAll = [], cwTotal = 0;
+        while (true) {
+          const d = await cwPost("/conversations/filter", { payload: cwFilter }, { page: cwPage });
+          const inner = d.data || d;
+          const convs = inner.payload || inner.conversations || [];
+          if (cwPage === 1) cwTotal = inner.meta?.total_count ?? convs.length;
+          if (!convs.length) break;
+          cwAll = cwAll.concat(convs);
+          if (convs.length < 25 || cwAll.length >= cwTotal) break;
+          cwPage++;
+        }
+        totalChats += cwTotal;
+        for (const conv of cwAll) {
+          const assignee = conv.meta?.assignee || null;
+          if (!assignee) continue;
+          const aEmail = (assignee.email || "").toLowerCase().trim();
+          const aName  = (assignee.name  || "").toLowerCase().trim();
+          const ms = shifts.find(s => {
+            if (!s.chatwootAgentId) return false;
+            const cwId = s.chatwootAgentId.toLowerCase().trim();
+            return cwId === aEmail || cwId === aName || cwId.split("@")[0] === aName;
+          });
+          if (!ms) continue;
+          const n = ms.employee;
+          if (!emp[n]) emp[n] = { total: 0, reviewed: 0, scores: [], resolved: 0 };
+          emp[n].total++;
+        }
+      } catch (e) { console.error("[dashboard] Chatwoot error:", e.message); }
+    }
+
     // Scores/reviews from database filtered by month
     for (const rv of Object.values(reviews)) {
       if (!rv || rv.skipped) continue;
       const chatMonth = (rv._chat_date || "").slice(0, 7);
       if (chatMonth !== month) continue;
 
-      const agentName = rv._agent_name || "";
-      const low = agentName.toLowerCase().trim();
-      const fst = low.split(" ")[0];
-
-      // For shared accounts, use chat time to find the correct employee
-      const matchingShifts = shifts.filter(s => s.agentKey === low || s.agentKey === fst || s.agentKey.split(" ")[0] === fst);
-      if (!matchingShifts.length) continue;
-
       let empName;
-      if (matchingShifts.length === 1) {
-        empName = matchingShifts[0].employee;
+
+      if (rv._platform === "chatwoot") {
+        // Chatwoot review: _employee set at review time
+        empName = rv._employee || null;
+        if (!empName) continue;
+        if (!emp[empName]) emp[empName] = { total: 0, reviewed: 0, scores: [], resolved: 0 };
       } else {
-        // Shared account — pick by Istanbul hour of the chat
-        const chatHour = rv._chat_date ? getIstHour(rv._chat_date) : -1;
-        const matched = chatHour >= 0 ? matchingShifts.find(s => chatHour >= s.start && chatHour < s.end) : null;
-        empName = (matched || matchingShifts[0]).employee;
+        // LiveChat review: match via agentKey
+        const agentName = rv._agent_name || "";
+        const low = agentName.toLowerCase().trim();
+        const fst = low.split(" ")[0];
+        const matchingShifts = shifts.filter(s => s.agentKey === low || s.agentKey === fst || s.agentKey.split(" ")[0] === fst);
+        if (!matchingShifts.length) continue;
+        if (matchingShifts.length === 1) {
+          empName = matchingShifts[0].employee;
+        } else {
+          const chatHour = rv._chat_date ? getIstHour(rv._chat_date) : -1;
+          const matched = chatHour >= 0 ? matchingShifts.find(s => chatHour >= s.start && chatHour < s.end) : null;
+          empName = (matched || matchingShifts[0]).employee;
+        }
+        if (!empName || !emp[empName]) continue;
       }
 
-      if (!empName || !emp[empName]) continue;
-
+      const fst2 = (rv._agent_name || "").toLowerCase().trim().split(" ")[0];
       emp[empName].reviewed++;
       if (rv.per_agent_reviews) {
-        // For per-agent reviews, find the score for the primary agent (agentName)
         const pr = Object.values(rv.per_agent_reviews).find(r =>
-          r?.agent_name && (r.agent_name.toLowerCase().trim().startsWith(fst) || fst.startsWith(r.agent_name.toLowerCase().trim().split(" ")[0]))
+          r?.agent_name && (r.agent_name.toLowerCase().trim().startsWith(fst2) || fst2.startsWith(r.agent_name.toLowerCase().trim().split(" ")[0]))
         );
         if (pr?.overall_score > 0) emp[empName].scores.push(pr.overall_score);
         if (pr?.resolved) emp[empName].resolved++;
@@ -1872,7 +2137,7 @@ app.get("/api/agent-names", authMiddleware, adminOnly, async (req, res) => {
 async function loadShifts() {
   if (pool) {
     try {
-      const r = await pool.query("SELECT employee, agent_key, start_hour, end_hour, groups, languages FROM agent_shifts ORDER BY id");
+      const r = await pool.query("SELECT employee, agent_key, start_hour, end_hour, groups, languages, chatwoot_agent_id FROM agent_shifts ORDER BY id");
       if (r.rows.length > 0) return r.rows.map(row => ({
         employee: row.employee,
         agentKey: row.agent_key,
@@ -1880,6 +2145,7 @@ async function loadShifts() {
         end: row.end_hour,
         groups: Array.isArray(row.groups) ? row.groups : [],
         languages: Array.isArray(row.languages) ? row.languages : [],
+        chatwootAgentId: row.chatwoot_agent_id || "",
       }));
     } catch {}
   }
@@ -1894,8 +2160,8 @@ async function saveShifts(shifts) {
     await pool.query("TRUNCATE agent_shifts RESTART IDENTITY");
     for (const s of shifts) {
       await pool.query(
-        `INSERT INTO agent_shifts (employee, agent_key, start_hour, end_hour, groups, languages) VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb)`,
-        [s.employee, s.agentKey, s.start, s.end, JSON.stringify(Array.isArray(s.groups) ? s.groups : []), JSON.stringify(Array.isArray(s.languages) ? s.languages : [])]
+        `INSERT INTO agent_shifts (employee, agent_key, start_hour, end_hour, groups, languages, chatwoot_agent_id) VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7)`,
+        [s.employee, s.agentKey, s.start, s.end, JSON.stringify(Array.isArray(s.groups) ? s.groups : []), JSON.stringify(Array.isArray(s.languages) ? s.languages : []), s.chatwootAgentId || ""]
       );
     }
     return;
