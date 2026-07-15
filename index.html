@@ -32,10 +32,21 @@
         class="sidebar-nav w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition-all">
         <span class="text-base w-5 text-center">💬</span> Chat Review
       </button>
-      <button onclick="showPage('reports')" id="nav-reports"
-        class="sidebar-nav w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition-all">
-        <span class="text-base w-5 text-center">📋</span> Reports
-      </button>
+      <!-- Reports category -->
+      <div>
+        <button onclick="toggleReportsMenu()" id="nav-reports-header"
+          class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition-all">
+          <span class="text-base w-5 text-center">📋</span>
+          <span class="flex-1">Reports</span>
+          <span id="reports-chevron" class="text-xs transition-transform duration-200">▼</span>
+        </button>
+        <div id="reports-submenu" class="ml-2 mt-0.5 space-y-0.5">
+          <button onclick="showPage('reports')" id="nav-reports"
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-slate-800 transition-all">
+            <span class="text-xs">👤</span> Employee Report
+          </button>
+        </div>
+      </div>
       <button onclick="showPage('employees')" id="nav-employees"
         class="sidebar-nav w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition-all admin-only hidden">
         <span class="text-base w-5 text-center">👥</span> Employees

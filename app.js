@@ -197,6 +197,17 @@ async function initApp() {
 }
 
 // ── Page navigation ───────────────────────────────────────────────────────────
+const REPORT_PAGES = ["reports"];
+
+function toggleReportsMenu() {
+  const submenu = document.getElementById("reports-submenu");
+  const chevron = document.getElementById("reports-chevron");
+  if (!submenu) return;
+  const open = !submenu.classList.contains("hidden");
+  submenu.classList.toggle("hidden", open);
+  if (chevron) chevron.style.transform = open ? "rotate(-90deg)" : "";
+}
+
 function showPage(name) {
   const pages = ["dashboard", "chats", "reports", "employees", "config"];
   pages.forEach(p => {
@@ -204,14 +215,21 @@ function showPage(name) {
     const btn = document.getElementById(`nav-${p}`);
     if (btn) {
       btn.classList.remove("bg-slate-700", "text-white");
-      btn.classList.add("text-slate-300");
+      btn.classList.add(REPORT_PAGES.includes(p) ? "text-slate-400" : "text-slate-300");
     }
   });
   document.getElementById(`page-${name}`)?.classList.remove("hidden");
   const activeBtn = document.getElementById(`nav-${name}`);
   if (activeBtn) {
     activeBtn.classList.add("bg-slate-700", "text-white");
-    activeBtn.classList.remove("text-slate-300");
+    activeBtn.classList.remove("text-slate-300", "text-slate-400");
+  }
+  // Keep reports submenu open when on any reports sub-page
+  if (REPORT_PAGES.includes(name)) {
+    const submenu = document.getElementById("reports-submenu");
+    const chevron = document.getElementById("reports-chevron");
+    if (submenu) submenu.classList.remove("hidden");
+    if (chevron) chevron.style.transform = "";
   }
   if (name === "dashboard") loadDashboard();
   if (name === "reports") openReports();
