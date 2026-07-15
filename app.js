@@ -1234,12 +1234,19 @@ function updateChart() {
     totalByEmployee[activeEmployeeShift.employee] = filtered.length;
   }
 
+  // Build set of employees hidden from chart
+  const hiddenFromChart = new Set(
+    agentShifts.filter(s => s.showInChart === false).map(s => s.employee)
+  );
+
   for (const chat of filtered) {
     const primaryAgent = chat.agent || chat.agents?.[0] || null;
     if (!primaryAgent) continue;
     const emp = activeEmployeeShift
       ? activeEmployeeShift.employee
       : getEmployeeNameForChart(primaryAgent.name, chat.started_at, chat.platform, primaryAgent.email);
+
+    if (hiddenFromChart.has(emp)) continue; // skip employees disabled in chart
 
     if (!activeEmployeeShift) {
       totalByEmployee[emp] = (totalByEmployee[emp] || 0) + 1;
@@ -1610,6 +1617,7 @@ function shiftRowHtml(s) {
         <option value="admin" ${s.userRole === "admin" ? "selected" : ""}>Admin</option>
       </select>
     </td>
+    <td class="py-2 pr-3 text-center"><input type="checkbox" class="sr-show-chart w-4 h-4 accent-blue-600" ${s.showInChart !== false ? "checked" : ""} title="Show in dashboard chart" /></td>
     <td class="py-2"><button onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-600 text-lg leading-none px-1">×</button></td>
   </tr>`;
 }
@@ -1642,6 +1650,7 @@ function addShiftRow() {
         <option value="admin">Admin</option>
       </select>
     </td>
+    <td class="py-2 pr-3 text-center"><input type="checkbox" class="sr-show-chart w-4 h-4 accent-blue-600" checked title="Show in dashboard chart" /></td>
     <td class="py-2"><button onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-600 text-lg leading-none px-1">×</button></td>
   `;
   tbody.appendChild(tr);
@@ -1663,8 +1672,9 @@ async function saveSettings() {
     const username = row.querySelector(".sr-username")?.value.trim() || "";
     const password = row.querySelector(".sr-password")?.value || "";
     const role = row.querySelector(".sr-role")?.value || "user";
+    const showInChart = row.querySelector(".sr-show-chart")?.checked !== false;
     if (!employee || !agentKey) return;
-    newShifts.push({ employee, agentKey, chatwootAgentId, start, end, groups, languages, username });
+    newShifts.push({ employee, agentKey, chatwootAgentId, start, end, groups, languages, username, showInChart });
     if (username && password) userUpdates.push({ username, password, employee_name: employee });
     if (username) roleUpdates.push({ username, role });
   });
