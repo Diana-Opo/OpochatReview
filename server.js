@@ -2497,7 +2497,7 @@ async function runNightlyReview() {
 // ── Reports ───────────────────────────────────────────────────────────────────
 
 // Delete all reports (admin only)
-app.get("/api/reports/monthly-overview", authMiddleware, adminOnly, async (req, res) => {
+app.get("/api/reports/monthly-overview", authMiddleware, async (req, res) => {
   try {
     const year = (req.query.year || new Date().getFullYear()).toString();
     const [reviews, shifts] = await Promise.all([loadReviews(), loadShifts()]);
