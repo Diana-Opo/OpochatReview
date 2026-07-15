@@ -259,14 +259,16 @@ function cwTimestamp(val) {
 }
 
 // Chatwoot filter only accepts YYYY-MM-DD (not full ISO).
-// date_from ISO (already UTC-shifted) → extract date ("2026-07-14T21:00Z" → "2026-07-14")
-// date_to ISO → extract date + 1 day ("2026-07-15T20:59Z" → "2026-07-16")
+// We fetch 1 day wider on each side to cover timezone boundary (Iran is UTC+3:30),
+// then fine-filter by exact UTC timestamp server-side.
 function cwFilterDateFrom(isoStr) {
-  return isoStr.split("T")[0];
+  const d = new Date(isoStr.split("T")[0] + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - 1);  // 1 day earlier to catch midnight-boundary convs
+  return d.toISOString().split("T")[0];
 }
 function cwFilterDateTo(isoStr) {
   const d = new Date(isoStr.split("T")[0] + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + 1);
+  d.setUTCDate(d.getUTCDate() + 2);  // 2 days later for safety
   return d.toISOString().split("T")[0];
 }
 
@@ -1440,6 +1442,16 @@ app.get("/api/chatwoot-chats", authMiddleware, async (req, res) => {
       page++;
     }
 
+    // Fine-filter by exact UTC timestamp (Chatwoot only supports date-level filtering)
+    if (date_from || date_to) {
+      const fromMs = date_from ? new Date(date_from).getTime() : 0;
+      const toMs   = date_to   ? new Date(date_to).getTime()   : Infinity;
+      allConvs = allConvs.filter(c => {
+        const ms = (c.created_at || 0) * 1000;
+        return ms >= fromMs && ms <= toMs;
+      });
+    }
+
     const chats = allConvs.map(conv => {
       const convId = String(conv.id);
       const assignee = conv.meta?.assignee || null;
@@ -2036,7 +2048,14 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
           if (convs.length < 25 || cwAll.length >= cwTotal) break;
           cwPage++;
         }
-        totalChats += cwTotal;
+        // Fine-filter by exact UTC timestamp
+        const fromMs = new Date(lcFrom).getTime();
+        const toMs   = new Date(lcTo).getTime();
+        cwAll = cwAll.filter(c => {
+          const ms = (c.created_at || 0) * 1000;
+          return ms >= fromMs && ms <= toMs;
+        });
+        totalChats += cwAll.length;
         for (const conv of cwAll) {
           const assignee = conv.meta?.assignee || null;
           if (!assignee) continue;
