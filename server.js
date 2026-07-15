@@ -181,27 +181,74 @@ const LC_CONFIG_API = "https://api.livechatinc.com/v3.6/configuration/action";
 // ── Chatwoot config ───────────────────────────────────────────────────────────
 const CHATWOOT_BASE_URL = (process.env.CHATWOOT_BASE_URL || "").replace(/\/$/, "");
 const CHATWOOT_ACCOUNT_ID = process.env.CHATWOOT_ACCOUNT_ID || "";
-const CHATWOOT_API_TOKEN = process.env.CHATWOOT_API_TOKEN || "";
-function chatwootEnabled() { return !!(CHATWOOT_BASE_URL && CHATWOOT_ACCOUNT_ID && CHATWOOT_API_TOKEN); }
+const CHATWOOT_EMAIL = process.env.CHATWOOT_EMAIL || "";
+const CHATWOOT_PASSWORD = process.env.CHATWOOT_PASSWORD || "";
+function chatwootEnabled() { return !!(CHATWOOT_BASE_URL && CHATWOOT_ACCOUNT_ID && CHATWOOT_EMAIL && CHATWOOT_PASSWORD); }
 
-async function cwGet(path, params = {}) {
+// Devise token auth session (refreshed automatically on 401)
+let cwSession = null; // { accessToken, client, uid }
+
+async function cwSignIn() {
+  if (!CHATWOOT_EMAIL || !CHATWOOT_PASSWORD) return false;
+  try {
+    const r = await fetch(`${CHATWOOT_BASE_URL}/auth/sign_in`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: CHATWOOT_EMAIL, password: CHATWOOT_PASSWORD }),
+    });
+    if (!r.ok) { console.error("[chatwoot] sign_in failed:", r.status); return false; }
+    const accessToken = r.headers.get("access-token");
+    const client = r.headers.get("client");
+    const uid = r.headers.get("uid");
+    if (accessToken && client && uid) {
+      cwSession = { accessToken, client, uid };
+      console.log("[chatwoot] signed in as", uid);
+      return true;
+    }
+    console.error("[chatwoot] sign_in: missing session headers");
+    return false;
+  } catch (e) { console.error("[chatwoot] sign_in error:", e.message); return false; }
+}
+
+function cwHeaders() {
+  if (cwSession) {
+    return {
+      "access-token": cwSession.accessToken,
+      "client": cwSession.client,
+      "uid": cwSession.uid,
+      "token-type": "Bearer",
+      "Content-Type": "application/json",
+    };
+  }
+  return { "Content-Type": "application/json" };
+}
+
+async function cwGet(path, params = {}, _retried = false) {
+  if (!cwSession && !_retried) { await cwSignIn(); }
   const url = new URL(`${CHATWOOT_BASE_URL}/api/v1/accounts/${CHATWOOT_ACCOUNT_ID}${path}`);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
-  const r = await fetch(url.toString(), {
-    headers: { "api_access_token": CHATWOOT_API_TOKEN, "Content-Type": "application/json" },
-  });
+  const r = await fetch(url.toString(), { headers: cwHeaders() });
+  if (r.status === 401 && !_retried) {
+    const ok = await cwSignIn();
+    if (ok) return cwGet(path, params, true);
+  }
   if (!r.ok) { const e = await r.text(); throw new Error(`Chatwoot GET ${path} ${r.status}: ${e.slice(0, 200)}`); }
   return r.json();
 }
 
-async function cwPost(path, body, params = {}) {
+async function cwPost(path, body, params = {}, _retried = false) {
+  if (!cwSession && !_retried) { await cwSignIn(); }
   const url = new URL(`${CHATWOOT_BASE_URL}/api/v1/accounts/${CHATWOOT_ACCOUNT_ID}${path}`);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
   const r = await fetch(url.toString(), {
     method: "POST",
-    headers: { "api_access_token": CHATWOOT_API_TOKEN, "Content-Type": "application/json" },
+    headers: cwHeaders(),
     body: JSON.stringify(body),
   });
+  if (r.status === 401 && !_retried) {
+    const ok = await cwSignIn();
+    if (ok) return cwPost(path, body, params, true);
+  }
   if (!r.ok) { const e = await r.text(); throw new Error(`Chatwoot POST ${path} ${r.status}: ${e.slice(0, 200)}`); }
   return r.json();
 }
@@ -1352,8 +1399,8 @@ app.get("/api/chatwoot-chats", authMiddleware, async (req, res) => {
     const filterPayload = [
       { attribute_key: "status", filter_operator: "equal_to", values: ["resolved"], query_operator: date_from || date_to ? "AND" : null },
     ];
-    if (date_from) filterPayload.push({ attribute_key: "created_at", filter_operator: "greater_than", values: [date_from], query_operator: date_to ? "AND" : null });
-    if (date_to)   filterPayload.push({ attribute_key: "created_at", filter_operator: "less_than_equal_to", values: [date_to], query_operator: null });
+    if (date_from) filterPayload.push({ attribute_key: "created_at", filter_operator: "is_greater_than", values: [date_from], query_operator: date_to ? "AND" : null });
+    if (date_to)   filterPayload.push({ attribute_key: "created_at", filter_operator: "is_less_than", values: [date_to], query_operator: null });
 
     let allConvs = [];
     let page = 1;
@@ -1362,7 +1409,7 @@ app.get("/api/chatwoot-chats", authMiddleware, async (req, res) => {
       const data = await cwPost("/conversations/filter", { payload: filterPayload }, { page });
       const inner = data.data || data;
       const convs = inner.payload || inner.conversations || [];
-      if (page === 1) totalCount = inner.meta?.total_count ?? convs.length;
+      if (page === 1) totalCount = inner.meta?.all_count ?? inner.meta?.total_count ?? convs.length;
       if (!convs.length) break;
       allConvs = allConvs.concat(convs);
       if (convs.length < 25 || allConvs.length >= totalCount) break;
@@ -1951,15 +1998,15 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       try {
         const cwFilter = [
           { attribute_key: "status", filter_operator: "equal_to", values: ["resolved"], query_operator: "AND" },
-          { attribute_key: "created_at", filter_operator: "greater_than", values: [lcFrom], query_operator: "AND" },
-          { attribute_key: "created_at", filter_operator: "less_than_equal_to", values: [lcTo], query_operator: null },
+          { attribute_key: "created_at", filter_operator: "is_greater_than", values: [lcFrom], query_operator: "AND" },
+          { attribute_key: "created_at", filter_operator: "is_less_than", values: [lcTo], query_operator: null },
         ];
         let cwPage = 1, cwAll = [], cwTotal = 0;
         while (true) {
           const d = await cwPost("/conversations/filter", { payload: cwFilter }, { page: cwPage });
           const inner = d.data || d;
           const convs = inner.payload || inner.conversations || [];
-          if (cwPage === 1) cwTotal = inner.meta?.total_count ?? convs.length;
+          if (cwPage === 1) cwTotal = inner.meta?.all_count ?? inner.meta?.total_count ?? convs.length;
           if (!convs.length) break;
           cwAll = cwAll.concat(convs);
           if (convs.length < 25 || cwAll.length >= cwTotal) break;
@@ -2620,6 +2667,9 @@ Analyze these notes and respond ONLY with a valid JSON object in this exact form
 // cron.schedule("30 20 * * *", runNightlyReview, { timezone: "UTC" });
 // console.log("[nightly] Scheduled auto-review at 00:00 Tehran time (20:30 UTC)");
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`\n✓ Chat Review running at http://localhost:${PORT}\n`);
+  if (chatwootEnabled()) {
+    await cwSignIn();
+  }
 });
