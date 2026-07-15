@@ -503,13 +503,18 @@ async function loadChats(pageId) {
     }
 
     if (!pageId) {
-      // Wait for all remaining LC pages + CW simultaneously, then hide loading
+      // Wait for all remaining LC pages + CW + cwAgents simultaneously, then hide loading
       const lcAllPages = data.next_page_id
         ? fetchAllPagesForStats(data.next_page_id, from, to, agentId)
         : Promise.resolve();
 
+      // Ensure cwAgents is loaded (needed for modal filtering)
+      const cwAgentsLoad = cwAgents.length === 0
+        ? authFetch("/api/chatwoot-agents").then(r => r.json()).then(list => { if (Array.isArray(list)) cwAgents = list; }).catch(() => {})
+        : Promise.resolve();
+
       setChatsLoading(true, "Loading all chats...");
-      await Promise.all([lcAllPages, fetchChatwootChats(from, to)]);
+      await Promise.all([lcAllPages, fetchChatwootChats(from, to), cwAgentsLoad]);
 
       updateStats();
       updateChart();
@@ -935,15 +940,22 @@ async function openModal(chatId, threadId) {
 
     // Determine if we're in employee-filtered mode
     let modalFilteredAgentName = null;
+    let modalFilteredCwAgentId = null; // Chatwoot numeric agent ID for ID-based filtering
     if (activeEmployeeShift) {
       if (isCW) {
-        // For Chatwoot chats: find agent name from cwAgents using chatwootAgentId
+        // For Chatwoot chats: find agent by chatwootAgentId (email or name) in cwAgents
         const cwId = (activeEmployeeShift.chatwootAgentId || "").toLowerCase().trim();
         const cwAgent = cwAgents.find(a =>
           (a.email || "").toLowerCase().trim() === cwId ||
           (a.name || "").toLowerCase().trim() === cwId
         );
-        modalFilteredAgentName = cwAgent?.name || null;
+        if (cwAgent) {
+          modalFilteredCwAgentId = String(cwAgent.id); // use ID for reliable matching
+          modalFilteredAgentName = cwAgent.name;
+        } else if (cwId) {
+          // cwAgents not loaded yet — fall back to name-based matching using chatwootAgentId
+          modalFilteredAgentName = cwId.includes("@") ? cwId.split("@")[0] : cwId;
+        }
       } else {
         modalFilteredAgentName = getAgentForShift(activeEmployeeShift)?.name || null;
       }
@@ -1059,8 +1071,13 @@ async function openModal(chatId, threadId) {
     }
 
     // Filter messages to agent's segment when employee filter is active
-    const visibleMessages = modalFilteredAgentName
-      ? (chat.messages || []).filter(m => m.is_private || !m.segment_agent || m.segment_agent.name?.toLowerCase() === modalFilteredAgentName.toLowerCase())
+    const visibleMessages = (modalFilteredAgentName || modalFilteredCwAgentId)
+      ? (chat.messages || []).filter(m => {
+          if (m.is_private) return true;
+          if (!m.segment_agent) return true; // customer / system messages always shown
+          if (modalFilteredCwAgentId) return String(m.segment_agent.id) === modalFilteredCwAgentId;
+          return m.segment_agent.name?.toLowerCase() === (modalFilteredAgentName || "").toLowerCase();
+        })
       : (chat.messages || []);
 
     const messages = visibleMessages.map(m => {
