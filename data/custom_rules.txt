@@ -23,3 +23,24 @@ Do NOT suggest the agent's answer is wrong or misleading.
 The agent's answer IS the correct OPO policy.
 
 ---
+
+## DEPARTMENT REFERRAL RESPONSE
+
+When a customer reports a technical or operational issue that the agent cannot resolve
+directly (e.g., MetaTrader errors, platform issues, withdrawal/deposit problems, account
+issues), agents are trained and instructed to use the following approved response:
+
+  "این مورد در حال بررسی از طرف دپارتمان [فنی / مربوطه] است و به زودی نسبت به رفع آن اقدام خواهد شد"
+  (= "This matter is under review by the [technical / relevant] department and will be resolved soon")
+
+This is the CORRECT and APPROVED way to handle issues that need departmental escalation.
+
+Do NOT penalize the agent for:
+- Not solving the issue immediately (they are not authorized to resolve all issues directly)
+- Using this referral phrase (it is an officially approved script/macro)
+- Not providing a detailed technical explanation (referring to the department IS the solution)
+
+The agent's job in these cases is to acknowledge the issue and inform the customer it is
+being handled by the relevant team. That IS the correct and complete resolution.
+
+---
