@@ -913,37 +913,10 @@ function getTehranHourFromIso(iso) {
 }
 
 function detectDeviceFromLC(customerUser, thread, chat) {
-  // Check thread/chat source type (most reliable if available)
-  const srcType = thread?.properties?.source?.type || chat?.properties?.source?.type;
-  if (srcType) {
-    if (/mobile/i.test(srcType)) return "mobile";
-    if (/web|browser|desktop/i.test(srcType)) return "desktop";
-  }
-
-  // Check customer session fields
-  const sessionFields = customerUser?.session_fields || [];
-  for (const f of sessionFields) {
-    const val = String(f.value || "").toLowerCase();
-    if (/mobile|android|iphone|ipad|phone/i.test(val)) return "mobile";
-    if (/desktop|laptop|windows|macos|mac os/i.test(val)) return "desktop";
-  }
-
-  // Check customer statistics/customVariables
-  const customVars = customerUser?.statistics?.last_visit?.customVariables || [];
-  for (const cv of customVars) {
-    const val = String(cv.value || "").toLowerCase();
-    if (/mobile|android|iphone|ipad|phone/i.test(val)) return "mobile";
-    if (/desktop|laptop|windows|macos/i.test(val)) return "desktop";
-  }
-
-  // Check customer last_visit user_agent (if present)
-  const ua = customerUser?.statistics?.last_visit?.user_agent || customerUser?.last_visit?.user_agent || "";
-  if (ua) {
-    if (/mobile|android|iphone|ipad/i.test(ua)) return "mobile";
-    return "desktop";
-  }
-
-  return null;
+  const ua = customerUser?.visit?.user_agent || "";
+  if (!ua) return null;
+  if (/mobile|android|iphone|ipad/i.test(ua)) return "mobile";
+  return "desktop";
 }
 
 function detectDeviceFromCW(conv) {
@@ -1367,16 +1340,6 @@ app.get("/api/chats", authMiddleware, async (req, res) => {
         || (activeAgentId ? users.find(u => u.id === activeAgentId) : null)
         || null;
       const customerUser = users.find((u) => u.type === "customer");
-      if (!global._lcUserLogged) {
-        global._lcUserLogged = true;
-        console.log("[LC device debug] chat keys:", Object.keys(c));
-        console.log("[LC device debug] c.properties:", JSON.stringify(c.properties, null, 2));
-        console.log("[LC device debug] thread.properties:", JSON.stringify(thread.properties, null, 2));
-        if (customerUser) {
-          console.log("[LC device debug] customerUser keys:", Object.keys(customerUser));
-          console.log("[LC device debug] customerUser:", JSON.stringify(customerUser, null, 2).slice(0, 2000));
-        }
-      }
       const chatStartedAt = thread.created_at || null;
       const allAgents = allAgentsInThread(events, users, shifts, chatStartedAt);
       return {
