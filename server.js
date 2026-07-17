@@ -912,9 +912,9 @@ function getTehranHourFromIso(iso) {
   catch { return -1; }
 }
 
-// Known LiveChat client IDs (identified from usage patterns)
-const LC_CLIENT_DESKTOP = "c85439c4e0c1927e69c317d300c610aa"; // LiveChat web app
-const LC_CLIENT_MOBILE  = "bb9e5b2f1ab480e4a715977b7b1b4279"; // LiveChat mobile app
+// Known LiveChat client IDs (confirmed from agent session data)
+const LC_CLIENT_MOBILE  = "c85439c4e0c1927e69c317d300c610aa"; // LiveChat mobile app
+const LC_CLIENT_DESKTOP = "bb9e5b2f1ab480e4a715977b7b1b4279"; // LiveChat web/desktop app
 
 function detectAgentDeviceFromLC(events, users) {
   // Find the dominant client_id used by agents in this chat
