@@ -1329,8 +1329,15 @@ function updateChart() {
     },
     options: {
       scales: {
-        y: { min: 0, max: 10, grid: { color: "#f1f5f9" } },
-        x: { grid: { display: false } },
+        y: {
+          min: 0, max: 10,
+          grid: { color: "rgba(255,255,255,0.08)" },
+          ticks: { color: "#ffffff" },
+        },
+        x: {
+          grid: { display: false },
+          ticks: { color: "#ffffff" },
+        },
       },
       plugins: {
         legend: { display: false },
@@ -1345,7 +1352,7 @@ function updateChart() {
           anchor: "end",
           align: "end",
           offset: 2,
-          color: "#374151",
+          color: "#ffffff",
           font: { weight: "bold", size: 12 },
           formatter: (v, ctx) => activeEmployeeShift
             ? `${v.toFixed(1)}\n(${counts[ctx.dataIndex]})`
