@@ -1155,7 +1155,7 @@ async function openModal(chatId, threadId) {
           <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2">
-          <div class="p-5 border-r overflow-y-auto max-h-[55vh]">
+          <div id="transcriptPane" class="p-5 border-r overflow-y-auto max-h-[55vh]">
             <h3 class="font-semibold text-gray-700 mb-4 text-sm">Transcript</h3>
             ${messages}
           </div>
@@ -1166,6 +1166,9 @@ async function openModal(chatId, threadId) {
         </div>
       </div>
     `;
+    // Scroll transcript to bottom so latest agent messages are visible
+    const transcriptPane = document.getElementById("transcriptPane");
+    if (transcriptPane) transcriptPane.scrollTop = transcriptPane.scrollHeight;
   } catch (e) {
     content.innerHTML = `<div class="p-10 text-center text-red-400">Error: ${e.message}</div>`;
   }

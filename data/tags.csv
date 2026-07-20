@@ -1,0 +1,22 @@
+AC-readonly,Prof-registration,Cl-VIP,kyc-transfer,Or-issue,IB-Withdraw,With-Cancel,Tran-Pending,Dep-Pending,MT-4dc,St-Registration,GeneralQuestion,TL-TechnicalViews,APP-Download,Opotrade-GeneralQuestion
+AC-Swap,Prof-registrationIssue,Cl-Newbie,KYC-email,,IB-Swap,With-Reject,Tran-issue,Dep-Deposit,Mt-5dc,St-Intro,Spam,Tl-Calculator,App-Issue,Opotrade-ChartIssue
+AC-leverage,Prof-2fa,Cl-Complain,,,IB-Registration,With-type,Tran-steps,Dep-type,Mt-setting,St-Issue,Test,Tl-WebTerminal,App-LoginIssue,Opotrade-OrderIssue
+AC-Delete,Prof-Forgetpass,Cl-Suggestion,,,IB-Manager,With-Pending,,Dep-Reject,Mt-TechnicalIssue,St-Transfer,Cooperation,Tl-PulseAI,App-GeneralQuestion,Opotrade-indicator
+AC-Forgetpass,Prof-Generalquestion,Cl-PositiveFeedback,,,IB-Dashboard,With-Withdraw,,Dep-issue,Mt-LoginIssue,ST-Sales,Prop,TL-EconomicCalendar,,
+AC-Spread,Prof-Change,Cl-Abuser,,,IB-email,With-issue,,,MT-LoginSteps,,PAMM,,,
+AC-CreateCT,Prof-LoginIssue,,,,IB-Delete,With-bonus,,,MT-Symbols,,Delete,,,
+AC-CreateMT,,,,,IB-GeneralQuestion,With-TXID,,,,,Done,,,
+AC-type,,,,,,,,,,,Campaign,,,
+AC-Manager,,,,,,,,,,,Refered,,,
+AC-Bonus,,,,,,,,,,,VPS,,,
+AC-Connection,,,,,,,,,,,cTraderIssue,,,
+AC-CreateOpotrade,,,,,,,,,,,BugReport,,,
+,,,,,,,,,,,WellDone,,,
+,,,,,,,,,,,VPN,,,
+,,,,,,,,,,,Arabic,,,
+,,,,,,,,,,,CRM,,,
+,,,,,,,,,,,TradingView,,,
+,,,,,,,,,,,BO-Email,,,
+,,,,,,,,,,,WG,,,
+,,,,,,,,,,,InternalURL,,,
+,,,,,,,,,,,Send Trustpilot Review Invite,,,

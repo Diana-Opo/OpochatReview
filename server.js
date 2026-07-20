@@ -1567,7 +1567,8 @@ app.get("/api/chatwoot-chats/:convId", authMiddleware, async (req, res) => {
       .filter(m => m.content)
       .map(msg => {
         const msgTime = cwTimestamp(msg.created_at);
-        if (msg.message_type === 2) {
+        if (msg.message_type === 2 || msg.message_type === 3) {
+          // type 2 = activity, type 3 = template/automated (not a real customer message)
           return { author_type: "system", author_name: "System", content: msg.content, created_at: msgTime, is_private: false, event_type: "system_message" };
         }
         const isPrivate = msg.private === true;
@@ -1625,7 +1626,7 @@ app.post("/api/review/cw/:convId", authMiddleware, async (req, res) => {
     const createdAt = cwTimestamp(convData.created_at);
 
     const rawMessages = (messagesData.payload || [])
-      .filter(m => m.content && m.message_type !== 2)
+      .filter(m => m.content && m.message_type !== 2 && m.message_type !== 3)
       .sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
 
     const customerMessages = rawMessages.filter(m => m.message_type === 0 && !m.private);
