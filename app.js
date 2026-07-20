@@ -1331,7 +1331,7 @@ function updateChart() {
       scales: {
         y: {
           min: 0, max: 10,
-          grid: { color: "rgba(255,255,255,0.1)" },
+          grid: { color: "rgba(148,163,184,0.15)" },
           ticks: { color: "#ffffff", font: { size: 12 } },
         },
         x: {
