@@ -409,16 +409,51 @@ function lcAuth() {
   return "Basic " + Buffer.from(raw).toString("base64");
 }
 
-async function lcPost(action, body, baseUrl = LC_API) {
-  const res = await fetch(`${baseUrl}/${action}`, {
-    method: "POST",
-    headers: {
-      Authorization: lcAuth(),
-      "Content-Type": "application/json",
-      "X-Region": "us-south1",
-    },
-    body: JSON.stringify(body),
+// Cap concurrent LiveChat requests — parallel report fetches (e.g. per-agent loops
+// across a 2-period campaign comparison) can otherwise fire dozens at once and trip
+// LiveChat's rate limit.
+const LC_MAX_CONCURRENT = 3;
+let lcActive = 0;
+const lcQueue = [];
+
+function lcAcquire() {
+  return new Promise((resolve) => {
+    const tryAcquire = () => {
+      if (lcActive < LC_MAX_CONCURRENT) {
+        lcActive++;
+        resolve(() => { lcActive--; const next = lcQueue.shift(); if (next) next(); });
+      } else {
+        lcQueue.push(tryAcquire);
+      }
+    };
+    tryAcquire();
   });
+}
+
+async function lcPost(action, body, baseUrl = LC_API, _retry = 0) {
+  const release = await lcAcquire();
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/${action}`, {
+      method: "POST",
+      headers: {
+        Authorization: lcAuth(),
+        "Content-Type": "application/json",
+        "X-Region": "us-south1",
+      },
+      body: JSON.stringify(body),
+    });
+  } finally {
+    release();
+  }
+
+  if (res.status === 429 && _retry < 6) {
+    const retryAfterSec = Number(res.headers.get("retry-after")) || 0;
+    const waitMs = retryAfterSec > 0 ? retryAfterSec * 1000 : Math.min(500 * 2 ** _retry, 8000);
+    await new Promise((r) => setTimeout(r, waitMs));
+    return lcPost(action, body, baseUrl, _retry + 1);
+  }
+
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`LiveChat ${action} failed: ${res.status} ${err}`);
