@@ -180,7 +180,7 @@ async function initApp() {
 
   // Navigate to correct page immediately — before any async calls so there's no flash
   const lastPage = localStorage.getItem("lastPage");
-  const validPages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "employees", "config"];
+  const validPages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "employees", "config"];
   const adminPages = ["employees", "config"];
   const startPage = validPages.includes(lastPage) && (!adminPages.includes(lastPage) || currentUser.role === "admin")
     ? lastPage : "chats";
@@ -199,7 +199,7 @@ async function initApp() {
 }
 
 // ── Page navigation ───────────────────────────────────────────────────────────
-const REPORT_PAGES = ["reports", "report-monthly", "report-total-chats"];
+const REPORT_PAGES = ["reports", "report-monthly", "report-total-chats", "report-campaign"];
 
 function toggleReportsMenu() {
   const submenu = document.getElementById("reports-submenu");
@@ -211,7 +211,7 @@ function toggleReportsMenu() {
 }
 
 function showPage(name) {
-  const pages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "employees", "config"];
+  const pages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "employees", "config"];
   pages.forEach(p => {
     document.getElementById(`page-${p}`)?.classList.add("hidden");
     const btn = document.getElementById(`nav-${p}`);
@@ -237,6 +237,7 @@ function showPage(name) {
   if (name === "reports") openReports();
   if (name === "report-monthly") openMonthlyOverview();
   if (name === "report-total-chats") openTotalChatsReport();
+  if (name === "report-campaign") openCampaignImpactReport();
   if (name === "employees") openSettings();
   if (name === "config") loadKnowledgeStatus();
   localStorage.setItem("lastPage", name);
@@ -2098,6 +2099,313 @@ function downloadTotalChatsPdf() {
 <div class="footer">Chat Review Dashboard — Total Chats Report · ${escHtml(dateFrom)} → ${escHtml(dateTo)}</div>
 
 <script>setTimeout(() => window.print(), 350)<\/script>
+</body></html>`);
+  win.document.close();
+}
+
+// ── Campaign Impact Report ────────────────────────────────────────────────────
+
+let _activeCampaignReport = null;
+let _campCompareChart = null;
+let _campDailyChart = null;
+
+function openCampaignImpactReport() {
+  const pad = (n) => String(n).padStart(2, "0");
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+
+  const curFromEl = document.getElementById("campCurrentFrom");
+  const curToEl = document.getElementById("campCurrentTo");
+  const baseFromEl = document.getElementById("campBaselineFrom");
+  const baseToEl = document.getElementById("campBaselineTo");
+  const startEl = document.getElementById("campStart");
+
+  if (curFromEl && !curFromEl.value) {
+    curFromEl.value = `${y}-${pad(m + 1)}-01`;
+    curToEl.value = `${y}-${pad(m + 1)}-${pad(now.getDate())}`;
+
+    const prev = new Date(y, m - 1, 1);
+    const py = prev.getFullYear(), pm = prev.getMonth();
+    const prevLastDay = new Date(py, pm + 1, 0).getDate();
+    baseFromEl.value = `${py}-${pad(pm + 1)}-01`;
+    baseToEl.value = `${py}-${pad(pm + 1)}-${pad(prevLastDay)}`;
+
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    startEl.value = `${y}-${pad(m + 1)}-${pad(Math.min(21, daysInMonth))}`;
+  }
+  loadCampaignImpactReport();
+}
+
+function pctChange(from, to) {
+  if (!from) return to ? 100 : 0;
+  return ((to - from) / from) * 100;
+}
+
+function buildCampaignNarrative(data) {
+  const { baseline, current, pre_campaign, during_campaign, campaign_start, employees } = data;
+  const totalChange = pctChange(baseline.total, current.total);
+  const preAvg = pre_campaign.days ? pre_campaign.total / pre_campaign.days : 0;
+  const duringAvg = during_campaign.days ? during_campaign.total / during_campaign.days : 0;
+  const avgChange = pctChange(preAvg, duringAvg);
+  const top = employees[0];
+
+  const parts = [];
+  parts.push(`Total chats ${totalChange >= 0 ? "rose" : "fell"} from ${baseline.total} (${escHtml(baseline.date_from)} to ${escHtml(baseline.date_to)}) to ${current.total} (${escHtml(current.date_from)} to ${escHtml(current.date_to)}), a ${totalChange >= 0 ? "+" : ""}${totalChange.toFixed(1)}% change.`);
+  parts.push(`Within the current period, daily volume averaged ${preAvg.toFixed(1)} chats/day before ${escHtml(campaign_start)} and ${duringAvg.toFixed(1)} chats/day from ${escHtml(campaign_start)} onward — a ${avgChange >= 0 ? "+" : ""}${avgChange.toFixed(1)}% change in daily load, consistent with the campaign launch.`);
+  if (top) {
+    parts.push(`${escHtml(top.name)} handled the most chats during the campaign window (${top.during_campaign_total}), out of ${top.total} total chats in the current period.`);
+  }
+  return parts.join(" ");
+}
+
+async function loadCampaignImpactReport() {
+  const content = document.getElementById("campaignContent");
+  if (!content) return;
+  const baselineFrom = document.getElementById("campBaselineFrom")?.value;
+  const baselineTo = document.getElementById("campBaselineTo")?.value;
+  const currentFrom = document.getElementById("campCurrentFrom")?.value;
+  const currentTo = document.getElementById("campCurrentTo")?.value;
+  const campaignStart = document.getElementById("campStart")?.value;
+  if (!baselineFrom || !baselineTo || !currentFrom || !currentTo || !campaignStart) {
+    content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">Please fill in all date fields.</div>`;
+    return;
+  }
+  content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm"><span class="spinner"></span></div>`;
+  _activeCampaignReport = null;
+
+  try {
+    const params = new URLSearchParams({
+      baseline_from: baselineFrom, baseline_to: baselineTo,
+      current_from: currentFrom, current_to: currentTo,
+      campaign_start: campaignStart,
+    });
+    const res = await authFetch(`/api/reports/campaign-impact?${params.toString()}`);
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Error: ${escHtml(data.error || res.status)}</div>`;
+      return;
+    }
+    _activeCampaignReport = data;
+    renderCampaignReport(content, data);
+  } catch (e) {
+    content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderCampaignReport(content, data) {
+  const { baseline, current, pre_campaign, during_campaign, campaign_start, employees } = data;
+  const totalChange = pctChange(baseline.total, current.total);
+  const preAvg = pre_campaign.days ? pre_campaign.total / pre_campaign.days : 0;
+  const duringAvg = during_campaign.days ? during_campaign.total / during_campaign.days : 0;
+  const avgChange = pctChange(preAvg, duringAvg);
+
+  const statCard = (label, val, color) => `
+    <div class="bg-[#0f1d35] rounded-xl border border-[#1a2d4a] p-4 text-center">
+      <div class="text-xs text-slate-500 uppercase font-medium mb-1">${label}</div>
+      <div class="text-xl font-bold" style="color:${color}">${val}</div>
+    </div>`;
+
+  const empRows = employees.map(e => `
+    <tr class="border-t border-[#1a2d4a]">
+      <td class="px-4 py-2.5 text-white text-sm">${escHtml(e.name)}</td>
+      <td class="px-4 py-2.5 text-right text-slate-400 text-sm">${e.livechat}</td>
+      <td class="px-4 py-2.5 text-right text-slate-400 text-sm">${e.chatwoot}</td>
+      <td class="px-4 py-2.5 text-right text-white text-sm">${e.total}</td>
+      <td class="px-4 py-2.5 text-right text-[#F5B800] font-semibold text-sm">${e.during_campaign_total}</td>
+    </tr>`).join("");
+
+  content.innerHTML = `
+    <div class="grid grid-cols-3 gap-4 mb-5">
+      ${statCard(`Total (${escHtml(baseline.date_from)} → ${escHtml(baseline.date_to)})`, baseline.total, "#94a3b8")}
+      ${statCard(`Total (${escHtml(current.date_from)} → ${escHtml(current.date_to)})`, current.total, "#F5B800")}
+      ${statCard("Change", `${totalChange >= 0 ? "+" : ""}${totalChange.toFixed(1)}%`, totalChange >= 0 ? "#22c55e" : "#ef4444")}
+      ${statCard(`Avg/day before ${escHtml(campaign_start)}`, preAvg.toFixed(1), "#94a3b8")}
+      ${statCard(`Avg/day from ${escHtml(campaign_start)}`, duringAvg.toFixed(1), "#F5B800")}
+      ${statCard("Daily Load Change", `${avgChange >= 0 ? "+" : ""}${avgChange.toFixed(1)}%`, avgChange >= 0 ? "#22c55e" : "#ef4444")}
+    </div>
+
+    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5 mb-5">
+      <p class="text-sm text-slate-300 leading-relaxed">${buildCampaignNarrative(data)}</p>
+    </div>
+
+    <div class="grid grid-cols-2 gap-5 mb-5">
+      <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-4">
+        <div class="text-sm font-semibold text-white mb-3">Baseline vs Current</div>
+        <canvas id="campCompareCanvas" height="180"></canvas>
+      </div>
+      <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-4">
+        <div class="text-sm font-semibold text-white mb-3">Daily Volume — Current Period</div>
+        <canvas id="campDailyCanvas" height="180"></canvas>
+      </div>
+    </div>
+
+    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
+      <div class="px-5 py-3 border-b border-[#1a2d4a]">
+        <span class="font-semibold text-white text-sm">Per-Employee Breakdown — Current Period</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead>
+            <tr class="text-left text-xs text-slate-500 uppercase">
+              <th class="px-4 py-2 font-medium">Employee</th>
+              <th class="px-4 py-2 font-medium text-right">LiveChat</th>
+              <th class="px-4 py-2 font-medium text-right">Chatwoot</th>
+              <th class="px-4 py-2 font-medium text-right">Total</th>
+              <th class="px-4 py-2 font-medium text-right">During Campaign</th>
+            </tr>
+          </thead>
+          <tbody>${empRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+
+  renderCampaignCharts(data);
+}
+
+function renderCampaignCharts(data) {
+  const { baseline, current, daily, campaign_start } = data;
+
+  if (_campCompareChart) { try { _campCompareChart.destroy(); } catch (_) {} }
+  if (_campDailyChart) { try { _campDailyChart.destroy(); } catch (_) {} }
+
+  const compareCanvas = document.getElementById("campCompareCanvas");
+  if (compareCanvas) {
+    _campCompareChart = new Chart(compareCanvas.getContext("2d"), {
+      type: "bar",
+      data: {
+        labels: ["LiveChat", "Chatwoot", "Total"],
+        datasets: [
+          { label: "Baseline", data: [baseline.livechat, baseline.chatwoot, baseline.total], backgroundColor: "#64748b", borderRadius: 6 },
+          { label: "Current", data: [current.livechat, current.chatwoot, current.total], backgroundColor: "#F5B800", borderRadius: 6 },
+        ],
+      },
+      options: {
+        scales: {
+          y: { beginAtZero: true, grid: { color: "#1a2d4a" }, ticks: { color: "#94a3b8" } },
+          x: { grid: { display: false }, ticks: { color: "#94a3b8" } },
+        },
+        plugins: { legend: { labels: { color: "#e2e8f0" } } },
+      },
+    });
+  }
+
+  const dailyCanvas = document.getElementById("campDailyCanvas");
+  if (dailyCanvas) {
+    const days = Object.keys(daily).sort();
+    const totals = days.map(d => daily[d].livechat + daily[d].chatwoot);
+    const colors = days.map(d => d >= campaign_start ? "#F5B800" : "#64748b");
+    _campDailyChart = new Chart(dailyCanvas.getContext("2d"), {
+      type: "bar",
+      data: {
+        labels: days.map(d => d.slice(5)),
+        datasets: [{ label: "Chats", data: totals, backgroundColor: colors, borderRadius: 4 }],
+      },
+      options: {
+        scales: {
+          y: { beginAtZero: true, grid: { color: "#1a2d4a" }, ticks: { color: "#94a3b8" } },
+          x: { grid: { display: false }, ticks: { color: "#94a3b8", maxRotation: 90, minRotation: 90 } },
+        },
+        plugins: { legend: { display: false } },
+      },
+    });
+  }
+}
+
+function downloadCampaignImpactPdf() {
+  if (!_activeCampaignReport) { showStatus("Run a search first", "error"); return; }
+  const data = _activeCampaignReport;
+  const { baseline, current, pre_campaign, during_campaign, campaign_start, employees } = data;
+  const totalChange = pctChange(baseline.total, current.total);
+  const preAvg = pre_campaign.days ? pre_campaign.total / pre_campaign.days : 0;
+  const duringAvg = during_campaign.days ? during_campaign.total / during_campaign.days : 0;
+  const avgChange = pctChange(preAvg, duringAvg);
+
+  const compareImg = document.getElementById("campCompareCanvas")?.toDataURL("image/png") || "";
+  const dailyImg = document.getElementById("campDailyCanvas")?.toDataURL("image/png") || "";
+
+  const win = window.open("", "_blank");
+  if (!win) { showStatus("Allow popups to download PDF", "error"); return; }
+
+  const rows = employees.map((e, i) => `
+    <tr style="background:${i % 2 ? "#f9fafb" : "#fff"}">
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#1f2937">${escHtml(e.name)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#6b7280;text-align:right">${e.livechat}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#6b7280;text-align:right">${e.chatwoot}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#111827;text-align:right">${e.total}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#2563eb;text-align:right">${e.during_campaign_total}</td>
+    </tr>`).join("");
+
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Campaign Impact Report</title>
+<style>
+  @page { size: A4 portrait; margin: 14mm 16mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1f2937; background: #fff; }
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+       color: #6b7280; text-align: left; padding: 8px 10px; border-bottom: 2px solid #2563eb; }
+  th.num { text-align: right; }
+  .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
+  .sec-title { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+               color: #6b7280; margin-bottom: 8px; }
+  .footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid #e5e7eb;
+            font-size: 8px; color: #9ca3af; text-align: center; }
+  .page-break { page-break-before: always; }
+</style>
+</head><body>
+
+<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #2563eb;padding-bottom:10px;margin-bottom:14px">
+  <div>
+    <div style="font-size:20px;font-weight:900;color:#111827;line-height:1.1">Campaign Impact Report</div>
+    <div style="font-size:11px;color:#6b7280;margin-top:4px">Baseline ${escHtml(baseline.date_from)} → ${escHtml(baseline.date_to)}  vs.  Current ${escHtml(current.date_from)} → ${escHtml(current.date_to)}</div>
+  </div>
+  <div style="background:#eff6ff;color:#2563eb;font-size:9px;font-weight:700;text-transform:uppercase;
+              letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
+    Generated ${new Date().toLocaleDateString()}
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+  ${[
+    [`Total (Baseline)`, baseline.total, "#374151"],
+    [`Total (Current)`, current.total, "#2563eb"],
+    ["Change", `${totalChange >= 0 ? "+" : ""}${totalChange.toFixed(1)}%`, totalChange >= 0 ? "#16a34a" : "#dc2626"],
+    [`Avg/day before ${escHtml(campaign_start)}`, preAvg.toFixed(1), "#374151"],
+    [`Avg/day from ${escHtml(campaign_start)}`, duringAvg.toFixed(1), "#2563eb"],
+    ["Daily Load Change", `${avgChange >= 0 ? "+" : ""}${avgChange.toFixed(1)}%`, avgChange >= 0 ? "#16a34a" : "#dc2626"],
+  ].map(([l,v,c]) => `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:9px 5px;text-align:center">
+    <div style="font-size:7px;color:#9ca3af;text-transform:uppercase;font-weight:700;letter-spacing:.03em;margin-bottom:4px">${l}</div>
+    <div style="font-size:15px;font-weight:900;color:${c}">${v}</div>
+  </div>`).join("")}
+</div>
+
+<div class="card" style="background:#f9fafb">
+  <div class="sec-title">Summary</div>
+  <p style="font-size:10.5px;color:#374151;line-height:1.6">${buildCampaignNarrative(data)}</p>
+</div>
+
+${compareImg ? `<div class="card"><div class="sec-title">Baseline vs Current</div><img src="${compareImg}" style="width:100%;max-height:220px;object-fit:contain" /></div>` : ""}
+${dailyImg ? `<div class="card"><div class="sec-title">Daily Volume — Current Period (highlighted = during campaign)</div><img src="${dailyImg}" style="width:100%;max-height:220px;object-fit:contain" /></div>` : ""}
+
+<div class="page-break"></div>
+
+<div class="sec-title" style="margin-bottom:8px">Per-Employee Breakdown — Current Period</div>
+<table>
+  <thead>
+    <tr>
+      <th>Employee</th>
+      <th class="num">LiveChat</th>
+      <th class="num">Chatwoot</th>
+      <th class="num">Total</th>
+      <th class="num">During Campaign</th>
+    </tr>
+  </thead>
+  <tbody>${rows}</tbody>
+</table>
+
+<div class="footer">Chat Review Dashboard — Campaign Impact Report · Generated ${new Date().toLocaleString()}</div>
+
+<script>setTimeout(() => window.print(), 500)<\/script>
 </body></html>`);
   win.document.close();
 }

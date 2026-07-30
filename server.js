@@ -2063,8 +2063,22 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
     return ((new Date(chatTime).getTime() + ISTANBUL_OFFSET_MS) / 3600000) % 24;
   }
 
+  function istDayKey(ms) {
+    return new Date(ms + ISTANBUL_OFFSET_MS).toISOString().slice(0, 10);
+  }
+
   const emp = {};
+  const daily = {};           // { "YYYY-MM-DD": { livechat, chatwoot } } — company-wide
+  const dailyByEmployee = {}; // { employee: { "YYYY-MM-DD": { livechat, chatwoot } } }
   let cwCount = 0;
+
+  function bumpDaily(empName, dayKey, platform) {
+    if (!daily[dayKey]) daily[dayKey] = { livechat: 0, chatwoot: 0 };
+    daily[dayKey][platform]++;
+    if (!dailyByEmployee[empName]) dailyByEmployee[empName] = {};
+    if (!dailyByEmployee[empName][dayKey]) dailyByEmployee[empName][dayKey] = { livechat: 0, chatwoot: 0 };
+    dailyByEmployee[empName][dayKey][platform]++;
+  }
 
   async function fetchAgentChats(key, shiftList) {
     const agentEmail = agentKeyToEmail[key];
@@ -2100,10 +2114,13 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
           const matched = shiftList.find(s => istHour >= s.start && istHour < s.end);
           const empName = (matched || shiftList[0]).employee;
           emp[empName].livechat++;
+          bumpDaily(empName, istDayKey(new Date(chatTime).getTime()), "livechat");
         } else {
           const inShift = shiftList.some(s => istHour >= s.start && istHour < s.end);
           if (!inShift) continue;
-          emp[uniqueEmpsForKey[0]].livechat++;
+          const empName = uniqueEmpsForKey[0];
+          emp[empName].livechat++;
+          bumpDaily(empName, istDayKey(new Date(chatTime).getTime()), "livechat");
         }
       }
     } while (pid);
@@ -2150,6 +2167,7 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
         const n = ms.employee;
         if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0 };
         emp[n].chatwoot++;
+        bumpDaily(n, istDayKey((conv.created_at || 0) * 1000), "chatwoot");
       }
     } catch (e) { console.error("[total-chats] Chatwoot error:", e.message); }
   }
@@ -2168,7 +2186,7 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
     .sort((a, b) => b.total - a.total);
 
   const grandTotal = employees.reduce((s, e) => s + e.total, 0);
-  return { date_from: dateFrom, date_to: dateTo, total_chats: totalChats ?? grandTotal, employees };
+  return { date_from: dateFrom, date_to: dateTo, total_chats: totalChats ?? grandTotal, employees, daily, dailyByEmployee };
 }
 
 // Total chats per employee over an arbitrary date range, optionally filtered to one employee
@@ -2178,6 +2196,75 @@ app.get("/api/reports/total-chats", authMiddleware, async (req, res) => {
     if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
     const result = await computeChatTotals({ dateFrom: date_from, dateTo: date_to, employeeFilter: employee || null });
     res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Compare a baseline period (e.g. previous month) against a current period, with a
+// campaign-start date splitting the current period into pre/during buckets.
+app.get("/api/reports/campaign-impact", authMiddleware, async (req, res) => {
+  try {
+    const { baseline_from, baseline_to, current_from, current_to, campaign_start } = req.query;
+    if (!baseline_from || !baseline_to || !current_from || !current_to || !campaign_start) {
+      return res.status(400).json({ error: "baseline_from, baseline_to, current_from, current_to, campaign_start required" });
+    }
+
+    const [baseline, current] = await Promise.all([
+      computeChatTotals({ dateFrom: baseline_from, dateTo: baseline_to, employeeFilter: null }),
+      computeChatTotals({ dateFrom: current_from, dateTo: current_to, employeeFilter: null }),
+    ]);
+
+    const sumField = (arr, field) => arr.reduce((s, e) => s + (e[field] || 0), 0);
+
+    const preCampaign = { livechat: 0, chatwoot: 0 };
+    const duringCampaign = { livechat: 0, chatwoot: 0 };
+    let preDays = 0, duringDays = 0;
+    for (const [date, d] of Object.entries(current.daily || {})) {
+      const bucket = date >= campaign_start ? duringCampaign : preCampaign;
+      bucket.livechat += d.livechat;
+      bucket.chatwoot += d.chatwoot;
+    }
+    // Count calendar days in each bucket (independent of whether chats occurred, for accurate averages)
+    for (let d = new Date(`${current_from}T00:00:00Z`); d <= new Date(`${current_to}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
+      const key = d.toISOString().slice(0, 10);
+      if (key >= campaign_start) duringDays++; else preDays++;
+    }
+
+    const employees = current.employees.map(e => {
+      const perDay = current.dailyByEmployee?.[e.name] || {};
+      let duringLc = 0, duringCw = 0;
+      for (const [date, d] of Object.entries(perDay)) {
+        if (date >= campaign_start) { duringLc += d.livechat; duringCw += d.chatwoot; }
+      }
+      return {
+        name: e.name,
+        livechat: e.livechat,
+        chatwoot: e.chatwoot,
+        total: e.total,
+        during_campaign_livechat: duringLc,
+        during_campaign_chatwoot: duringCw,
+        during_campaign_total: duringLc + duringCw,
+      };
+    }).sort((a, b) => b.during_campaign_total - a.during_campaign_total);
+
+    res.json({
+      baseline: {
+        date_from: baseline_from, date_to: baseline_to,
+        livechat: sumField(baseline.employees, "livechat"),
+        chatwoot: sumField(baseline.employees, "chatwoot"),
+        total: sumField(baseline.employees, "livechat") + sumField(baseline.employees, "chatwoot"),
+      },
+      current: {
+        date_from: current_from, date_to: current_to,
+        livechat: sumField(current.employees, "livechat"),
+        chatwoot: sumField(current.employees, "chatwoot"),
+        total: sumField(current.employees, "livechat") + sumField(current.employees, "chatwoot"),
+      },
+      campaign_start,
+      pre_campaign: { ...preCampaign, total: preCampaign.livechat + preCampaign.chatwoot, days: preDays },
+      during_campaign: { ...duringCampaign, total: duringCampaign.livechat + duringCampaign.chatwoot, days: duringDays },
+      daily: current.daily,
+      employees,
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
