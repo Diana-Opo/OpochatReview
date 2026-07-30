@@ -2135,11 +2135,11 @@ function downloadTotalChatsPdf() {
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Total Chats — ${escHtml(dateFrom)} to ${escHtml(dateTo)}</title>
 <style>
-  @page { size: A4 portrait; margin: 0; }
+  @page { size: A4 portrait; margin: 1.5cm 16mm; background: ${PDF_BG}; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   ${PDF_FORCE_PRINT_COLORS_CSS}
   html { background: ${PDF_BG}; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; padding: 1.5cm 16mm; min-height: 100vh; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
   table { width: 100%; border-collapse: collapse; }
   th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
        color: ${PDF_TEXT_DIM}; text-align: center; padding: 8px 10px; border-bottom: 2px solid ${OPO_BRAND_BLUE}; }
@@ -2583,11 +2583,11 @@ function downloadCampaignImpactPdf() {
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Campaign Impact Report</title>
 <style>
-  @page { size: A4 portrait; margin: 0; }
+  @page { size: A4 portrait; margin: 1.5cm 16mm; background: ${PDF_BG}; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   ${PDF_FORCE_PRINT_COLORS_CSS}
   html { background: ${PDF_BG}; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; padding: 1.5cm 16mm; min-height: 100vh; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
   table { width: 100%; border-collapse: collapse; }
   th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
        color: ${PDF_TEXT_DIM}; text-align: center; padding: 8px 10px; border-bottom: 2px solid ${OPO_BRAND_BLUE}; }
@@ -3342,11 +3342,11 @@ function downloadReportPdf() {
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>${escHtml(r.employee)} — ${monthLabel(r.month)}</title>
 <style>
-  @page { size: A4 portrait; margin: 0; }
+  @page { size: A4 portrait; margin: 1.5cm 16mm; background: ${PDF_BG}; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   ${PDF_FORCE_PRINT_COLORS_CSS}
   html { background: ${PDF_BG}; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; padding: 1.5cm 16mm; min-height: 100vh; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
 
   .card { background: ${PDF_CARD_BG}; border: 1px solid ${PDF_BORDER}; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
   .sec-title { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
