@@ -1957,10 +1957,11 @@ function openTotalChatsReport() {
   const toEl = document.getElementById("totalChatsTo");
   if (fromEl && toEl && !fromEl.value && !toEl.value) {
     const now = new Date();
-    const first = new Date(now.getFullYear(), now.getMonth(), 1);
-    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    fromEl.value = first.toISOString().slice(0, 10);
-    toEl.value = last.toISOString().slice(0, 10);
+    const y = now.getFullYear(), m = now.getMonth();
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    const pad = (n) => String(n).padStart(2, "0");
+    fromEl.value = `${y}-${pad(m + 1)}-01`;
+    toEl.value = `${y}-${pad(m + 1)}-${pad(lastDay)}`;
   }
   loadTotalChatsReport();
 }
