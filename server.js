@@ -2076,7 +2076,7 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
     if (!agentEmail) continue;
 
     const uniqueEmpsForKey = [...new Set(shiftList.map(s => s.employee))];
-    uniqueEmpsForKey.forEach(n => { if (!emp[n]) emp[n] = { total: 0 }; });
+    uniqueEmpsForKey.forEach(n => { if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0 }; });
     const isShared = uniqueEmpsForKey.length > 1;
 
     let pid = null;
@@ -2104,11 +2104,11 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
         if (isShared) {
           const matched = shiftList.find(s => istHour >= s.start && istHour < s.end);
           const empName = (matched || shiftList[0]).employee;
-          emp[empName].total++;
+          emp[empName].livechat++;
         } else {
           const inShift = shiftList.some(s => istHour >= s.start && istHour < s.end);
           if (!inShift) continue;
-          emp[uniqueEmpsForKey[0]].total++;
+          emp[uniqueEmpsForKey[0]].livechat++;
         }
       }
     } while (pid);
@@ -2152,14 +2152,14 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
         });
         if (!ms) continue;
         const n = ms.employee;
-        if (!emp[n]) emp[n] = { total: 0 };
-        emp[n].total++;
+        if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0 };
+        emp[n].chatwoot++;
       }
     } catch (e) { console.error("[total-chats] Chatwoot error:", e.message); }
   }
 
   const employees = Object.entries(emp)
-    .map(([name, d]) => ({ name, total: d.total }))
+    .map(([name, d]) => ({ name, livechat: d.livechat, chatwoot: d.chatwoot, total: d.livechat + d.chatwoot }))
     .sort((a, b) => b.total - a.total);
 
   const grandTotal = employees.reduce((s, e) => s + e.total, 0);

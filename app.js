@@ -1994,6 +1994,8 @@ async function loadTotalChatsReport() {
     const rows = employees.map(e => `
       <tr class="border-t border-[#1a2d4a]">
         <td class="px-4 py-2.5 text-white text-sm">${escHtml(e.name)}</td>
+        <td class="px-4 py-2.5 text-right text-slate-400 text-sm">${e.livechat ?? 0}</td>
+        <td class="px-4 py-2.5 text-right text-slate-400 text-sm">${e.chatwoot ?? 0}</td>
         <td class="px-4 py-2.5 text-right text-[#F5B800] font-semibold text-sm">${e.total}</td>
       </tr>`).join("");
     content.innerHTML = `
@@ -2007,7 +2009,9 @@ async function loadTotalChatsReport() {
             <thead>
               <tr class="text-left text-xs text-slate-500 uppercase">
                 <th class="px-4 py-2 font-medium">Employee</th>
-                <th class="px-4 py-2 font-medium text-right">Chats</th>
+                <th class="px-4 py-2 font-medium text-right">LiveChat</th>
+                <th class="px-4 py-2 font-medium text-right">Chatwoot</th>
+                <th class="px-4 py-2 font-medium text-right">Total</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
