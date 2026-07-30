@@ -2200,12 +2200,12 @@ app.get("/api/reports/total-chats", authMiddleware, async (req, res) => {
 });
 
 // Compare a baseline period (e.g. previous month) against a current period, with a
-// campaign-start date splitting the current period into pre/during buckets.
+// campaign start/end window splitting the current period into pre/during/post buckets.
 app.get("/api/reports/campaign-impact", authMiddleware, async (req, res) => {
   try {
-    const { baseline_from, baseline_to, current_from, current_to, campaign_start } = req.query;
-    if (!baseline_from || !baseline_to || !current_from || !current_to || !campaign_start) {
-      return res.status(400).json({ error: "baseline_from, baseline_to, current_from, current_to, campaign_start required" });
+    const { baseline_from, baseline_to, current_from, current_to, campaign_start, campaign_end } = req.query;
+    if (!baseline_from || !baseline_to || !current_from || !current_to || !campaign_start || !campaign_end) {
+      return res.status(400).json({ error: "baseline_from, baseline_to, current_from, current_to, campaign_start, campaign_end required" });
     }
 
     const [baseline, current] = await Promise.all([
@@ -2215,25 +2215,27 @@ app.get("/api/reports/campaign-impact", authMiddleware, async (req, res) => {
 
     const sumField = (arr, field) => arr.reduce((s, e) => s + (e[field] || 0), 0);
 
-    const preCampaign = { livechat: 0, chatwoot: 0 };
-    const duringCampaign = { livechat: 0, chatwoot: 0 };
-    let preDays = 0, duringDays = 0;
+    const bucketOf = (date) => date < campaign_start ? "pre" : date > campaign_end ? "post" : "during";
+
+    const emptyBucket = () => ({ livechat: 0, chatwoot: 0, days: 0 });
+    const buckets = { pre: emptyBucket(), during: emptyBucket(), post: emptyBucket() };
     for (const [date, d] of Object.entries(current.daily || {})) {
-      const bucket = date >= campaign_start ? duringCampaign : preCampaign;
-      bucket.livechat += d.livechat;
-      bucket.chatwoot += d.chatwoot;
+      const b = buckets[bucketOf(date)];
+      b.livechat += d.livechat;
+      b.chatwoot += d.chatwoot;
     }
     // Count calendar days in each bucket (independent of whether chats occurred, for accurate averages)
     for (let d = new Date(`${current_from}T00:00:00Z`); d <= new Date(`${current_to}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
       const key = d.toISOString().slice(0, 10);
-      if (key >= campaign_start) duringDays++; else preDays++;
+      buckets[bucketOf(key)].days++;
     }
+    Object.values(buckets).forEach(b => { b.total = b.livechat + b.chatwoot; });
 
     const employees = current.employees.map(e => {
       const perDay = current.dailyByEmployee?.[e.name] || {};
       let duringLc = 0, duringCw = 0;
       for (const [date, d] of Object.entries(perDay)) {
-        if (date >= campaign_start) { duringLc += d.livechat; duringCw += d.chatwoot; }
+        if (bucketOf(date) === "during") { duringLc += d.livechat; duringCw += d.chatwoot; }
       }
       return {
         name: e.name,
@@ -2260,8 +2262,10 @@ app.get("/api/reports/campaign-impact", authMiddleware, async (req, res) => {
         total: sumField(current.employees, "livechat") + sumField(current.employees, "chatwoot"),
       },
       campaign_start,
-      pre_campaign: { ...preCampaign, total: preCampaign.livechat + preCampaign.chatwoot, days: preDays },
-      during_campaign: { ...duringCampaign, total: duringCampaign.livechat + duringCampaign.chatwoot, days: duringDays },
+      campaign_end,
+      pre_campaign: buckets.pre,
+      during_campaign: buckets.during,
+      post_campaign: buckets.post,
       daily: current.daily,
       employees,
     });

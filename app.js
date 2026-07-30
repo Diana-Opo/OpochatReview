@@ -2119,10 +2119,12 @@ function openCampaignImpactReport() {
   const baseFromEl = document.getElementById("campBaselineFrom");
   const baseToEl = document.getElementById("campBaselineTo");
   const startEl = document.getElementById("campStart");
+  const endEl = document.getElementById("campEnd");
 
   if (curFromEl && !curFromEl.value) {
     curFromEl.value = `${y}-${pad(m + 1)}-01`;
-    curToEl.value = `${y}-${pad(m + 1)}-${pad(now.getDate())}`;
+    const currentToStr = `${y}-${pad(m + 1)}-${pad(now.getDate())}`;
+    curToEl.value = currentToStr;
 
     const prev = new Date(y, m - 1, 1);
     const py = prev.getFullYear(), pm = prev.getMonth();
@@ -2132,6 +2134,8 @@ function openCampaignImpactReport() {
 
     const daysInMonth = new Date(y, m + 1, 0).getDate();
     startEl.value = `${y}-${pad(m + 1)}-${pad(Math.min(21, daysInMonth))}`;
+    // Campaign still running by default — ends at the current period's end date
+    endEl.value = currentToStr;
   }
   loadCampaignImpactReport();
 }
@@ -2142,16 +2146,21 @@ function pctChange(from, to) {
 }
 
 function buildCampaignNarrative(data) {
-  const { baseline, current, pre_campaign, during_campaign, campaign_start, employees } = data;
+  const { baseline, current, pre_campaign, during_campaign, post_campaign, campaign_start, campaign_end, employees } = data;
   const totalChange = pctChange(baseline.total, current.total);
   const preAvg = pre_campaign.days ? pre_campaign.total / pre_campaign.days : 0;
   const duringAvg = during_campaign.days ? during_campaign.total / during_campaign.days : 0;
+  const postAvg = post_campaign.days ? post_campaign.total / post_campaign.days : 0;
   const avgChange = pctChange(preAvg, duringAvg);
   const top = employees[0];
 
   const parts = [];
   parts.push(`Total chats ${totalChange >= 0 ? "rose" : "fell"} from ${baseline.total} (${escHtml(baseline.date_from)} to ${escHtml(baseline.date_to)}) to ${current.total} (${escHtml(current.date_from)} to ${escHtml(current.date_to)}), a ${totalChange >= 0 ? "+" : ""}${totalChange.toFixed(1)}% change.`);
-  parts.push(`Within the current period, daily volume averaged ${preAvg.toFixed(1)} chats/day before ${escHtml(campaign_start)} and ${duringAvg.toFixed(1)} chats/day from ${escHtml(campaign_start)} onward — a ${avgChange >= 0 ? "+" : ""}${avgChange.toFixed(1)}% change in daily load, consistent with the campaign launch.`);
+  parts.push(`During the campaign window (${escHtml(campaign_start)} to ${escHtml(campaign_end)}), daily volume averaged ${duringAvg.toFixed(1)} chats/day, versus ${preAvg.toFixed(1)} chats/day beforehand — a ${avgChange >= 0 ? "+" : ""}${avgChange.toFixed(1)}% change in daily load, consistent with the campaign launch.`);
+  if (post_campaign.days > 0) {
+    const postChange = pctChange(preAvg, postAvg);
+    parts.push(`Since the campaign ended, daily volume has averaged ${postAvg.toFixed(1)} chats/day (${postChange >= 0 ? "+" : ""}${postChange.toFixed(1)}% vs. the pre-campaign baseline), ${Math.abs(postChange) <= 15 ? "indicating volume has largely returned to normal" : postChange > 0 ? "still elevated above pre-campaign levels" : "below pre-campaign levels"}.`);
+  }
   if (top) {
     parts.push(`${escHtml(top.name)} handled the most chats during the campaign window (${top.during_campaign_total}), out of ${top.total} total chats in the current period.`);
   }
@@ -2166,8 +2175,13 @@ async function loadCampaignImpactReport() {
   const currentFrom = document.getElementById("campCurrentFrom")?.value;
   const currentTo = document.getElementById("campCurrentTo")?.value;
   const campaignStart = document.getElementById("campStart")?.value;
-  if (!baselineFrom || !baselineTo || !currentFrom || !currentTo || !campaignStart) {
+  const campaignEnd = document.getElementById("campEnd")?.value;
+  if (!baselineFrom || !baselineTo || !currentFrom || !currentTo || !campaignStart || !campaignEnd) {
     content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">Please fill in all date fields.</div>`;
+    return;
+  }
+  if (campaignEnd < campaignStart) {
+    content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Campaign End must be on or after Campaign Start.</div>`;
     return;
   }
   content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm"><span class="spinner"></span></div>`;
@@ -2177,7 +2191,7 @@ async function loadCampaignImpactReport() {
     const params = new URLSearchParams({
       baseline_from: baselineFrom, baseline_to: baselineTo,
       current_from: currentFrom, current_to: currentTo,
-      campaign_start: campaignStart,
+      campaign_start: campaignStart, campaign_end: campaignEnd,
     });
     const res = await authFetch(`/api/reports/campaign-impact?${params.toString()}`);
     const data = await res.json();
@@ -2193,11 +2207,13 @@ async function loadCampaignImpactReport() {
 }
 
 function renderCampaignReport(content, data) {
-  const { baseline, current, pre_campaign, during_campaign, campaign_start, employees } = data;
+  const { baseline, current, pre_campaign, during_campaign, post_campaign, campaign_start, campaign_end, employees } = data;
   const totalChange = pctChange(baseline.total, current.total);
   const preAvg = pre_campaign.days ? pre_campaign.total / pre_campaign.days : 0;
   const duringAvg = during_campaign.days ? during_campaign.total / during_campaign.days : 0;
+  const postAvg = post_campaign.days ? post_campaign.total / post_campaign.days : 0;
   const avgChange = pctChange(preAvg, duringAvg);
+  const postChange = pctChange(preAvg, postAvg);
 
   const statCard = (label, val, color) => `
     <div class="bg-[#0f1d35] rounded-xl border border-[#1a2d4a] p-4 text-center">
@@ -2214,14 +2230,24 @@ function renderCampaignReport(content, data) {
       <td class="px-4 py-2.5 text-right text-[#F5B800] font-semibold text-sm">${e.during_campaign_total}</td>
     </tr>`).join("");
 
+  const statCards = [
+    statCard(`Total (${escHtml(baseline.date_from)} → ${escHtml(baseline.date_to)})`, baseline.total, "#94a3b8"),
+    statCard(`Total (${escHtml(current.date_from)} → ${escHtml(current.date_to)})`, current.total, "#F5B800"),
+    statCard("Change", `${totalChange >= 0 ? "+" : ""}${totalChange.toFixed(1)}%`, totalChange >= 0 ? "#22c55e" : "#ef4444"),
+    statCard(`Avg/day before ${escHtml(campaign_start)}`, preAvg.toFixed(1), "#94a3b8"),
+    statCard(`Avg/day during (${escHtml(campaign_start)} → ${escHtml(campaign_end)})`, duringAvg.toFixed(1), "#F5B800"),
+    statCard("Daily Load Change", `${avgChange >= 0 ? "+" : ""}${avgChange.toFixed(1)}%`, avgChange >= 0 ? "#22c55e" : "#ef4444"),
+  ];
+  if (post_campaign.days > 0) {
+    statCards.push(
+      statCard(`Avg/day after ${escHtml(campaign_end)}`, postAvg.toFixed(1), "#38bdf8"),
+      statCard("Post-Campaign vs Baseline", `${postChange >= 0 ? "+" : ""}${postChange.toFixed(1)}%`, Math.abs(postChange) <= 15 ? "#94a3b8" : postChange >= 0 ? "#22c55e" : "#ef4444"),
+    );
+  }
+
   content.innerHTML = `
     <div class="grid grid-cols-3 gap-4 mb-5">
-      ${statCard(`Total (${escHtml(baseline.date_from)} → ${escHtml(baseline.date_to)})`, baseline.total, "#94a3b8")}
-      ${statCard(`Total (${escHtml(current.date_from)} → ${escHtml(current.date_to)})`, current.total, "#F5B800")}
-      ${statCard("Change", `${totalChange >= 0 ? "+" : ""}${totalChange.toFixed(1)}%`, totalChange >= 0 ? "#22c55e" : "#ef4444")}
-      ${statCard(`Avg/day before ${escHtml(campaign_start)}`, preAvg.toFixed(1), "#94a3b8")}
-      ${statCard(`Avg/day from ${escHtml(campaign_start)}`, duringAvg.toFixed(1), "#F5B800")}
-      ${statCard("Daily Load Change", `${avgChange >= 0 ? "+" : ""}${avgChange.toFixed(1)}%`, avgChange >= 0 ? "#22c55e" : "#ef4444")}
+      ${statCards.join("")}
     </div>
 
     <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5 mb-5">
@@ -2234,7 +2260,7 @@ function renderCampaignReport(content, data) {
         <canvas id="campCompareCanvas" height="180"></canvas>
       </div>
       <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-4">
-        <div class="text-sm font-semibold text-white mb-3">Daily Volume — Current Period</div>
+        <div class="text-sm font-semibold text-white mb-3">Daily Volume — Current Period <span class="text-xs font-normal text-slate-500">(grey/gold/blue = pre/during/post campaign)</span></div>
         <canvas id="campDailyCanvas" height="180"></canvas>
       </div>
     </div>
@@ -2263,7 +2289,7 @@ function renderCampaignReport(content, data) {
 }
 
 function renderCampaignCharts(data) {
-  const { baseline, current, daily, campaign_start } = data;
+  const { baseline, current, daily, campaign_start, campaign_end } = data;
 
   if (_campCompareChart) { try { _campCompareChart.destroy(); } catch (_) {} }
   if (_campDailyChart) { try { _campDailyChart.destroy(); } catch (_) {} }
@@ -2293,7 +2319,7 @@ function renderCampaignCharts(data) {
   if (dailyCanvas) {
     const days = Object.keys(daily).sort();
     const totals = days.map(d => daily[d].livechat + daily[d].chatwoot);
-    const colors = days.map(d => d >= campaign_start ? "#F5B800" : "#64748b");
+    const colors = days.map(d => d < campaign_start ? "#64748b" : d > campaign_end ? "#38bdf8" : "#F5B800");
     _campDailyChart = new Chart(dailyCanvas.getContext("2d"), {
       type: "bar",
       data: {
@@ -2314,11 +2340,13 @@ function renderCampaignCharts(data) {
 function downloadCampaignImpactPdf() {
   if (!_activeCampaignReport) { showStatus("Run a search first", "error"); return; }
   const data = _activeCampaignReport;
-  const { baseline, current, pre_campaign, during_campaign, campaign_start, employees } = data;
+  const { baseline, current, pre_campaign, during_campaign, post_campaign, campaign_start, campaign_end, employees } = data;
   const totalChange = pctChange(baseline.total, current.total);
   const preAvg = pre_campaign.days ? pre_campaign.total / pre_campaign.days : 0;
   const duringAvg = during_campaign.days ? during_campaign.total / during_campaign.days : 0;
+  const postAvg = post_campaign.days ? post_campaign.total / post_campaign.days : 0;
   const avgChange = pctChange(preAvg, duringAvg);
+  const postChange = pctChange(preAvg, postAvg);
 
   const compareImg = document.getElementById("campCompareCanvas")?.toDataURL("image/png") || "";
   const dailyImg = document.getElementById("campDailyCanvas")?.toDataURL("image/png") || "";
@@ -2357,7 +2385,7 @@ function downloadCampaignImpactPdf() {
 <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #2563eb;padding-bottom:10px;margin-bottom:14px">
   <div>
     <div style="font-size:20px;font-weight:900;color:#111827;line-height:1.1">Campaign Impact Report</div>
-    <div style="font-size:11px;color:#6b7280;margin-top:4px">Baseline ${escHtml(baseline.date_from)} → ${escHtml(baseline.date_to)}  vs.  Current ${escHtml(current.date_from)} → ${escHtml(current.date_to)}</div>
+    <div style="font-size:11px;color:#6b7280;margin-top:4px">Baseline ${escHtml(baseline.date_from)} → ${escHtml(baseline.date_to)}  vs.  Current ${escHtml(current.date_from)} → ${escHtml(current.date_to)}  ·  Campaign ${escHtml(campaign_start)} → ${escHtml(campaign_end)}</div>
   </div>
   <div style="background:#eff6ff;color:#2563eb;font-size:9px;font-weight:700;text-transform:uppercase;
               letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
@@ -2371,8 +2399,12 @@ function downloadCampaignImpactPdf() {
     [`Total (Current)`, current.total, "#2563eb"],
     ["Change", `${totalChange >= 0 ? "+" : ""}${totalChange.toFixed(1)}%`, totalChange >= 0 ? "#16a34a" : "#dc2626"],
     [`Avg/day before ${escHtml(campaign_start)}`, preAvg.toFixed(1), "#374151"],
-    [`Avg/day from ${escHtml(campaign_start)}`, duringAvg.toFixed(1), "#2563eb"],
+    [`Avg/day during campaign`, duringAvg.toFixed(1), "#2563eb"],
     ["Daily Load Change", `${avgChange >= 0 ? "+" : ""}${avgChange.toFixed(1)}%`, avgChange >= 0 ? "#16a34a" : "#dc2626"],
+    ...(post_campaign.days > 0 ? [
+      [`Avg/day after ${escHtml(campaign_end)}`, postAvg.toFixed(1), "#0369a1"],
+      ["Post-Campaign vs Baseline", `${postChange >= 0 ? "+" : ""}${postChange.toFixed(1)}%`, Math.abs(postChange) <= 15 ? "#374151" : postChange >= 0 ? "#16a34a" : "#dc2626"],
+    ] : []),
   ].map(([l,v,c]) => `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:9px 5px;text-align:center">
     <div style="font-size:7px;color:#9ca3af;text-transform:uppercase;font-weight:700;letter-spacing:.03em;margin-bottom:4px">${l}</div>
     <div style="font-size:15px;font-weight:900;color:${c}">${v}</div>
@@ -2385,7 +2417,7 @@ function downloadCampaignImpactPdf() {
 </div>
 
 ${compareImg ? `<div class="card"><div class="sec-title">Baseline vs Current</div><img src="${compareImg}" style="width:100%;max-height:220px;object-fit:contain" /></div>` : ""}
-${dailyImg ? `<div class="card"><div class="sec-title">Daily Volume — Current Period (highlighted = during campaign)</div><img src="${dailyImg}" style="width:100%;max-height:220px;object-fit:contain" /></div>` : ""}
+${dailyImg ? `<div class="card"><div class="sec-title">Daily Volume — Current Period (grey = pre-campaign, gold = during campaign, blue = post-campaign)</div><img src="${dailyImg}" style="width:100%;max-height:220px;object-fit:contain" /></div>` : ""}
 
 <div class="page-break"></div>
 
