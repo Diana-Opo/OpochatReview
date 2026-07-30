@@ -2076,6 +2076,19 @@ function renderTotalChatsReport(content, dateFrom, dateTo, data) {
 const OPO_BRAND_BLUE = "#1e70ff";
 const OPO_LOGO_DATA_URI = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMCIgaGVpZ2h0PSIzMCIgdmlld0JveD0iMCAwIDMwIDMwIiBmaWxsPSJub25lIj48cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTE0Ljk5OTggMEMyMy4yODQxIDAgMzAgNi43MTU1OCAzMCAxNC45OTk4QzMwIDIzLjI4NDEgMjMuMjg0MSAzMCAxNC45OTk4IDMwQzYuNzE1NTggMzAgMCAyMy4yODQxIDAgMTQuOTk5OEMzLjg4MjM0ZS0wNSA2LjcxNTYgNi43MTU2IDMuNTAzMThlLTA1IDE0Ljk5OTggMFpNMTQuOTg1OCAxLjE4NjczQzEzLjA5NzggMS4xODY3MyAxMS41Nzg1IDIuNzA2MDQgOC41Mzk5MyA1Ljc0NDY0TDUuNzQ0NjQgOC41Mzk5M0MyLjcwNjA0IDExLjU3ODUgMS4xODY3MyAxMy4wOTc4IDEuMTg2NzMgMTQuOTg1OEMxLjE4NjczIDE2Ljg3MzcgMi43MDYwNCAxOC4zOTMgNS43NDQ2NCAyMS40MzE3TDguNTM5OTMgMjQuMjI2OUMxMS41Nzg1IDI3LjI2NTUgMTMuMDk3OCAyOC43ODQ5IDE0Ljk4NTggMjguNzg0OUMxNi44NzM3IDI4Ljc4NDggMTguMzkzIDI3LjI2NTUgMjEuNDMxNyAyNC4yMjY5TDI0LjIyNjkgMjEuNDMxN0MyNy4yNjU1IDE4LjM5MzEgMjguNzg0OSAxNi44NzM3IDI4Ljc4NDkgMTQuOTg1OEMyOC43ODQ5IDEzLjA5NzggMjcuMjY1NSAxMS41Nzg1IDI0LjIyNjkgOC41Mzk5M0wyMS40MzE3IDUuNzQ0NjRDMTguMzkzIDIuNzA2MDQgMTYuODczNyAxLjE4NjczIDE0Ljk4NTggMS4xODY3M1oiIGZpbGw9IndoaXRlIj48L3BhdGg+PC9zdmc+";
 
+// Dark theme shared across all PDF exports — matches opo.com's own dark navy site
+// and this panel's own dark UI, instead of a plain white printout.
+const PDF_BG        = "#0a1628";
+const PDF_CARD_BG   = "#0f1d35";
+const PDF_BORDER    = "#1a2d4a";
+const PDF_TEXT      = "#f1f5f9";
+const PDF_TEXT_DIM  = "#94a3b8";
+const PDF_TEXT_BODY = "#cbd5e1";
+
+// Forces background colors/images to actually print — browsers strip them by default
+// unless "Background graphics" is checked in the print dialog, and this CSS overrides that.
+const PDF_FORCE_PRINT_COLORS_CSS = `* { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }`;
+
 function opoLetterheadHtml() {
   return `
 <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">
@@ -2083,8 +2096,8 @@ function opoLetterheadHtml() {
     <img src="${OPO_LOGO_DATA_URI}" style="width:18px;height:18px;display:block" />
   </div>
   <div>
-    <div style="font-size:12.5px;font-weight:900;color:#0e0e1a;letter-spacing:.03em;line-height:1.1">OPO FINANCE</div>
-    <div style="font-size:7px;color:#9ca3af;letter-spacing:.09em;text-transform:uppercase;margin-top:1px">Support Quality Report</div>
+    <div style="font-size:12.5px;font-weight:900;color:${PDF_TEXT};letter-spacing:.03em;line-height:1.1">OPO FINANCE</div>
+    <div style="font-size:7px;color:${PDF_TEXT_DIM};letter-spacing:.09em;text-transform:uppercase;margin-top:1px">Support Quality Report</div>
   </div>
 </div>`;
 }
@@ -2107,15 +2120,15 @@ function downloadTotalChatsPdf() {
     const mobile = e.mobile ?? 0;
     const pctMobile = e.livechat ? (mobile / e.livechat) * 100 : 0;
     return `
-    <tr style="background:${i % 2 ? "#f9fafb" : "#fff"}">
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#1f2937;text-align:center">${escHtml(e.name)}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#6b7280;text-align:center">${e.livechat ?? 0}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#6b7280;text-align:center">${e.chatwoot ?? 0}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;font-weight:700;color:#111827;text-align:center">${e.total}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;font-weight:700;color:#c2410c;text-align:center">${supervised}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#c2410c;text-align:center">${pctSupervised.toFixed(1)}%</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;font-weight:700;color:#0369a1;text-align:center">${mobile}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#0369a1;text-align:center">${pctMobile.toFixed(1)}%</td>
+    <tr style="background:${i % 2 ? PDF_CARD_BG : PDF_BG}">
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;color:${PDF_TEXT};text-align:center">${escHtml(e.name)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;color:${PDF_TEXT_DIM};text-align:center">${e.livechat ?? 0}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;color:${PDF_TEXT_DIM};text-align:center">${e.chatwoot ?? 0}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;font-weight:700;color:#ffffff;text-align:center">${e.total}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;font-weight:700;color:#fb923c;text-align:center">${supervised}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;color:#fb923c;text-align:center">${pctSupervised.toFixed(1)}%</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;font-weight:700;color:#38bdf8;text-align:center">${mobile}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;color:#38bdf8;text-align:center">${pctMobile.toFixed(1)}%</td>
     </tr>`;
   }).join("");
 
@@ -2124,22 +2137,24 @@ function downloadTotalChatsPdf() {
 <style>
   @page { size: A4 portrait; margin: 14mm 16mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1f2937; background: #fff; }
+  ${PDF_FORCE_PRINT_COLORS_CSS}
+  html { background: ${PDF_BG}; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
   table { width: 100%; border-collapse: collapse; }
   th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
-       color: #6b7280; text-align: center; padding: 8px 10px; border-bottom: 2px solid #1e70ff; }
+       color: ${PDF_TEXT_DIM}; text-align: center; padding: 8px 10px; border-bottom: 2px solid ${OPO_BRAND_BLUE}; }
   th.num { text-align: center; }
-  .footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid #e5e7eb;
-            font-size: 8px; color: #9ca3af; text-align: center; }
+  .footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid ${PDF_BORDER};
+            font-size: 8px; color: ${PDF_TEXT_DIM}; text-align: center; }
 </style>
 </head><body>
 ${opoLetterheadHtml()}
 <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid ${OPO_BRAND_BLUE};padding-bottom:10px;margin-bottom:14px">
   <div>
-    <div style="font-size:20px;font-weight:900;color:#111827;line-height:1.1">Total Chats Report</div>
-    <div style="font-size:11px;color:#6b7280;margin-top:4px">${escHtml(dateFrom)} → ${escHtml(dateTo)}${employeeFilter ? ` · ${escHtml(employeeFilter)}` : ""}</div>
+    <div style="font-size:20px;font-weight:900;color:${PDF_TEXT};line-height:1.1">Total Chats Report</div>
+    <div style="font-size:11px;color:${PDF_TEXT_DIM};margin-top:4px">${escHtml(dateFrom)} → ${escHtml(dateTo)}${employeeFilter ? ` · ${escHtml(employeeFilter)}` : ""}</div>
   </div>
-  <div style="background:#e9f2ff;color:#1e70ff;font-size:9px;font-weight:700;text-transform:uppercase;
+  <div style="background:#132a4d;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
               letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
     Generated ${new Date().toLocaleDateString()}
   </div>
@@ -2147,13 +2162,13 @@ ${opoLetterheadHtml()}
 
 <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px">
   ${[
-    ["LiveChat", grandLc, "#374151"],
-    ["Chatwoot", grandCw, "#374151"],
-    ["Total", data.total_chats, "#1e70ff"],
-    ["Needed Help", grandSupervised, "#c2410c"],
-    ["Mobile", grandMobile, "#0369a1"],
-  ].map(([l,v,c]) => `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 6px;text-align:center">
-    <div style="font-size:8px;color:#9ca3af;text-transform:uppercase;font-weight:700;letter-spacing:.04em;margin-bottom:5px">${l}</div>
+    ["LiveChat", grandLc, PDF_TEXT_BODY],
+    ["Chatwoot", grandCw, PDF_TEXT_BODY],
+    ["Total", data.total_chats, OPO_BRAND_BLUE],
+    ["Needed Help", grandSupervised, "#fb923c"],
+    ["Mobile", grandMobile, "#38bdf8"],
+  ].map(([l,v,c]) => `<div style="background:${PDF_CARD_BG};border:1px solid ${PDF_BORDER};border-radius:8px;padding:10px 6px;text-align:center">
+    <div style="font-size:8px;color:${PDF_TEXT_DIM};text-transform:uppercase;font-weight:700;letter-spacing:.04em;margin-bottom:5px">${l}</div>
     <div style="font-size:18px;font-weight:900;color:${c}">${v}</div>
   </div>`).join("")}
 </div>
@@ -2553,15 +2568,15 @@ function downloadCampaignImpactPdf() {
     const supervised = e.supervised ?? 0;
     const pctSupervised = e.total ? (supervised / e.total) * 100 : 0;
     return `
-    <tr style="background:${i % 2 ? "#f9fafb" : "#fff"}">
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#1f2937;text-align:center">${escHtml(e.name)}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#6b7280;text-align:center">${e.livechat}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#6b7280;text-align:center">${e.chatwoot}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#111827;text-align:center">${e.total}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#1e70ff;text-align:center">${e.during_campaign_total}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#1e70ff;text-align:center">${pct.toFixed(1)}%</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#c2410c;text-align:center">${supervised}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#c2410c;text-align:center">${pctSupervised.toFixed(1)}%</td>
+    <tr style="background:${i % 2 ? PDF_CARD_BG : PDF_BG}">
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10px;color:${PDF_TEXT};text-align:center">${escHtml(e.name)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10px;color:${PDF_TEXT_DIM};text-align:center">${e.livechat}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10px;color:${PDF_TEXT_DIM};text-align:center">${e.chatwoot}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10px;font-weight:700;color:#ffffff;text-align:center">${e.total}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10px;font-weight:700;color:#7fb0ff;text-align:center">${e.during_campaign_total}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10px;font-weight:700;color:#7fb0ff;text-align:center">${pct.toFixed(1)}%</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10px;font-weight:700;color:#fb923c;text-align:center">${supervised}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10px;color:#fb923c;text-align:center">${pctSupervised.toFixed(1)}%</td>
     </tr>`;
   }).join("");
 
@@ -2570,30 +2585,32 @@ function downloadCampaignImpactPdf() {
 <style>
   @page { size: A4 portrait; margin: 14mm 16mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1f2937; background: #fff; }
+  ${PDF_FORCE_PRINT_COLORS_CSS}
+  html { background: ${PDF_BG}; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
   table { width: 100%; border-collapse: collapse; }
   th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
-       color: #6b7280; text-align: center; padding: 8px 10px; border-bottom: 2px solid #1e70ff; }
+       color: ${PDF_TEXT_DIM}; text-align: center; padding: 8px 10px; border-bottom: 2px solid ${OPO_BRAND_BLUE}; }
   th.num { text-align: center; }
-  .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
+  .card { background: ${PDF_CARD_BG}; border: 1px solid ${PDF_BORDER}; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
   .sec-title { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
-               color: #6b7280; margin-bottom: 8px; }
-  .footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid #e5e7eb;
-            font-size: 8px; color: #9ca3af; text-align: center; }
+               color: ${PDF_TEXT_DIM}; margin-bottom: 8px; }
+  .footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid ${PDF_BORDER};
+            font-size: 8px; color: ${PDF_TEXT_DIM}; text-align: center; }
   .page-break { page-break-before: always; }
 </style>
 </head><body>
 ${opoLetterheadHtml()}
 <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid ${OPO_BRAND_BLUE};padding-bottom:10px;margin-bottom:14px">
   <div>
-    <div style="font-size:20px;font-weight:900;color:#111827;line-height:1.1">Campaign Impact Report</div>
-    <div style="font-size:10.5px;color:#6b7280;margin-top:5px;line-height:1.6">
-      <div><strong style="color:#374151">Baseline:</strong> ${escHtml(baseline.date_from)} → ${escHtml(baseline.date_to)}</div>
-      <div><strong style="color:#374151">Current:</strong> ${escHtml(current.date_from)} → ${escHtml(current.date_to)}</div>
-      <div><strong style="color:#374151">Campaign:</strong> ${escHtml(campaign_start)} → ${escHtml(campaign_end)}</div>
+    <div style="font-size:20px;font-weight:900;color:${PDF_TEXT};line-height:1.1">Campaign Impact Report</div>
+    <div style="font-size:10.5px;color:${PDF_TEXT_DIM};margin-top:5px;line-height:1.6">
+      <div><strong style="color:${PDF_TEXT_BODY}">Baseline:</strong> ${escHtml(baseline.date_from)} → ${escHtml(baseline.date_to)}</div>
+      <div><strong style="color:${PDF_TEXT_BODY}">Current:</strong> ${escHtml(current.date_from)} → ${escHtml(current.date_to)}</div>
+      <div><strong style="color:${PDF_TEXT_BODY}">Campaign:</strong> ${escHtml(campaign_start)} → ${escHtml(campaign_end)}</div>
     </div>
   </div>
-  <div style="background:#e9f2ff;color:#1e70ff;font-size:9px;font-weight:700;text-transform:uppercase;
+  <div style="background:#132a4d;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
               letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
     Generated ${new Date().toLocaleDateString()}
   </div>
@@ -2601,41 +2618,41 @@ ${opoLetterheadHtml()}
 
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
   ${[
-    [`Total (Baseline)`, baseline.total, "#374151"],
-    [`Total (Current)`, current.total, "#1e70ff"],
-    ["Change", `${totalChange >= 0 ? "+" : ""}${totalChange.toFixed(1)}%`, totalChange >= 0 ? "#16a34a" : "#dc2626"],
-    [`Avg/day before ${escHtml(campaign_start)}`, preAvg.toFixed(1), "#374151"],
-    [`Avg/day during campaign`, duringAvg.toFixed(1), "#1e70ff"],
-    ["Daily Load Change", `${avgChange >= 0 ? "+" : ""}${avgChange.toFixed(1)}%`, avgChange >= 0 ? "#16a34a" : "#dc2626"],
+    [`Total (Baseline)`, baseline.total, PDF_TEXT_BODY],
+    [`Total (Current)`, current.total, OPO_BRAND_BLUE],
+    ["Change", `${totalChange >= 0 ? "+" : ""}${totalChange.toFixed(1)}%`, totalChange >= 0 ? "#4ade80" : "#f87171"],
+    [`Avg/day before ${escHtml(campaign_start)}`, preAvg.toFixed(1), PDF_TEXT_BODY],
+    [`Avg/day during campaign`, duringAvg.toFixed(1), OPO_BRAND_BLUE],
+    ["Daily Load Change", `${avgChange >= 0 ? "+" : ""}${avgChange.toFixed(1)}%`, avgChange >= 0 ? "#4ade80" : "#f87171"],
     ...(post_campaign.days > 0 ? [
-      [`Avg/day after ${escHtml(campaign_end)}`, postAvg.toFixed(1), "#0369a1"],
-      ["Post-Campaign vs Baseline", `${postChange >= 0 ? "+" : ""}${postChange.toFixed(1)}%`, Math.abs(postChange) <= 15 ? "#374151" : postChange >= 0 ? "#16a34a" : "#dc2626"],
+      [`Avg/day after ${escHtml(campaign_end)}`, postAvg.toFixed(1), "#38bdf8"],
+      ["Post-Campaign vs Baseline", `${postChange >= 0 ? "+" : ""}${postChange.toFixed(1)}%`, Math.abs(postChange) <= 15 ? PDF_TEXT_BODY : postChange >= 0 ? "#4ade80" : "#f87171"],
     ] : []),
-  ].map(([l,v,c]) => `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:9px 5px;text-align:center">
-    <div style="font-size:7px;color:#9ca3af;text-transform:uppercase;font-weight:700;letter-spacing:.03em;margin-bottom:4px">${l}</div>
+  ].map(([l,v,c]) => `<div style="background:${PDF_CARD_BG};border:1px solid ${PDF_BORDER};border-radius:8px;padding:9px 5px;text-align:center">
+    <div style="font-size:7px;color:${PDF_TEXT_DIM};text-transform:uppercase;font-weight:700;letter-spacing:.03em;margin-bottom:4px">${l}</div>
     <div style="font-size:15px;font-weight:900;color:${c}">${v}</div>
   </div>`).join("")}
 </div>
 
-<div class="card" style="background:#f9fafb">
+<div class="card">
   <div class="sec-title">Summary</div>
-  <p style="font-size:10.5px;color:#374151;line-height:1.6">${buildCampaignNarrative(data)}</p>
+  <p style="font-size:10.5px;color:${PDF_TEXT_BODY};line-height:1.6">${buildCampaignNarrative(data)}</p>
 </div>
 
 <div class="card">
   <div class="sec-title">Key Findings</div>
   <ul style="list-style:none;padding:0;margin:0">
-    ${buildCampaignKeyFindings(data).map(f => `<li style="font-size:10px;color:#374151;line-height:1.6;margin-bottom:6px;padding-left:14px;position:relative"><span style="position:absolute;left:0;color:#1e70ff">•</span>${f}</li>`).join("")}
+    ${buildCampaignKeyFindings(data).map(f => `<li style="font-size:10px;color:${PDF_TEXT_BODY};line-height:1.6;margin-bottom:6px;padding-left:14px;position:relative"><span style="position:absolute;left:0;color:${OPO_BRAND_BLUE}">•</span>${f}</li>`).join("")}
   </ul>
 </div>
 
-<div class="card" style="background:#f9fafb;border-style:dashed">
+<div class="card" style="border-style:dashed">
   <div class="sec-title">How To Read This Report</div>
-  <p style="font-size:9px;color:#6b7280;line-height:1.6">${CAMPAIGN_METHODOLOGY_HTML}</p>
+  <p style="font-size:9px;color:${PDF_TEXT_DIM};line-height:1.6">${CAMPAIGN_METHODOLOGY_HTML}</p>
 </div>
 
-${compareImg ? `<div class="card"><div class="sec-title">Baseline vs Current</div><img src="${compareImg}" style="width:100%;max-height:220px;object-fit:contain" /><p style="font-size:9px;color:#6b7280;line-height:1.6;margin-top:8px;padding-top:8px;border-top:1px solid #e5e7eb">${buildCompareChartAnalysis(data)}</p></div>` : ""}
-${dailyImg ? `<div class="card"><div class="sec-title">Daily Volume — Current Period (grey = pre-campaign, gold = during campaign, blue = post-campaign)</div><img src="${dailyImg}" style="width:100%;max-height:220px;object-fit:contain" /><p style="font-size:9px;color:#6b7280;line-height:1.6;margin-top:8px;padding-top:8px;border-top:1px solid #e5e7eb">${buildDailyChartAnalysis(data)}</p></div>` : ""}
+${compareImg ? `<div class="card"><div class="sec-title">Baseline vs Current</div><img src="${compareImg}" style="width:100%;max-height:220px;object-fit:contain;border-radius:6px" /><p style="font-size:9px;color:${PDF_TEXT_DIM};line-height:1.6;margin-top:8px;padding-top:8px;border-top:1px solid ${PDF_BORDER}">${buildCompareChartAnalysis(data)}</p></div>` : ""}
+${dailyImg ? `<div class="card"><div class="sec-title">Daily Volume — Current Period (grey = pre-campaign, gold = during campaign, blue = post-campaign)</div><img src="${dailyImg}" style="width:100%;max-height:220px;object-fit:contain;border-radius:6px" /><p style="font-size:9px;color:${PDF_TEXT_DIM};line-height:1.6;margin-top:8px;padding-top:8px;border-top:1px solid ${PDF_BORDER}">${buildDailyChartAnalysis(data)}</p></div>` : ""}
 
 <div class="page-break"></div>
 
@@ -3308,9 +3325,9 @@ function downloadReportPdf() {
   if (!_activeReport) return;
   const r = _activeReport;
   const s = r.avg_scores || {};
-  const scHex = v => v == null ? "#9ca3af" : v >= 7 ? "#16a34a" : v >= 5 ? "#ca8a04" : "#dc2626";
+  const scHex = v => v == null ? PDF_TEXT_DIM : v >= 7 ? "#4ade80" : v >= 5 ? "#fbbf24" : "#f87171";
   const bar = v => v == null ? "" :
-    `<div style="flex:1;height:6px;background:#f3f4f6;border-radius:3px;overflow:hidden">
+    `<div style="flex:1;height:6px;background:${PDF_BORDER};border-radius:3px;overflow:hidden">
        <div style="width:${(v/10)*100}%;height:100%;background:${scHex(v)};border-radius:3px"></div>
      </div>`;
   const scoreRows = [
@@ -3327,28 +3344,30 @@ function downloadReportPdf() {
 <style>
   @page { size: A4 portrait; margin: 14mm 16mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1f2937; background: #fff; }
+  ${PDF_FORCE_PRINT_COLORS_CSS}
+  html { background: ${PDF_BG}; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
 
-  .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+  .card { background: ${PDF_CARD_BG}; border: 1px solid ${PDF_BORDER}; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
   .sec-title { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
-               color: #6b7280; margin-bottom: 8px; }
+               color: ${PDF_TEXT_DIM}; margin-bottom: 8px; }
   .srow { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
-  .slabel { font-size: 9.5px; color: #6b7280; width: 120px; flex-shrink: 0; }
+  .slabel { font-size: 9.5px; color: ${PDF_TEXT_DIM}; width: 120px; flex-shrink: 0; }
   .sval { font-size: 9.5px; font-weight: 700; width: 28px; text-align: right; flex-shrink: 0; }
   ul { list-style: none; }
   li { font-size: 9.5px; margin-bottom: 4px; display: flex; gap: 5px; line-height: 1.4; }
-  .footer { margin-top: 12px; padding-top: 6px; border-top: 1px solid #e5e7eb;
-            font-size: 8px; color: #9ca3af; text-align: center; }
+  .footer { margin-top: 12px; padding-top: 6px; border-top: 1px solid ${PDF_BORDER};
+            font-size: 8px; color: ${PDF_TEXT_DIM}; text-align: center; }
 </style>
 </head><body>
 ${opoLetterheadHtml()}
 <!-- Header -->
 <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid ${OPO_BRAND_BLUE};padding-bottom:10px;margin-bottom:12px">
   <div>
-    <div style="font-size:22px;font-weight:900;color:#111827;line-height:1.1">${escHtml(r.employee)}</div>
-    <div style="font-size:12px;color:#6b7280;margin-top:3px">${monthLabel(r.month)} Performance Report</div>
+    <div style="font-size:22px;font-weight:900;color:${PDF_TEXT};line-height:1.1">${escHtml(r.employee)}</div>
+    <div style="font-size:12px;color:${PDF_TEXT_DIM};margin-top:3px">${monthLabel(r.month)} Performance Report</div>
   </div>
-  <div style="background:#e9f2ff;color:#1e70ff;font-size:9px;font-weight:700;text-transform:uppercase;
+  <div style="background:#132a4d;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
               letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
     Generated ${new Date(r.generated_at).toLocaleDateString()}
   </div>
@@ -3357,26 +3376,26 @@ ${opoLetterheadHtml()}
 <!-- Stats row -->
 <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:10px">
   ${[
-    ["Total Chats",    r.total_chats,                         "#1e70ff"],
-    ["In Shift",       r.chats_in_shift ?? "—",               "#374151"],
-    ["Reviewed",       r.reviewed_chats,                      "#7c3aed"],
-    ["Missed",         r.missed_chats,                        "#dc2626"],
-    ["Resolved",       (r.resolved_rate ?? 0) + "%",          "#16a34a"],
-    ["Avg Duration",   fmtDuration(r.avg_chat_duration_sec),  "#374151"],
-    ["First Response", fmtDuration(r.avg_first_response_sec), "#374151"],
-  ].map(([l,v,c]) => `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:7px 5px;text-align:center">
-    <div style="font-size:7.5px;color:#9ca3af;text-transform:uppercase;font-weight:700;letter-spacing:.04em;margin-bottom:4px">${l}</div>
+    ["Total Chats",    r.total_chats,                         OPO_BRAND_BLUE],
+    ["In Shift",       r.chats_in_shift ?? "—",               PDF_TEXT_BODY],
+    ["Reviewed",       r.reviewed_chats,                      "#c4b5fd"],
+    ["Missed",         r.missed_chats,                        "#f87171"],
+    ["Resolved",       (r.resolved_rate ?? 0) + "%",          "#4ade80"],
+    ["Avg Duration",   fmtDuration(r.avg_chat_duration_sec),  PDF_TEXT_BODY],
+    ["First Response", fmtDuration(r.avg_first_response_sec), PDF_TEXT_BODY],
+  ].map(([l,v,c]) => `<div style="background:${PDF_CARD_BG};border:1px solid ${PDF_BORDER};border-radius:8px;padding:7px 5px;text-align:center">
+    <div style="font-size:7.5px;color:${PDF_TEXT_DIM};text-transform:uppercase;font-weight:700;letter-spacing:.04em;margin-bottom:4px">${l}</div>
     <div style="font-size:14px;font-weight:900;color:${c}">${v ?? "—"}</div>
   </div>`).join("")}
 </div>
 
 <!-- Score Breakdown -->
-<div class="card" style="background:#f9fafb">
+<div class="card">
   <div class="sec-title">Score Breakdown</div>
   <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:10px">
-    <span style="font-size:9.5px;color:#6b7280;width:120px;flex-shrink:0">Overall Average</span>
+    <span style="font-size:9.5px;color:${PDF_TEXT_DIM};width:120px;flex-shrink:0">Overall Average</span>
     <span style="font-size:28px;font-weight:900;color:${scHex(s.overall)}">${s.overall?.toFixed(1) ?? "—"}</span>
-    <span style="font-size:11px;color:#9ca3af">/ 10</span>
+    <span style="font-size:11px;color:${PDF_TEXT_DIM}">/ 10</span>
   </div>
   ${scoreRows.map(([l,v]) => v == null ? "" : `<div class="srow">
     <div class="slabel">${l}</div>
@@ -3386,39 +3405,39 @@ ${opoLetterheadHtml()}
 </div>
 
 <!-- Weekly Trend -->
-${r.score_trend?.length ? `<div class="card" style="background:#f9fafb">
+${r.score_trend?.length ? `<div class="card">
   <div class="sec-title">Weekly Trend</div>
   <div style="display:flex;gap:8px;justify-content:space-around">
     ${r.score_trend.map(w => `<div style="text-align:center">
-      <div style="font-size:8px;color:#9ca3af;margin-bottom:3px">${escHtml(w.label)}</div>
+      <div style="font-size:8px;color:${PDF_TEXT_DIM};margin-bottom:3px">${escHtml(w.label)}</div>
       <div style="font-size:20px;font-weight:900;color:${scHex(w.avg)}">${w.avg != null ? w.avg.toFixed(1) : "—"}</div>
-      <div style="font-size:8px;color:#9ca3af;margin-top:2px">${w.count} chats</div>
+      <div style="font-size:8px;color:${PDF_TEXT_DIM};margin-top:2px">${w.count} chats</div>
     </div>`).join("")}
   </div>
 </div>` : ""}
 
 <!-- Progress & Trend -->
-${r.progress_narrative ? `<div class="card" style="background:#eef2ff;border-color:#c7d2fe">
-  <div class="sec-title" style="color:#4338ca">Progress & Trend</div>
-  <p style="font-size:10px;color:#3730a3;line-height:1.6">${escHtml(r.progress_narrative)}</p>
+${r.progress_narrative ? `<div class="card" style="background:rgba(124,58,237,0.12);border-color:rgba(167,139,250,0.3)">
+  <div class="sec-title" style="color:#c4b5fd">Progress & Trend</div>
+  <p style="font-size:10px;color:#ddd6fe;line-height:1.6">${escHtml(r.progress_narrative)}</p>
 </div>` : ""}
 
 <!-- Strengths & Weaknesses -->
 ${(r.strengths?.length || r.weaknesses?.length) ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-  ${r.strengths?.length ? `<div class="card" style="background:#f0fdf4;border-color:#bbf7d0;margin-bottom:0">
-    <div class="sec-title" style="color:#15803d">Strengths</div>
-    <ul>${r.strengths.map(s=>`<li><span style="color:#16a34a;flex-shrink:0">✓</span><span style="color:#166534">${escHtml(s)}</span></li>`).join("")}</ul>
+  ${r.strengths?.length ? `<div class="card" style="background:rgba(34,197,94,0.12);border-color:rgba(74,222,128,0.3);margin-bottom:0">
+    <div class="sec-title" style="color:#4ade80">Strengths</div>
+    <ul>${r.strengths.map(s=>`<li><span style="color:#4ade80;flex-shrink:0">✓</span><span style="color:#bbf7d0">${escHtml(s)}</span></li>`).join("")}</ul>
   </div>` : "<div></div>"}
-  ${r.weaknesses?.length ? `<div class="card" style="background:#fff1f2;border-color:#fecdd3;margin-bottom:0">
-    <div class="sec-title" style="color:#b91c1c">Areas for Improvement</div>
-    <ul>${r.weaknesses.map(w=>`<li><span style="color:#ef4444;flex-shrink:0">✗</span><span style="color:#991b1b">${escHtml(w)}</span></li>`).join("")}</ul>
+  ${r.weaknesses?.length ? `<div class="card" style="background:rgba(239,68,68,0.12);border-color:rgba(248,113,113,0.3);margin-bottom:0">
+    <div class="sec-title" style="color:#f87171">Areas for Improvement</div>
+    <ul>${r.weaknesses.map(w=>`<li><span style="color:#f87171;flex-shrink:0">✗</span><span style="color:#fecaca">${escHtml(w)}</span></li>`).join("")}</ul>
   </div>` : "<div></div>"}
 </div>` : ""}
 
 <!-- Admin Notes -->
-${r.admin_notes ? `<div class="card" style="background:#eff6ff;border-color:#bfdbfe">
-  <div class="sec-title" style="color:#1d4ed8">Manager Notes</div>
-  <p style="font-size:10px;color:#1e40af;line-height:1.5">${escHtml(r.admin_notes)}</p>
+${r.admin_notes ? `<div class="card" style="background:rgba(30,112,255,0.12);border-color:rgba(127,176,255,0.3)">
+  <div class="sec-title" style="color:#7fb0ff">Manager Notes</div>
+  <p style="font-size:10px;color:#bfdbfe;line-height:1.5">${escHtml(r.admin_notes)}</p>
 </div>` : ""}
 
 <div class="footer">Chat Review Dashboard — ${escHtml(r.employee)} · ${monthLabel(r.month)}</div>
