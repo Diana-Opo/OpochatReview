@@ -180,7 +180,7 @@ async function initApp() {
 
   // Navigate to correct page immediately — before any async calls so there's no flash
   const lastPage = localStorage.getItem("lastPage");
-  const validPages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "employees", "config"];
+  const validPages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "employees", "config"];
   const adminPages = ["employees", "config"];
   const startPage = validPages.includes(lastPage) && (!adminPages.includes(lastPage) || currentUser.role === "admin")
     ? lastPage : "chats";
@@ -199,7 +199,7 @@ async function initApp() {
 }
 
 // ── Page navigation ───────────────────────────────────────────────────────────
-const REPORT_PAGES = ["reports", "report-monthly", "report-total-chats", "report-campaign"];
+const REPORT_PAGES = ["reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status"];
 
 function toggleReportsMenu() {
   const submenu = document.getElementById("reports-submenu");
@@ -211,7 +211,7 @@ function toggleReportsMenu() {
 }
 
 function showPage(name) {
-  const pages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "employees", "config"];
+  const pages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "employees", "config"];
   pages.forEach(p => {
     document.getElementById(`page-${p}`)?.classList.add("hidden");
     const btn = document.getElementById(`nav-${p}`);
@@ -238,6 +238,7 @@ function showPage(name) {
   if (name === "report-monthly") openMonthlyOverview();
   if (name === "report-total-chats") openTotalChatsReport();
   if (name === "report-campaign") openCampaignImpactReport();
+  if (name === "report-platform-status") loadPlatformStatus();
   if (name === "employees") openSettings();
   if (name === "config") loadKnowledgeStatus();
   localStorage.setItem("lastPage", name);
@@ -2773,6 +2774,88 @@ async function loadSavedReport(type, id) {
   } catch (e) {
     showStatus("Load failed: " + e.message, "error");
   }
+}
+
+// ── Platform Status ────────────────────────────────────────────────────────────
+
+let _platformStatusData = null;
+let _platformActiveTab = "livechat";
+let _platformStatusChart = null;
+
+function switchPlatformTab(platform) {
+  _platformActiveTab = platform;
+  const activeCls = "px-4 py-2 text-sm font-medium border-b-2 border-[#F5B800] text-white transition";
+  const inactiveCls = "px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-white transition";
+  document.getElementById("tab-livechat").className = platform === "livechat" ? activeCls : inactiveCls;
+  document.getElementById("tab-chatwoot").className = platform === "chatwoot" ? activeCls : inactiveCls;
+  if (_platformStatusData) renderPlatformStatusTab();
+}
+
+async function loadPlatformStatus() {
+  const content = document.getElementById("platformStatusContent");
+  if (!content) return;
+  content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm"><span class="spinner"></span></div>`;
+  try {
+    const res = await authFetch("/api/reports/platform-status");
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || res.status);
+    _platformStatusData = data;
+    renderPlatformStatusTab();
+  } catch (e) {
+    content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderPlatformStatusTab() {
+  const content = document.getElementById("platformStatusContent");
+  if (!content || !_platformStatusData) return;
+  const data = _platformStatusData;
+  const p = _platformActiveTab === "livechat" ? data.livechat : data.chatwoot;
+
+  const statCard = (label, val, color) => `
+    <div class="bg-[#0f1d35] rounded-xl border border-[#1a2d4a] p-4 text-center">
+      <div class="text-xs text-slate-500 uppercase font-medium mb-1">${label}</div>
+      <div class="text-xl font-bold" style="color:${color}">${val}</div>
+    </div>`;
+
+  content.innerHTML = `
+    <div class="flex items-center gap-2 mb-5">
+      <span class="w-2.5 h-2.5 rounded-full ${p.active ? "bg-emerald-400" : "bg-red-500"}"></span>
+      <span class="text-sm font-semibold ${p.active ? "text-emerald-400" : "text-red-400"}">${p.active ? "Active" : "Inactive"}</span>
+      ${!p.active && p.error ? `<span class="text-xs text-slate-500">— ${escHtml(p.error)}</span>` : ""}
+    </div>
+    <div class="grid grid-cols-3 gap-4 mb-5">
+      ${statCard("Today", p.today, "#F5B800")}
+      ${statCard("This Week", p.week, "#94a3b8")}
+      ${statCard("This Month", p.month, "#94a3b8")}
+    </div>
+    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-4">
+      <div class="text-sm font-semibold text-white mb-3">Daily Volume — ${monthLabel(data.month)}</div>
+      ${Object.keys(p.daily || {}).length
+        ? `<canvas id="platformStatusCanvas" height="100"></canvas>`
+        : `<p class="text-center text-slate-600 text-sm py-6">No chats yet this month</p>`}
+    </div>`;
+
+  renderPlatformStatusChart(p);
+}
+
+function renderPlatformStatusChart(p) {
+  if (_platformStatusChart) { try { _platformStatusChart.destroy(); } catch (_) {} }
+  const canvas = document.getElementById("platformStatusCanvas");
+  if (!canvas) return;
+  const days = Object.keys(p.daily || {}).sort();
+  const totals = days.map(d => p.daily[d]);
+  _platformStatusChart = new Chart(canvas.getContext("2d"), {
+    type: "bar",
+    data: { labels: days.map(d => d.slice(5)), datasets: [{ label: "Chats", data: totals, backgroundColor: "#F5B800", borderRadius: 4 }] },
+    options: {
+      scales: {
+        y: { beginAtZero: true, grid: { color: "#1a2d4a" }, ticks: { color: "#94a3b8" } },
+        x: { grid: { display: false }, ticks: { color: "#94a3b8", maxRotation: 90, minRotation: 90 } },
+      },
+      plugins: { legend: { display: false } },
+    },
+  });
 }
 
 async function openReports() {

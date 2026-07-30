@@ -2415,6 +2415,100 @@ app.get("/api/reports/campaign-impact", authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Live status + today/week/month/daily chat volume per platform (LiveChat, Chatwoot).
+// "Active" reflects whether the platform's API is actually reachable right now, not
+// just whether credentials are configured.
+app.get("/api/reports/platform-status", authMiddleware, async (req, res) => {
+  try {
+    const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
+    const pad = (n) => String(n).padStart(2, "0");
+    const nowIst = new Date(Date.now() + ISTANBUL_OFFSET_MS);
+    const y = nowIst.getUTCFullYear(), m = nowIst.getUTCMonth(), d = nowIst.getUTCDate();
+    const todayKey = `${y}-${pad(m + 1)}-${pad(d)}`;
+    const monthFromKey = `${y}-${pad(m + 1)}-01`;
+    const dow = nowIst.getUTCDay();
+    const daysSinceMonday = (dow + 6) % 7;
+    const weekFromKey = new Date(nowIst.getTime() - daysSinceMonday * 86400000).toISOString().slice(0, 10);
+
+    const fromDate = new Date(new Date(`${monthFromKey}T00:00:00.000Z`).getTime() - ISTANBUL_OFFSET_MS);
+    const toDate   = new Date(new Date(`${todayKey}T23:59:59.999Z`).getTime() - ISTANBUL_OFFSET_MS);
+    const lcFrom = fromDate.toISOString().replace(/\.\d{3}Z$/, ".000000+00:00");
+    const lcTo   = toDate.toISOString().replace(/\.\d{3}Z$/, ".999999+00:00");
+
+    function istDayKeyLocal(ms) {
+      return new Date(ms + ISTANBUL_OFFSET_MS).toISOString().slice(0, 10);
+    }
+
+    function summarize(daily) {
+      let today = 0, week = 0, month = 0;
+      for (const [key, count] of Object.entries(daily)) {
+        month += count;
+        if (key >= weekFromKey) week += count;
+        if (key === todayKey) today += count;
+      }
+      return { today, week, month };
+    }
+
+    async function fetchLiveChatStatus() {
+      try {
+        const daily = {};
+        let pid = null;
+        do {
+          const body = pid ? { page_id: pid } : { filters: { from: lcFrom, to: lcTo }, limit: 100 };
+          const data = await lcPost("list_archives", body);
+          pid = data.next_page_id || null;
+          for (const c of data.chats || []) {
+            const thread = c.thread || (c.threads?.[0]) || {};
+            if (!thread.created_at) continue;
+            const key = istDayKeyLocal(new Date(thread.created_at).getTime());
+            daily[key] = (daily[key] || 0) + 1;
+          }
+        } while (pid);
+        return { active: true, error: null, ...summarize(daily), daily };
+      } catch (e) {
+        return { active: false, error: e.message, today: 0, week: 0, month: 0, daily: {} };
+      }
+    }
+
+    async function fetchChatwootStatus() {
+      if (!chatwootEnabled()) return { active: false, error: "Not configured", today: 0, week: 0, month: 0, daily: {} };
+      try {
+        const cwFilter = [
+          { attribute_key: "status", filter_operator: "equal_to", values: ["resolved"], query_operator: "AND" },
+          { attribute_key: "created_at", filter_operator: "is_greater_than", values: [cwFilterDateFrom(lcFrom)], query_operator: "AND" },
+          { attribute_key: "created_at", filter_operator: "is_less_than", values: [cwFilterDateTo(lcTo)], query_operator: null },
+        ];
+        let cwPage = 1, cwAll = [], cwTotal = 0;
+        while (true) {
+          const d = await cwPost("/conversations/filter", { payload: cwFilter }, { page: cwPage });
+          const inner = d.data || d;
+          const convs = inner.payload || inner.conversations || [];
+          if (cwPage === 1) cwTotal = inner.meta?.all_count ?? inner.meta?.total_count ?? convs.length;
+          if (!convs.length) break;
+          cwAll = cwAll.concat(convs);
+          if (convs.length < 25 || cwAll.length >= cwTotal) break;
+          cwPage++;
+        }
+        const fromMs = new Date(lcFrom).getTime();
+        const toMs   = new Date(lcTo).getTime();
+        const daily = {};
+        for (const conv of cwAll) {
+          const ms = (conv.created_at || 0) * 1000;
+          if (ms < fromMs || ms > toMs) continue;
+          const key = istDayKeyLocal(ms);
+          daily[key] = (daily[key] || 0) + 1;
+        }
+        return { active: true, error: null, ...summarize(daily), daily };
+      } catch (e) {
+        return { active: false, error: e.message, today: 0, week: 0, month: 0, daily: {} };
+      }
+    }
+
+    const [livechat, chatwoot] = await Promise.all([fetchLiveChatStatus(), fetchChatwootStatus()]);
+    res.json({ month: monthFromKey.slice(0, 7), today: todayKey, week_from: weekFromKey, livechat, chatwoot });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Dashboard stats for current month — independent of Chat Review page
 app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
   try {
