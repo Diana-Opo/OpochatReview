@@ -2201,6 +2201,55 @@ function buildCampaignNarrative(data) {
   return parts.join(" ");
 }
 
+// Bullet-point takeaways — what can be read off the charts/tables below, spelled out
+// for a reader who wasn't in the room (e.g. broker management).
+function buildCampaignKeyFindings(data) {
+  const { baseline, current, pre_campaign, during_campaign, post_campaign, campaign_start, campaign_end, employees } = data;
+  const totalChange = pctChange(baseline.total, current.total);
+  const preAvg = pre_campaign.days ? pre_campaign.total / pre_campaign.days : 0;
+  const duringAvg = during_campaign.days ? during_campaign.total / during_campaign.days : 0;
+  const postAvg = post_campaign.days ? post_campaign.total / post_campaign.days : 0;
+  const avgChange = pctChange(preAvg, duringAvg);
+
+  const findings = [];
+
+  findings.push(`<strong>Overall volume:</strong> ${totalChange >= 0 ? "up" : "down"} ${Math.abs(totalChange).toFixed(1)}% vs. baseline (${baseline.total} → ${current.total} chats). ${Math.abs(totalChange) >= 15 ? "A change this large points to the campaign as the main driver, not normal month-to-month variation." : "This is a modest shift, within the range of normal variation."}`);
+
+  findings.push(`<strong>Daily load:</strong> averaged ${preAvg.toFixed(1)}/day before ${escHtml(campaign_start)}, then ${duringAvg.toFixed(1)}/day during the campaign (${avgChange >= 0 ? "+" : ""}${avgChange.toFixed(1)}%). This jump is the chart to point to when explaining where the reported queue backlog came from.`);
+
+  if (post_campaign.days > 0) {
+    const postChange = pctChange(preAvg, postAvg);
+    findings.push(`<strong>Since the campaign ended:</strong> daily volume is at ${postAvg.toFixed(1)}/day (${postChange >= 0 ? "+" : ""}${postChange.toFixed(1)}% vs. pre-campaign). ${Math.abs(postChange) <= 15 ? "Volume has settled back near normal — the spike looks temporary and tied to the promotion." : postChange > 0 ? "Volume is still elevated — demand hasn't fully returned to normal yet." : "Volume is now below the pre-campaign baseline."}`);
+  }
+
+  const baseLcShare = baseline.total ? (baseline.livechat / baseline.total) * 100 : 0;
+  const curLcShare = current.total ? (current.livechat / current.total) * 100 : 0;
+  const shareShift = curLcShare - baseLcShare;
+  if (Math.abs(shareShift) >= 5) {
+    findings.push(`<strong>Platform mix:</strong> LiveChat's share of total chats moved from ${baseLcShare.toFixed(0)}% to ${curLcShare.toFixed(0)}% (${shareShift >= 0 ? "+" : ""}${shareShift.toFixed(0)} pts), i.e. the campaign pushed disproportionately more traffic through ${shareShift >= 0 ? "LiveChat" : "Chatwoot"} than the other channel.`);
+  }
+
+  const withDuring = employees.filter(e => e.during_campaign_total > 0);
+  const totalDuring = withDuring.reduce((s, e) => s + e.during_campaign_total, 0);
+  if (withDuring.length && totalDuring > 0) {
+    const top = withDuring[0];
+    const topShare = (top.during_campaign_total / totalDuring) * 100;
+    findings.push(`<strong>Per-employee table:</strong> ${escHtml(top.name)} carried the largest share of campaign-period chats (${top.during_campaign_total} of ${totalDuring} across the team, ${topShare.toFixed(0)}%). ${topShare >= 30 && withDuring.length > 2 ? "A concentration this high is worth a look for workload balance." : "Load looks reasonably spread across the team."}`);
+  }
+
+  const totalSupervised = employees.reduce((s, e) => s + (e.supervised || 0), 0);
+  if (current.total) {
+    const pctSup = (totalSupervised / current.total) * 100;
+    findings.push(`<strong>Needed Help column:</strong> ${totalSupervised} chats (${pctSup.toFixed(1)}% of the current period) needed a note from a different agent than the one handling the chat — this is the clearest measure of how much extra supervision the team required to absorb the increased load.`);
+  }
+
+  return findings;
+}
+
+const CAMPAIGN_METHODOLOGY_HTML = `
+  <strong>How to read this report:</strong> "Baseline" and "Current" are two full date ranges (e.g. last month vs. this month), each summed across both chat platforms (LiveChat + Chatwoot). The Current period is further split into <strong>Pre-Campaign</strong>, <strong>During Campaign</strong>, and <strong>Post-Campaign</strong> using the campaign's start/end dates, to isolate the campaign's effect from ordinary volume. <strong>Needed Help</strong> counts chats where an agent other than the one handling the conversation left an internal note — i.e. the assigned agent needed assistance from a colleague.
+`;
+
 async function loadCampaignImpactReport() {
   const content = document.getElementById("campaignContent");
   if (!content) return;
@@ -2294,6 +2343,17 @@ function renderCampaignReport(content, data) {
 
     <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5 mb-5">
       <p class="text-sm text-slate-300 leading-relaxed">${buildCampaignNarrative(data)}</p>
+    </div>
+
+    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5 mb-5">
+      <div class="text-xs text-slate-500 uppercase font-semibold mb-3">Key Findings</div>
+      <ul class="space-y-2">
+        ${buildCampaignKeyFindings(data).map(f => `<li class="text-sm text-slate-300 leading-relaxed flex gap-2"><span class="text-[#F5B800] shrink-0">•</span><span>${f}</span></li>`).join("")}
+      </ul>
+    </div>
+
+    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-4 mb-5">
+      <p class="text-xs text-slate-500 leading-relaxed">${CAMPAIGN_METHODOLOGY_HTML}</p>
     </div>
 
     <div class="grid grid-cols-2 gap-5 mb-5">
@@ -2471,6 +2531,18 @@ function downloadCampaignImpactPdf() {
 <div class="card" style="background:#f9fafb">
   <div class="sec-title">Summary</div>
   <p style="font-size:10.5px;color:#374151;line-height:1.6">${buildCampaignNarrative(data)}</p>
+</div>
+
+<div class="card">
+  <div class="sec-title">Key Findings</div>
+  <ul style="list-style:none;padding:0;margin:0">
+    ${buildCampaignKeyFindings(data).map(f => `<li style="font-size:10px;color:#374151;line-height:1.6;margin-bottom:6px;padding-left:14px;position:relative"><span style="position:absolute;left:0;color:#2563eb">•</span>${f}</li>`).join("")}
+  </ul>
+</div>
+
+<div class="card" style="background:#f9fafb;border-style:dashed">
+  <div class="sec-title">How To Read This Report</div>
+  <p style="font-size:9px;color:#6b7280;line-height:1.6">${CAMPAIGN_METHODOLOGY_HTML}</p>
 </div>
 
 ${compareImg ? `<div class="card"><div class="sec-title">Baseline vs Current</div><img src="${compareImg}" style="width:100%;max-height:220px;object-fit:contain" /></div>` : ""}
