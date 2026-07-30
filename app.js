@@ -2277,6 +2277,46 @@ const CAMPAIGN_METHODOLOGY_HTML = `
   <strong>How to read this report:</strong> "Baseline" and "Current" are two full date ranges (e.g. last month vs. this month), each summed across both chat platforms (LiveChat + Chatwoot). The Current period is further split into <strong>Pre-Campaign</strong>, <strong>During Campaign</strong>, and <strong>Post-Campaign</strong> using the campaign's start/end dates, to isolate the campaign's effect from ordinary volume. <strong>Needed Help</strong> counts chats where an agent other than the one handling the conversation left an internal note — i.e. the assigned agent needed assistance from a colleague.
 `;
 
+// Analysis text specific to the "Baseline vs Current" bar chart.
+function buildCompareChartAnalysis(data) {
+  const { baseline, current } = data;
+  const lcChange = pctChange(baseline.livechat, current.livechat);
+  const cwChange = pctChange(baseline.chatwoot, current.chatwoot);
+  const totalChange = pctChange(baseline.total, current.total);
+  const baseLcShare = baseline.total ? (baseline.livechat / baseline.total) * 100 : 0;
+  const curLcShare = current.total ? (current.livechat / current.total) * 100 : 0;
+  const shareShift = curLcShare - baseLcShare;
+
+  return `This chart lines up the two periods bar-for-bar across LiveChat, Chatwoot, and the combined Total. LiveChat went from ${baseline.livechat} to ${current.livechat} chats (${lcChange >= 0 ? "+" : ""}${lcChange.toFixed(1)}%), Chatwoot went from ${baseline.chatwoot} to ${current.chatwoot} (${cwChange >= 0 ? "+" : ""}${cwChange.toFixed(1)}%), and the combined Total moved ${totalChange >= 0 ? "+" : ""}${totalChange.toFixed(1)}%. LiveChat's share of total chats went from ${baseLcShare.toFixed(0)}% to ${curLcShare.toFixed(0)}% — ${Math.abs(shareShift) >= 5 ? `the platform mix shifted toward ${shareShift >= 0 ? "LiveChat" : "Chatwoot"} during the campaign` : "the platform mix stayed roughly the same"}.`;
+}
+
+// Analysis text specific to the daily volume bar chart (pre/during/post campaign).
+function buildDailyChartAnalysis(data) {
+  const { daily, campaign_start, campaign_end, pre_campaign, during_campaign, post_campaign } = data;
+  const days = Object.keys(daily || {}).sort();
+  const totals = days.map(d => daily[d].livechat + daily[d].chatwoot);
+  let peakDay = null, peakVal = -1;
+  days.forEach((d, i) => { if (totals[i] > peakVal) { peakVal = totals[i]; peakDay = d; } });
+  const preAvg = pre_campaign.days ? pre_campaign.total / pre_campaign.days : 0;
+  const duringAvg = during_campaign.days ? during_campaign.total / during_campaign.days : 0;
+  const postAvg = post_campaign.days ? post_campaign.total / post_campaign.days : 0;
+  const duringChange = pctChange(preAvg, duringAvg);
+
+  const parts = [];
+  parts.push(`Each bar is one day's combined chat volume: grey bars fall before ${escHtml(campaign_start)}, gold bars mark the campaign window, and blue bars${post_campaign.days > 0 ? "" : " (none in this range)"} come after ${escHtml(campaign_end)}.`);
+  if (peakDay) parts.push(`The busiest single day was ${escHtml(peakDay)} with ${peakVal} chats.`);
+  parts.push(`Volume steps up at the grey-to-gold boundary, from ${preAvg.toFixed(1)} to ${duringAvg.toFixed(1)} chats/day (${duringChange >= 0 ? "+" : ""}${duringChange.toFixed(1)}%) — this is the clearest visual evidence tying the queue backlog to the campaign launch.`);
+  if (post_campaign.days > 0) {
+    const postChange = pctChange(preAvg, postAvg);
+    parts.push(Math.abs(postChange) <= 15
+      ? `The blue bars drop back down close to the grey (pre-campaign) level, indicating the spike was temporary.`
+      : postAvg > preAvg
+        ? `The blue bars stay above the grey (pre-campaign) level, suggesting some of the demand increase has persisted past the campaign.`
+        : `The blue bars sit below the grey (pre-campaign) level.`);
+  }
+  return parts.join(" ");
+}
+
 async function loadCampaignImpactReport() {
   const content = document.getElementById("campaignContent");
   if (!content) return;
@@ -2387,10 +2427,12 @@ function renderCampaignReport(content, data) {
       <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-4">
         <div class="text-sm font-semibold text-white mb-3">Baseline vs Current</div>
         <canvas id="campCompareCanvas" height="180"></canvas>
+        <p class="text-xs text-slate-400 leading-relaxed mt-3 pt-3 border-t border-[#1a2d4a]">${buildCompareChartAnalysis(data)}</p>
       </div>
       <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-4">
         <div class="text-sm font-semibold text-white mb-3">Daily Volume — Current Period <span class="text-xs font-normal text-slate-500">(grey/gold/blue = pre/during/post campaign)</span></div>
         <canvas id="campDailyCanvas" height="180"></canvas>
+        <p class="text-xs text-slate-400 leading-relaxed mt-3 pt-3 border-t border-[#1a2d4a]">${buildDailyChartAnalysis(data)}</p>
       </div>
     </div>
 
@@ -2572,8 +2614,8 @@ function downloadCampaignImpactPdf() {
   <p style="font-size:9px;color:#6b7280;line-height:1.6">${CAMPAIGN_METHODOLOGY_HTML}</p>
 </div>
 
-${compareImg ? `<div class="card"><div class="sec-title">Baseline vs Current</div><img src="${compareImg}" style="width:100%;max-height:220px;object-fit:contain" /></div>` : ""}
-${dailyImg ? `<div class="card"><div class="sec-title">Daily Volume — Current Period (grey = pre-campaign, gold = during campaign, blue = post-campaign)</div><img src="${dailyImg}" style="width:100%;max-height:220px;object-fit:contain" /></div>` : ""}
+${compareImg ? `<div class="card"><div class="sec-title">Baseline vs Current</div><img src="${compareImg}" style="width:100%;max-height:220px;object-fit:contain" /><p style="font-size:9px;color:#6b7280;line-height:1.6;margin-top:8px;padding-top:8px;border-top:1px solid #e5e7eb">${buildCompareChartAnalysis(data)}</p></div>` : ""}
+${dailyImg ? `<div class="card"><div class="sec-title">Daily Volume — Current Period (grey = pre-campaign, gold = during campaign, blue = post-campaign)</div><img src="${dailyImg}" style="width:100%;max-height:220px;object-fit:contain" /><p style="font-size:9px;color:#6b7280;line-height:1.6;margin-top:8px;padding-top:8px;border-top:1px solid #e5e7eb">${buildDailyChartAnalysis(data)}</p></div>` : ""}
 
 <div class="page-break"></div>
 
