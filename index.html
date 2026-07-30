@@ -541,11 +541,11 @@
         <h3 class="text-base font-bold text-white">Delete Report?</h3>
       </div>
       <p id="confirmModalMsg" class="text-sm text-slate-400 mb-5"></p>
-      <div class="flex gap-2 justify-end">
+      <div class="flex gap-2 justify-center">
         <button onclick="closeConfirmModal()"
-          class="px-4 py-2 text-sm text-slate-300 bg-[#1a2d4a] hover:bg-[#243d61] rounded-lg transition">Cancel</button>
+          class="flex-1 px-4 py-2 text-sm text-center text-slate-300 bg-[#1a2d4a] hover:bg-[#243d61] rounded-lg transition">Cancel</button>
         <button onclick="runConfirmAction()"
-          class="px-4 py-2 text-sm text-white bg-red-500 hover:bg-red-600 rounded-lg transition font-medium">Yes, Delete</button>
+          class="flex-1 px-4 py-2 text-sm text-center text-white bg-red-500 hover:bg-red-600 rounded-lg transition font-medium">Yes, Delete</button>
       </div>
     </div>
   </div>
@@ -597,9 +597,9 @@
       <input id="saveReportLabelInput" type="text" placeholder="Report name"
         onkeydown="if (event.key === 'Enter') closeSaveReportModal(true); if (event.key === 'Escape') closeSaveReportModal(false);"
         class="w-full bg-[#0a1628] border border-[#1a2d4a] text-white placeholder-slate-500 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30 mb-4" />
-      <div class="flex justify-end gap-2">
-        <button onclick="closeSaveReportModal(false)" class="px-4 py-2 rounded-lg text-sm text-slate-300 hover:bg-[#1a2d4a] transition">Cancel</button>
-        <button onclick="closeSaveReportModal(true)" class="px-4 py-2 rounded-lg text-sm font-semibold bg-[#F5B800] text-black hover:bg-[#D4A000] transition">Save</button>
+      <div class="flex justify-center gap-2">
+        <button onclick="closeSaveReportModal(false)" class="flex-1 px-4 py-2 rounded-lg text-sm text-center text-slate-300 hover:bg-[#1a2d4a] transition">Cancel</button>
+        <button onclick="closeSaveReportModal(true)" class="flex-1 px-4 py-2 rounded-lg text-sm text-center font-semibold bg-[#F5B800] text-black hover:bg-[#D4A000] transition">Save</button>
       </div>
     </div>
   </div>
