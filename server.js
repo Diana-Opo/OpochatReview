@@ -174,6 +174,17 @@ if (process.env.DATABASE_URL) {
     generated_at TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (employee, month)
   )`).then(() => console.log("[db] reports table ready")).catch(e => console.error("[db] reports init:", e.message));
+
+  // ── saved_reports table (Total Chats / Campaign Impact snapshots) ──────────
+  pool.query(`CREATE TABLE IF NOT EXISTS saved_reports (
+    id SERIAL PRIMARY KEY,
+    type TEXT NOT NULL,
+    label TEXT NOT NULL,
+    params JSONB,
+    data JSONB NOT NULL,
+    created_by TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`).then(() => console.log("[db] saved_reports table ready")).catch(e => console.error("[db] saved_reports init:", e.message));
 }
 const LC_API = "https://api.livechatinc.com/v3.6/agent/action";
 const LC_CONFIG_API = "https://api.livechatinc.com/v3.6/configuration/action";
@@ -2283,6 +2294,49 @@ app.get("/api/reports/total-chats", authMiddleware, async (req, res) => {
     if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
     const result = await computeChatTotals({ dateFrom: date_from, dateTo: date_to, employeeFilter: employee || null });
     res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Saved report snapshots — lets Total Chats / Campaign Impact results be saved and
+// re-downloaded later without re-running the (slow) live LiveChat/Chatwoot fetch.
+app.post("/api/saved-reports", authMiddleware, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: "No database configured" });
+    const { type, label, params, data } = req.body || {};
+    if (!type || !label || !data) return res.status(400).json({ error: "type, label and data are required" });
+    const r = await pool.query(
+      "INSERT INTO saved_reports (type, label, params, data, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING id, type, label, params, created_by, created_at",
+      [type, label, JSON.stringify(params || {}), JSON.stringify(data), req.user.username]
+    );
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/saved-reports", authMiddleware, async (req, res) => {
+  try {
+    if (!pool) return res.json([]);
+    const { type } = req.query;
+    const r = type
+      ? await pool.query("SELECT id, type, label, params, created_by, created_at FROM saved_reports WHERE type=$1 ORDER BY created_at DESC", [type])
+      : await pool.query("SELECT id, type, label, params, created_by, created_at FROM saved_reports ORDER BY created_at DESC");
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/saved-reports/:id", authMiddleware, async (req, res) => {
+  try {
+    if (!pool) return res.status(404).json({ error: "No database configured" });
+    const r = await pool.query("SELECT * FROM saved_reports WHERE id=$1", [req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: "Not found" });
+    res.json(r.rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete("/api/saved-reports/:id", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: "No database configured" });
+    await pool.query("DELETE FROM saved_reports WHERE id=$1", [req.params.id]);
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

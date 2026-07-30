@@ -2000,60 +2000,65 @@ async function loadTotalChatsReport() {
       return;
     }
     _activeTotalChatsReport = { dateFrom, dateTo, employeeFilter: employee, data };
-    const rows = employees.map(e => {
-      const supervised = e.supervised ?? 0;
-      const pctSupervised = e.total ? (supervised / e.total) * 100 : 0;
-      return `
-      <tr class="border-t border-[#1a2d4a]">
-        <td class="px-4 py-2.5 text-white text-sm text-center">${escHtml(e.name)}</td>
-        <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${e.livechat ?? 0}</td>
-        <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${e.chatwoot ?? 0}</td>
-        <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${e.total}</td>
-        <td class="px-4 py-2.5 text-center text-orange-400 font-semibold text-sm">${supervised}</td>
-        <td class="px-4 py-2.5 text-center text-orange-400 text-sm">${pctSupervised.toFixed(1)}%</td>
-      </tr>`;
-    }).join("");
-
-    const grandLc = employees.reduce((s, e) => s + (e.livechat || 0), 0);
-    const grandCw = employees.reduce((s, e) => s + (e.chatwoot || 0), 0);
-    const grandSupervised = employees.reduce((s, e) => s + (e.supervised || 0), 0);
-    const statCard = (label, val, color) => `
-      <div class="bg-[#0f1d35] rounded-xl border border-[#1a2d4a] p-4 text-center">
-        <div class="text-xs text-slate-500 uppercase font-medium mb-1">${label}</div>
-        <div class="text-xl font-bold" style="color:${color}">${val}</div>
-      </div>`;
-
-    content.innerHTML = `
-      <div class="grid grid-cols-4 gap-4 mb-5">
-        ${statCard("LiveChat", grandLc, "#94a3b8")}
-        ${statCard("Chatwoot", grandCw, "#94a3b8")}
-        ${statCard("Total", data.total_chats, "#F5B800")}
-        ${statCard("Needed Help", grandSupervised, "#fb923c")}
-      </div>
-      <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
-        <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
-          <span class="font-semibold text-white text-sm">${escHtml(dateFrom)} → ${escHtml(dateTo)}</span>
-          <span class="text-xs text-slate-500">${data.total_chats} total chats</span>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="w-full">
-            <thead>
-              <tr class="text-center text-xs text-slate-500 uppercase">
-                <th class="px-4 py-2 font-medium">Employee</th>
-                <th class="px-4 py-2 font-medium">LiveChat</th>
-                <th class="px-4 py-2 font-medium">Chatwoot</th>
-                <th class="px-4 py-2 font-medium">Total</th>
-                <th class="px-4 py-2 font-medium" title="Chats with a supervisor/internal note — needed help from another person">Needed Help</th>
-                <th class="px-4 py-2 font-medium">% Needed Help</th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>
-      </div>`;
+    renderTotalChatsReport(content, dateFrom, dateTo, data);
   } catch (e) {
     content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Error: ${escHtml(e.message)}</div>`;
   }
+}
+
+function renderTotalChatsReport(content, dateFrom, dateTo, data) {
+  const employees = data.employees || [];
+  const rows = employees.map(e => {
+    const supervised = e.supervised ?? 0;
+    const pctSupervised = e.total ? (supervised / e.total) * 100 : 0;
+    return `
+    <tr class="border-t border-[#1a2d4a]">
+      <td class="px-4 py-2.5 text-white text-sm text-center">${escHtml(e.name)}</td>
+      <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${e.livechat ?? 0}</td>
+      <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${e.chatwoot ?? 0}</td>
+      <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${e.total}</td>
+      <td class="px-4 py-2.5 text-center text-orange-400 font-semibold text-sm">${supervised}</td>
+      <td class="px-4 py-2.5 text-center text-orange-400 text-sm">${pctSupervised.toFixed(1)}%</td>
+    </tr>`;
+  }).join("");
+
+  const grandLc = employees.reduce((s, e) => s + (e.livechat || 0), 0);
+  const grandCw = employees.reduce((s, e) => s + (e.chatwoot || 0), 0);
+  const grandSupervised = employees.reduce((s, e) => s + (e.supervised || 0), 0);
+  const statCard = (label, val, color) => `
+    <div class="bg-[#0f1d35] rounded-xl border border-[#1a2d4a] p-4 text-center">
+      <div class="text-xs text-slate-500 uppercase font-medium mb-1">${label}</div>
+      <div class="text-xl font-bold" style="color:${color}">${val}</div>
+    </div>`;
+
+  content.innerHTML = `
+    <div class="grid grid-cols-4 gap-4 mb-5">
+      ${statCard("LiveChat", grandLc, "#94a3b8")}
+      ${statCard("Chatwoot", grandCw, "#94a3b8")}
+      ${statCard("Total", data.total_chats, "#F5B800")}
+      ${statCard("Needed Help", grandSupervised, "#fb923c")}
+    </div>
+    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
+      <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
+        <span class="font-semibold text-white text-sm">${escHtml(dateFrom)} → ${escHtml(dateTo)}</span>
+        <span class="text-xs text-slate-500">${data.total_chats} total chats</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead>
+            <tr class="text-center text-xs text-slate-500 uppercase">
+              <th class="px-4 py-2 font-medium">Employee</th>
+              <th class="px-4 py-2 font-medium">LiveChat</th>
+              <th class="px-4 py-2 font-medium">Chatwoot</th>
+              <th class="px-4 py-2 font-medium">Total</th>
+              <th class="px-4 py-2 font-medium" title="Chats with a supervisor/internal note — needed help from another person">Needed Help</th>
+              <th class="px-4 py-2 font-medium">% Needed Help</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
 function downloadTotalChatsPdf() {
@@ -2578,6 +2583,118 @@ ${dailyImg ? `<div class="card"><div class="sec-title">Daily Volume — Current 
 <script>setTimeout(() => window.print(), 500)<\/script>
 </body></html>`);
   win.document.close();
+}
+
+// ── Saved Report Snapshots (Total Chats / Campaign Impact) ────────────────────
+
+async function saveReportSnapshot(type, params, data, defaultLabel) {
+  const label = prompt("Name this report:", defaultLabel);
+  if (!label) return;
+  try {
+    const res = await authFetch("/api/saved-reports", {
+      method: "POST",
+      body: JSON.stringify({ type, label, params, data }),
+    });
+    const saved = await res.json();
+    if (!res.ok || saved.error) throw new Error(saved.error || res.status);
+    showStatus("Report saved", "success");
+  } catch (e) {
+    showStatus("Save failed: " + e.message, "error");
+  }
+}
+
+function saveTotalChatsReport() {
+  if (!_activeTotalChatsReport) { showStatus("Run a search first", "error"); return; }
+  const { dateFrom, dateTo, employeeFilter, data } = _activeTotalChatsReport;
+  const defaultLabel = `Total Chats: ${dateFrom} to ${dateTo}${employeeFilter ? " (" + employeeFilter + ")" : ""}`;
+  saveReportSnapshot("total_chats", { dateFrom, dateTo, employeeFilter }, data, defaultLabel);
+}
+
+function saveCampaignImpactReport() {
+  if (!_activeCampaignReport) { showStatus("Run a search first", "error"); return; }
+  const data = _activeCampaignReport;
+  const defaultLabel = `Campaign Impact: ${data.current.date_from} to ${data.current.date_to}`;
+  saveReportSnapshot("campaign_impact", {
+    baselineFrom: data.baseline.date_from, baselineTo: data.baseline.date_to,
+    currentFrom: data.current.date_from, currentTo: data.current.date_to,
+    campaignStart: data.campaign_start, campaignEnd: data.campaign_end,
+  }, data, defaultLabel);
+}
+
+async function toggleSavedReportsPanel(type, containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (!el.classList.contains("hidden")) { el.classList.add("hidden"); return; }
+  await refreshSavedReportsPanel(type, containerId);
+}
+
+async function refreshSavedReportsPanel(type, containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.classList.remove("hidden");
+  el.innerHTML = `<div class="text-center text-slate-500 py-4 text-sm"><span class="spinner"></span></div>`;
+  try {
+    const res = await authFetch(`/api/saved-reports?type=${type}`);
+    const list = await res.json();
+    if (!res.ok || list.error) throw new Error(list.error || res.status);
+    if (!list.length) {
+      el.innerHTML = `<div class="text-center text-slate-500 py-4 text-sm">No saved reports yet.</div>`;
+      return;
+    }
+    el.innerHTML = list.map(r => `
+      <div class="flex items-center justify-between px-3 py-2 border-b border-[#1a2d4a] last:border-0">
+        <div class="min-w-0">
+          <div class="text-sm text-white truncate">${escHtml(r.label)}</div>
+          <div class="text-xs text-slate-500">${new Date(r.created_at).toLocaleString()}${r.created_by ? " · " + escHtml(r.created_by) : ""}</div>
+        </div>
+        <div class="flex gap-2 shrink-0">
+          <button onclick="loadSavedReport('${type}', ${r.id})" class="text-xs bg-[#1a2d4a] text-[#F5B800] hover:bg-[#243d61] px-2.5 py-1 rounded-lg transition">Load</button>
+          ${currentUser?.role === "admin" ? `<button onclick="deleteSavedReport('${type}', ${r.id}, '${containerId}')" class="text-xs text-red-400 hover:text-red-300 px-2 py-1">✕</button>` : ""}
+        </div>
+      </div>`).join("");
+  } catch (e) {
+    el.innerHTML = `<div class="text-center text-red-400 py-4 text-sm">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+async function deleteSavedReport(type, id, containerId) {
+  if (!confirm("Delete this saved report?")) return;
+  try {
+    const res = await authFetch(`/api/saved-reports/${id}`, { method: "DELETE" });
+    const d = await res.json();
+    if (!res.ok || d.error) throw new Error(d.error || res.status);
+    refreshSavedReportsPanel(type, containerId);
+  } catch (e) { showStatus("Delete failed: " + e.message, "error"); }
+}
+
+async function loadSavedReport(type, id) {
+  try {
+    const res = await authFetch(`/api/saved-reports/${id}`);
+    const saved = await res.json();
+    if (!res.ok || saved.error) throw new Error(saved.error || res.status);
+    const { params, data } = saved;
+    if (type === "total_chats") {
+      document.getElementById("totalChatsFrom").value = params.dateFrom || "";
+      document.getElementById("totalChatsTo").value = params.dateTo || "";
+      document.getElementById("totalChatsAgent").value = params.employeeFilter || "";
+      _activeTotalChatsReport = { dateFrom: params.dateFrom, dateTo: params.dateTo, employeeFilter: params.employeeFilter || "", data };
+      renderTotalChatsReport(document.getElementById("totalChatsContent"), params.dateFrom, params.dateTo, data);
+      document.getElementById("savedTotalChatsPanel")?.classList.add("hidden");
+    } else if (type === "campaign_impact") {
+      document.getElementById("campBaselineFrom").value = params.baselineFrom || "";
+      document.getElementById("campBaselineTo").value = params.baselineTo || "";
+      document.getElementById("campCurrentFrom").value = params.currentFrom || "";
+      document.getElementById("campCurrentTo").value = params.currentTo || "";
+      document.getElementById("campStart").value = params.campaignStart || "";
+      document.getElementById("campEnd").value = params.campaignEnd || "";
+      _activeCampaignReport = data;
+      renderCampaignReport(document.getElementById("campaignContent"), data);
+      document.getElementById("savedCampaignPanel")?.classList.add("hidden");
+    }
+    showStatus("Loaded saved report", "success");
+  } catch (e) {
+    showStatus("Load failed: " + e.message, "error");
+  }
 }
 
 async function openReports() {

@@ -270,7 +270,16 @@
               class="flex items-center gap-1.5 bg-[#1a2d4a] text-[#F5B800] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
               📄 Export PDF
             </button>
+            <button onclick="saveTotalChatsReport()"
+              class="flex items-center gap-1.5 bg-[#1a2d4a] text-[#F5B800] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              💾 Save
+            </button>
+            <button onclick="toggleSavedReportsPanel('total_chats', 'savedTotalChatsPanel')"
+              class="flex items-center gap-1.5 bg-[#1a2d4a] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              📁 Saved Reports
+            </button>
           </div>
+          <div id="savedTotalChatsPanel" class="hidden mt-3 bg-[#0f1d35] rounded-xl border border-[#1a2d4a] max-h-64 overflow-y-auto"></div>
         </div>
         <div id="totalChatsContent" class="p-6"></div>
       </div>
@@ -316,7 +325,16 @@
               class="flex items-center gap-1.5 bg-[#1a2d4a] text-[#F5B800] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
               📄 Export PDF
             </button>
+            <button onclick="saveCampaignImpactReport()"
+              class="flex items-center gap-1.5 bg-[#1a2d4a] text-[#F5B800] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              💾 Save
+            </button>
+            <button onclick="toggleSavedReportsPanel('campaign_impact', 'savedCampaignPanel')"
+              class="flex items-center gap-1.5 bg-[#1a2d4a] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              📁 Saved Reports
+            </button>
           </div>
+          <div id="savedCampaignPanel" class="hidden mt-3 bg-[#0f1d35] rounded-xl border border-[#1a2d4a] max-h-64 overflow-y-auto"></div>
         </div>
         <div id="campaignContent" class="p-6"></div>
       </div>
