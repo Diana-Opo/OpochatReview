@@ -2063,17 +2063,12 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
     return ((new Date(chatTime).getTime() + ISTANBUL_OFFSET_MS) / 3600000) % 24;
   }
 
-  let totalChats = null;
-  if (!employeeFilter) {
-    const firstPage = await lcPost("list_archives", { filters: { from: lcFrom, to: lcTo }, limit: 1 });
-    totalChats = firstPage.found_chats ?? firstPage.total_chats ?? 0;
-  }
-
   const emp = {};
+  let cwCount = 0;
 
-  for (const [key, shiftList] of Object.entries(agentKeyShifts)) {
+  async function fetchAgentChats(key, shiftList) {
     const agentEmail = agentKeyToEmail[key];
-    if (!agentEmail) continue;
+    if (!agentEmail) return;
 
     const uniqueEmpsForKey = [...new Set(shiftList.map(s => s.employee))];
     uniqueEmpsForKey.forEach(n => { if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0 }; });
@@ -2114,7 +2109,8 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
     } while (pid);
   }
 
-  if (chatwootEnabled()) {
+  async function fetchChatwoot() {
+    if (!chatwootEnabled()) return;
     try {
       const cwFilter = [
         { attribute_key: "status", filter_operator: "equal_to", values: ["resolved"], query_operator: "AND" },
@@ -2138,7 +2134,7 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
         const ms = (c.created_at || 0) * 1000;
         return ms >= fromMs && ms <= toMs;
       });
-      if (!employeeFilter && totalChats != null) totalChats += cwAll.length;
+      cwCount = cwAll.length;
       for (const conv of cwAll) {
         const assignee = conv.meta?.assignee || null;
         if (!assignee) continue;
@@ -2157,6 +2153,15 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
       }
     } catch (e) { console.error("[total-chats] Chatwoot error:", e.message); }
   }
+
+  const [firstPageResult] = await Promise.all([
+    employeeFilter ? Promise.resolve(null) : lcPost("list_archives", { filters: { from: lcFrom, to: lcTo }, limit: 1 }),
+    Promise.all(Object.entries(agentKeyShifts).map(([key, shiftList]) => fetchAgentChats(key, shiftList))),
+    fetchChatwoot(),
+  ]);
+
+  let totalChats = employeeFilter ? null : (firstPageResult?.found_chats ?? firstPageResult?.total_chats ?? 0);
+  if (!employeeFilter && totalChats != null) totalChats += cwCount;
 
   const employees = Object.entries(emp)
     .map(([name, d]) => ({ name, livechat: d.livechat, chatwoot: d.chatwoot, total: d.livechat + d.chatwoot }))
