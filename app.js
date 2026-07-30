@@ -1966,6 +1966,8 @@ function openTotalChatsReport() {
   loadTotalChatsReport();
 }
 
+let _activeTotalChatsReport = null;
+
 async function loadTotalChatsReport() {
   const content = document.getElementById("totalChatsContent");
   if (!content) return;
@@ -1977,6 +1979,7 @@ async function loadTotalChatsReport() {
     return;
   }
   content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm"><span class="spinner"></span></div>`;
+  _activeTotalChatsReport = null;
 
   try {
     const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
@@ -1992,6 +1995,7 @@ async function loadTotalChatsReport() {
       content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">No chats found for this range.</div>`;
       return;
     }
+    _activeTotalChatsReport = { dateFrom, dateTo, employeeFilter: employee, data };
     const rows = employees.map(e => `
       <tr class="border-t border-[#1a2d4a]">
         <td class="px-4 py-2.5 text-white text-sm">${escHtml(e.name)}</td>
@@ -2022,6 +2026,80 @@ async function loadTotalChatsReport() {
   } catch (e) {
     content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Error: ${escHtml(e.message)}</div>`;
   }
+}
+
+function downloadTotalChatsPdf() {
+  if (!_activeTotalChatsReport) { showStatus("Run a search first", "error"); return; }
+  const { dateFrom, dateTo, employeeFilter, data } = _activeTotalChatsReport;
+  const employees = data.employees || [];
+  const grandLc = employees.reduce((s, e) => s + (e.livechat || 0), 0);
+  const grandCw = employees.reduce((s, e) => s + (e.chatwoot || 0), 0);
+
+  const win = window.open("", "_blank");
+  if (!win) { showStatus("Allow popups to download PDF", "error"); return; }
+
+  const rows = employees.map((e, i) => `
+    <tr style="background:${i % 2 ? "#f9fafb" : "#fff"}">
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#1f2937">${escHtml(e.name)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#6b7280;text-align:right">${e.livechat ?? 0}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#6b7280;text-align:right">${e.chatwoot ?? 0}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;font-weight:700;color:#111827;text-align:right">${e.total}</td>
+    </tr>`).join("");
+
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Total Chats — ${escHtml(dateFrom)} to ${escHtml(dateTo)}</title>
+<style>
+  @page { size: A4 portrait; margin: 14mm 16mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1f2937; background: #fff; }
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+       color: #6b7280; text-align: left; padding: 8px 10px; border-bottom: 2px solid #2563eb; }
+  th.num { text-align: right; }
+  .footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid #e5e7eb;
+            font-size: 8px; color: #9ca3af; text-align: center; }
+</style>
+</head><body>
+
+<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #2563eb;padding-bottom:10px;margin-bottom:14px">
+  <div>
+    <div style="font-size:20px;font-weight:900;color:#111827;line-height:1.1">Total Chats Report</div>
+    <div style="font-size:11px;color:#6b7280;margin-top:4px">${escHtml(dateFrom)} → ${escHtml(dateTo)}${employeeFilter ? ` · ${escHtml(employeeFilter)}` : ""}</div>
+  </div>
+  <div style="background:#eff6ff;color:#2563eb;font-size:9px;font-weight:700;text-transform:uppercase;
+              letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
+    Generated ${new Date().toLocaleDateString()}
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
+  ${[
+    ["LiveChat", grandLc, "#374151"],
+    ["Chatwoot", grandCw, "#374151"],
+    ["Total", data.total_chats, "#2563eb"],
+  ].map(([l,v,c]) => `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 6px;text-align:center">
+    <div style="font-size:8px;color:#9ca3af;text-transform:uppercase;font-weight:700;letter-spacing:.04em;margin-bottom:5px">${l}</div>
+    <div style="font-size:18px;font-weight:900;color:${c}">${v}</div>
+  </div>`).join("")}
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Employee</th>
+      <th class="num">LiveChat</th>
+      <th class="num">Chatwoot</th>
+      <th class="num">Total</th>
+    </tr>
+  </thead>
+  <tbody>${rows}</tbody>
+</table>
+
+<div class="footer">Chat Review Dashboard — Total Chats Report · ${escHtml(dateFrom)} → ${escHtml(dateTo)}</div>
+
+<script>setTimeout(() => window.print(), 350)<\/script>
+</body></html>`);
+  win.document.close();
 }
 
 async function openReports() {
