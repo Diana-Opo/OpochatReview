@@ -1997,13 +1997,19 @@ async function loadTotalChatsReport() {
       return;
     }
     _activeTotalChatsReport = { dateFrom, dateTo, employeeFilter: employee, data };
-    const rows = employees.map(e => `
+    const rows = employees.map(e => {
+      const supervised = e.supervised ?? 0;
+      const pctSupervised = e.total ? (supervised / e.total) * 100 : 0;
+      return `
       <tr class="border-t border-[#1a2d4a]">
         <td class="px-4 py-2.5 text-white text-sm text-center">${escHtml(e.name)}</td>
         <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${e.livechat ?? 0}</td>
         <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${e.chatwoot ?? 0}</td>
         <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${e.total}</td>
-      </tr>`).join("");
+        <td class="px-4 py-2.5 text-center text-orange-400 font-semibold text-sm">${supervised}</td>
+        <td class="px-4 py-2.5 text-center text-orange-400 text-sm">${pctSupervised.toFixed(1)}%</td>
+      </tr>`;
+    }).join("");
     content.innerHTML = `
       <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
         <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
@@ -2018,6 +2024,8 @@ async function loadTotalChatsReport() {
                 <th class="px-4 py-2 font-medium">LiveChat</th>
                 <th class="px-4 py-2 font-medium">Chatwoot</th>
                 <th class="px-4 py-2 font-medium">Total</th>
+                <th class="px-4 py-2 font-medium" title="Chats with a supervisor/internal note — needed help from another person">Needed Help</th>
+                <th class="px-4 py-2 font-medium">% Needed Help</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -2035,17 +2043,24 @@ function downloadTotalChatsPdf() {
   const employees = data.employees || [];
   const grandLc = employees.reduce((s, e) => s + (e.livechat || 0), 0);
   const grandCw = employees.reduce((s, e) => s + (e.chatwoot || 0), 0);
+  const grandSupervised = employees.reduce((s, e) => s + (e.supervised || 0), 0);
 
   const win = window.open("", "_blank");
   if (!win) { showStatus("Allow popups to download PDF", "error"); return; }
 
-  const rows = employees.map((e, i) => `
+  const rows = employees.map((e, i) => {
+    const supervised = e.supervised ?? 0;
+    const pctSupervised = e.total ? (supervised / e.total) * 100 : 0;
+    return `
     <tr style="background:${i % 2 ? "#f9fafb" : "#fff"}">
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#1f2937;text-align:center">${escHtml(e.name)}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#6b7280;text-align:center">${e.livechat ?? 0}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#6b7280;text-align:center">${e.chatwoot ?? 0}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;font-weight:700;color:#111827;text-align:center">${e.total}</td>
-    </tr>`).join("");
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;font-weight:700;color:#c2410c;text-align:center">${supervised}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#c2410c;text-align:center">${pctSupervised.toFixed(1)}%</td>
+    </tr>`;
+  }).join("");
 
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Total Chats — ${escHtml(dateFrom)} to ${escHtml(dateTo)}</title>
@@ -2073,11 +2088,12 @@ function downloadTotalChatsPdf() {
   </div>
 </div>
 
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
   ${[
     ["LiveChat", grandLc, "#374151"],
     ["Chatwoot", grandCw, "#374151"],
     ["Total", data.total_chats, "#2563eb"],
+    ["Needed Help", grandSupervised, "#c2410c"],
   ].map(([l,v,c]) => `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 6px;text-align:center">
     <div style="font-size:8px;color:#9ca3af;text-transform:uppercase;font-weight:700;letter-spacing:.04em;margin-bottom:5px">${l}</div>
     <div style="font-size:18px;font-weight:900;color:${c}">${v}</div>
@@ -2091,6 +2107,8 @@ function downloadTotalChatsPdf() {
       <th class="num">LiveChat</th>
       <th class="num">Chatwoot</th>
       <th class="num">Total</th>
+      <th class="num">Needed Help</th>
+      <th class="num">% Needed Help</th>
     </tr>
   </thead>
   <tbody>${rows}</tbody>

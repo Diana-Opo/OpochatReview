@@ -235,6 +235,26 @@ function cwHeaders() {
   return { "Content-Type": "application/json" };
 }
 
+// Cap concurrent Chatwoot requests — checking each conversation for private notes
+// fires one request per conversation, which can otherwise fan out to dozens at once.
+const CW_MAX_CONCURRENT = 5;
+let cwActive = 0;
+const cwQueue = [];
+
+function cwAcquire() {
+  return new Promise((resolve) => {
+    const tryAcquire = () => {
+      if (cwActive < CW_MAX_CONCURRENT) {
+        cwActive++;
+        resolve(() => { cwActive--; const next = cwQueue.shift(); if (next) next(); });
+      } else {
+        cwQueue.push(tryAcquire);
+      }
+    };
+    tryAcquire();
+  });
+}
+
 async function cwGet(path, params = {}, _retried = false) {
   if (!cwSession && !_retried) { await cwSignIn(); }
   const url = new URL(`${CHATWOOT_BASE_URL}/api/v1/accounts/${CHATWOOT_ACCOUNT_ID}${path}`);
@@ -2115,12 +2135,16 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
     dailyByEmployee[empName][dayKey][platform]++;
   }
 
+  function hasSupervisorNote(events) {
+    return events.some(e => e.text && (e.visibility === "agents" || e.type === "annotation"));
+  }
+
   async function fetchAgentChats(key, shiftList) {
     const agentEmail = agentKeyToEmail[key];
     if (!agentEmail) return;
 
     const uniqueEmpsForKey = [...new Set(shiftList.map(s => s.employee))];
-    uniqueEmpsForKey.forEach(n => { if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0 }; });
+    uniqueEmpsForKey.forEach(n => { if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0, supervised: 0 }; });
     const isShared = uniqueEmpsForKey.length > 1;
 
     let pid = null;
@@ -2145,18 +2169,18 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
         });
         if (!agentInChat) continue;
 
+        let empName = null;
         if (isShared) {
           const matched = shiftList.find(s => istHour >= s.start && istHour < s.end);
-          const empName = (matched || shiftList[0]).employee;
-          emp[empName].livechat++;
-          bumpDaily(empName, istDayKey(new Date(chatTime).getTime()), "livechat");
+          empName = (matched || shiftList[0]).employee;
         } else {
           const inShift = shiftList.some(s => istHour >= s.start && istHour < s.end);
           if (!inShift) continue;
-          const empName = uniqueEmpsForKey[0];
-          emp[empName].livechat++;
-          bumpDaily(empName, istDayKey(new Date(chatTime).getTime()), "livechat");
+          empName = uniqueEmpsForKey[0];
         }
+        emp[empName].livechat++;
+        if (hasSupervisorNote(events)) emp[empName].supervised++;
+        bumpDaily(empName, istDayKey(new Date(chatTime).getTime()), "livechat");
       }
     } while (pid);
   }
@@ -2187,6 +2211,7 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
         return ms >= fromMs && ms <= toMs;
       });
       cwCount = cwAll.length;
+      const matched = [];
       for (const conv of cwAll) {
         const assignee = conv.meta?.assignee || null;
         if (!assignee) continue;
@@ -2200,10 +2225,23 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
         });
         if (!ms) continue;
         const n = ms.employee;
-        if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0 };
+        if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0, supervised: 0 };
         emp[n].chatwoot++;
         bumpDaily(n, istDayKey((conv.created_at || 0) * 1000), "chatwoot");
+        matched.push({ id: conv.id, employee: n });
       }
+
+      // Check each matched conversation for private/internal notes (supervisor help).
+      // Bounded concurrency — this is one extra request per conversation.
+      await Promise.all(matched.map(async ({ id, employee }) => {
+        try {
+          const release = await cwAcquire();
+          let msgData;
+          try { msgData = await cwGet(`/conversations/${id}/messages`); } finally { release(); }
+          const msgs = msgData.payload || msgData || [];
+          if (Array.isArray(msgs) && msgs.some(m => m.private === true)) emp[employee].supervised++;
+        } catch (e) { console.error(`[total-chats] cw private-note check failed for ${id}:`, e.message); }
+      }));
     } catch (e) { console.error("[total-chats] Chatwoot error:", e.message); }
   }
 
@@ -2217,7 +2255,7 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
   if (!employeeFilter && totalChats != null) totalChats += cwCount;
 
   const employees = Object.entries(emp)
-    .map(([name, d]) => ({ name, livechat: d.livechat, chatwoot: d.chatwoot, total: d.livechat + d.chatwoot }))
+    .map(([name, d]) => ({ name, livechat: d.livechat, chatwoot: d.chatwoot, total: d.livechat + d.chatwoot, supervised: d.supervised || 0 }))
     .sort((a, b) => b.total - a.total);
 
   const grandTotal = employees.reduce((s, e) => s + e.total, 0);
