@@ -2091,7 +2091,7 @@ const PDF_FORCE_PRINT_COLORS_CSS = `* { -webkit-print-color-adjust: exact !impor
 
 function opoLetterheadHtml() {
   return `
-<div style="display:flex;align-items:center;justify-content:center;gap:9px;margin-top:4mm;margin-bottom:8mm">
+<div style="display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:8mm">
   <div style="width:32px;height:32px;border-radius:9px;background:${OPO_BRAND_BLUE};display:flex;align-items:center;justify-content:center;flex-shrink:0">
     <img src="${OPO_LOGO_DATA_URI}" style="width:18px;height:18px;display:block" />
   </div>
@@ -2139,7 +2139,7 @@ function downloadTotalChatsPdf() {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   ${PDF_FORCE_PRINT_COLORS_CSS}
   html { background: ${PDF_BG}; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; padding: 18mm 16mm 16mm; min-height: 100vh; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; padding: 1.5cm 16mm; min-height: 100vh; }
   table { width: 100%; border-collapse: collapse; }
   th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
        color: ${PDF_TEXT_DIM}; text-align: center; padding: 8px 10px; border-bottom: 2px solid ${OPO_BRAND_BLUE}; }
@@ -2587,7 +2587,7 @@ function downloadCampaignImpactPdf() {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   ${PDF_FORCE_PRINT_COLORS_CSS}
   html { background: ${PDF_BG}; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; padding: 18mm 16mm 16mm; min-height: 100vh; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; padding: 1.5cm 16mm; min-height: 100vh; }
   table { width: 100%; border-collapse: collapse; }
   th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
        color: ${PDF_TEXT_DIM}; text-align: center; padding: 8px 10px; border-bottom: 2px solid ${OPO_BRAND_BLUE}; }
@@ -3346,7 +3346,7 @@ function downloadReportPdf() {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   ${PDF_FORCE_PRINT_COLORS_CSS}
   html { background: ${PDF_BG}; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; padding: 18mm 16mm 16mm; min-height: 100vh; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; padding: 1.5cm 16mm; min-height: 100vh; }
 
   .card { background: ${PDF_CARD_BG}; border: 1px solid ${PDF_BORDER}; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
   .sec-title { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
