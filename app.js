@@ -1958,8 +1958,9 @@ function openTotalChatsReport() {
   if (fromEl && toEl && !fromEl.value && !toEl.value) {
     const now = new Date();
     const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     fromEl.value = first.toISOString().slice(0, 10);
-    toEl.value = now.toISOString().slice(0, 10);
+    toEl.value = last.toISOString().slice(0, 10);
   }
   loadTotalChatsReport();
 }
