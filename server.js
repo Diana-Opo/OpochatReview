@@ -246,7 +246,7 @@ async function cwGet(path, params = {}, _retried = false) {
   }
   if (!r.ok) {
     const e = await r.text();
-    const hint = !cwSession && cwLastSignInError ? ` (sign-in issue: ${cwLastSignInError})` : "";
+    const hint = cwLastSignInError ? ` (sign-in issue: ${cwLastSignInError})` : "";
     throw new Error(`Chatwoot GET ${path} ${r.status}: ${e.slice(0, 200)}${hint}`);
   }
   return r.json();
@@ -267,7 +267,7 @@ async function cwPost(path, body, params = {}, _retried = false) {
   }
   if (!r.ok) {
     const e = await r.text();
-    const hint = !cwSession && cwLastSignInError ? ` (sign-in issue: ${cwLastSignInError})` : "";
+    const hint = cwLastSignInError ? ` (sign-in issue: ${cwLastSignInError})` : "";
     throw new Error(`Chatwoot POST ${path} ${r.status}: ${e.slice(0, 200)}${hint}`);
   }
   return r.json();
