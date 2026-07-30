@@ -2010,7 +2010,23 @@ async function loadTotalChatsReport() {
         <td class="px-4 py-2.5 text-center text-orange-400 text-sm">${pctSupervised.toFixed(1)}%</td>
       </tr>`;
     }).join("");
+
+    const grandLc = employees.reduce((s, e) => s + (e.livechat || 0), 0);
+    const grandCw = employees.reduce((s, e) => s + (e.chatwoot || 0), 0);
+    const grandSupervised = employees.reduce((s, e) => s + (e.supervised || 0), 0);
+    const statCard = (label, val, color) => `
+      <div class="bg-[#0f1d35] rounded-xl border border-[#1a2d4a] p-4 text-center">
+        <div class="text-xs text-slate-500 uppercase font-medium mb-1">${label}</div>
+        <div class="text-xl font-bold" style="color:${color}">${val}</div>
+      </div>`;
+
     content.innerHTML = `
+      <div class="grid grid-cols-4 gap-4 mb-5">
+        ${statCard("LiveChat", grandLc, "#94a3b8")}
+        ${statCard("Chatwoot", grandCw, "#94a3b8")}
+        ${statCard("Total", data.total_chats, "#F5B800")}
+        ${statCard("Needed Help", grandSupervised, "#fb923c")}
+      </div>
       <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
         <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
           <span class="font-semibold text-white text-sm">${escHtml(dateFrom)} → ${escHtml(dateTo)}</span>
