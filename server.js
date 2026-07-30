@@ -2164,7 +2164,7 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter, includeSupe
     if (!agentEmail) return;
 
     const uniqueEmpsForKey = [...new Set(shiftList.map(s => s.employee))];
-    uniqueEmpsForKey.forEach(n => { if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0, supervised: 0 }; });
+    uniqueEmpsForKey.forEach(n => { if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0, supervised: 0, mobile: 0 }; });
     const isShared = uniqueEmpsForKey.length > 1;
 
     let pid = null;
@@ -2200,6 +2200,7 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter, includeSupe
         }
         emp[empName].livechat++;
         if (hasSupervisorNote(events, users, key)) emp[empName].supervised++;
+        if (detectAgentDeviceFromLC(events, users) === "mobile") emp[empName].mobile++;
         bumpDaily(empName, istDayKey(new Date(chatTime).getTime()), "livechat");
       }
     } while (pid);
@@ -2245,7 +2246,7 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter, includeSupe
         });
         if (!ms) continue;
         const n = ms.employee;
-        if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0, supervised: 0 };
+        if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0, supervised: 0, mobile: 0 };
         emp[n].chatwoot++;
         bumpDaily(n, istDayKey((conv.created_at || 0) * 1000), "chatwoot");
         matched.push({ id: conv.id, employee: n, assigneeId: assignee.id });
@@ -2280,7 +2281,7 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter, includeSupe
   if (!employeeFilter && totalChats != null) totalChats += cwCount;
 
   const employees = Object.entries(emp)
-    .map(([name, d]) => ({ name, livechat: d.livechat, chatwoot: d.chatwoot, total: d.livechat + d.chatwoot, supervised: d.supervised || 0 }))
+    .map(([name, d]) => ({ name, livechat: d.livechat, chatwoot: d.chatwoot, total: d.livechat + d.chatwoot, supervised: d.supervised || 0, mobile: d.mobile || 0 }))
     .sort((a, b) => b.total - a.total);
 
   const grandTotal = employees.reduce((s, e) => s + e.total, 0);

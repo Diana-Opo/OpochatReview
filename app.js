@@ -2011,6 +2011,8 @@ function renderTotalChatsReport(content, dateFrom, dateTo, data) {
   const rows = employees.map(e => {
     const supervised = e.supervised ?? 0;
     const pctSupervised = e.total ? (supervised / e.total) * 100 : 0;
+    const mobile = e.mobile ?? 0;
+    const pctMobile = e.livechat ? (mobile / e.livechat) * 100 : 0;
     return `
     <tr class="border-t border-[#1a2d4a]">
       <td class="px-4 py-2.5 text-white text-sm text-center">${escHtml(e.name)}</td>
@@ -2019,12 +2021,15 @@ function renderTotalChatsReport(content, dateFrom, dateTo, data) {
       <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${e.total}</td>
       <td class="px-4 py-2.5 text-center text-orange-400 font-semibold text-sm">${supervised}</td>
       <td class="px-4 py-2.5 text-center text-orange-400 text-sm">${pctSupervised.toFixed(1)}%</td>
+      <td class="px-4 py-2.5 text-center text-sky-400 font-semibold text-sm">${mobile}</td>
+      <td class="px-4 py-2.5 text-center text-sky-400 text-sm">${pctMobile.toFixed(1)}%</td>
     </tr>`;
   }).join("");
 
   const grandLc = employees.reduce((s, e) => s + (e.livechat || 0), 0);
   const grandCw = employees.reduce((s, e) => s + (e.chatwoot || 0), 0);
   const grandSupervised = employees.reduce((s, e) => s + (e.supervised || 0), 0);
+  const grandMobile = employees.reduce((s, e) => s + (e.mobile || 0), 0);
   const statCard = (label, val, color) => `
     <div class="bg-[#0f1d35] rounded-xl border border-[#1a2d4a] p-4 text-center">
       <div class="text-xs text-slate-500 uppercase font-medium mb-1">${label}</div>
@@ -2032,11 +2037,12 @@ function renderTotalChatsReport(content, dateFrom, dateTo, data) {
     </div>`;
 
   content.innerHTML = `
-    <div class="grid grid-cols-4 gap-4 mb-5">
+    <div class="grid grid-cols-5 gap-4 mb-5">
       ${statCard("LiveChat", grandLc, "#94a3b8")}
       ${statCard("Chatwoot", grandCw, "#94a3b8")}
       ${statCard("Total", data.total_chats, "#F5B800")}
       ${statCard("Needed Help", grandSupervised, "#fb923c")}
+      ${statCard("Mobile", grandMobile, "#38bdf8")}
     </div>
     <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
       <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
@@ -2053,6 +2059,8 @@ function renderTotalChatsReport(content, dateFrom, dateTo, data) {
               <th class="px-4 py-2 font-medium">Total</th>
               <th class="px-4 py-2 font-medium" title="Chats with a supervisor/internal note — needed help from another person">Needed Help</th>
               <th class="px-4 py-2 font-medium">% Needed Help</th>
+              <th class="px-4 py-2 font-medium" title="LiveChat chats answered from the LiveChat mobile app (Chatwoot doesn't expose device info)">Mobile</th>
+              <th class="px-4 py-2 font-medium">% Mobile</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -2068,6 +2076,7 @@ function downloadTotalChatsPdf() {
   const grandLc = employees.reduce((s, e) => s + (e.livechat || 0), 0);
   const grandCw = employees.reduce((s, e) => s + (e.chatwoot || 0), 0);
   const grandSupervised = employees.reduce((s, e) => s + (e.supervised || 0), 0);
+  const grandMobile = employees.reduce((s, e) => s + (e.mobile || 0), 0);
 
   const win = window.open("", "_blank");
   if (!win) { showStatus("Allow popups to download PDF", "error"); return; }
@@ -2075,6 +2084,8 @@ function downloadTotalChatsPdf() {
   const rows = employees.map((e, i) => {
     const supervised = e.supervised ?? 0;
     const pctSupervised = e.total ? (supervised / e.total) * 100 : 0;
+    const mobile = e.mobile ?? 0;
+    const pctMobile = e.livechat ? (mobile / e.livechat) * 100 : 0;
     return `
     <tr style="background:${i % 2 ? "#f9fafb" : "#fff"}">
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#1f2937;text-align:center">${escHtml(e.name)}</td>
@@ -2083,6 +2094,8 @@ function downloadTotalChatsPdf() {
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;font-weight:700;color:#111827;text-align:center">${e.total}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;font-weight:700;color:#c2410c;text-align:center">${supervised}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#c2410c;text-align:center">${pctSupervised.toFixed(1)}%</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;font-weight:700;color:#0369a1;text-align:center">${mobile}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#0369a1;text-align:center">${pctMobile.toFixed(1)}%</td>
     </tr>`;
   }).join("");
 
@@ -2112,12 +2125,13 @@ function downloadTotalChatsPdf() {
   </div>
 </div>
 
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px">
   ${[
     ["LiveChat", grandLc, "#374151"],
     ["Chatwoot", grandCw, "#374151"],
     ["Total", data.total_chats, "#2563eb"],
     ["Needed Help", grandSupervised, "#c2410c"],
+    ["Mobile", grandMobile, "#0369a1"],
   ].map(([l,v,c]) => `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 6px;text-align:center">
     <div style="font-size:8px;color:#9ca3af;text-transform:uppercase;font-weight:700;letter-spacing:.04em;margin-bottom:5px">${l}</div>
     <div style="font-size:18px;font-weight:900;color:${c}">${v}</div>
@@ -2133,6 +2147,8 @@ function downloadTotalChatsPdf() {
       <th class="num">Total</th>
       <th class="num">Needed Help</th>
       <th class="num">% Needed Help</th>
+      <th class="num">Mobile</th>
+      <th class="num">% Mobile</th>
     </tr>
   </thead>
   <tbody>${rows}</tbody>
