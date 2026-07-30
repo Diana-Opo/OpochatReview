@@ -2418,19 +2418,17 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       return s ? s.employee : null;
     }
 
-    // Total chats (no agent filter)
-    const firstPage = await lcPost("list_archives", { filters: { from: lcFrom, to: lcTo }, limit: 1 });
-    let totalChats = firstPage.found_chats ?? firstPage.total_chats ?? 0;
-
     const emp = {};
+    let cwCount = 0;
 
     // Per-agent approach matching Chat Review's applyEmployeeHourFilter exactly:
     // fetch each agent's chats via LC filter, run allAgentsInThread, apply shift-hour check.
-    for (const [key, shiftList] of Object.entries(agentKeyShifts)) {
+    // Each agent's fetch runs concurrently (bounded by the shared lcAcquire limiter).
+    async function fetchDashAgentChats(key, shiftList) {
       const agentEmail = agentKeyToEmail[key];
       if (!agentEmail) {
         console.log(`[dashboard] no LC agent for key: ${key} (${shiftList.map(s => s.employee).join("/")})`);
-        continue;
+        return;
       }
 
       const uniqueEmpsForKey = [...new Set(shiftList.map(s => s.employee))];
@@ -2472,9 +2470,8 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
       } while (pid);
     }
 
-
-    // Chatwoot totals
-    if (chatwootEnabled()) {
+    async function fetchDashChatwoot() {
+      if (!chatwootEnabled()) return;
       try {
         const cwFilter = [
           { attribute_key: "status", filter_operator: "equal_to", values: ["resolved"], query_operator: "AND" },
@@ -2499,7 +2496,7 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
           const ms = (c.created_at || 0) * 1000;
           return ms >= fromMs && ms <= toMs;
         });
-        totalChats += cwAll.length;
+        cwCount = cwAll.length;
         for (const conv of cwAll) {
           const assignee = conv.meta?.assignee || null;
           if (!assignee) continue;
@@ -2517,6 +2514,13 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
         }
       } catch (e) { console.error("[dashboard] Chatwoot error:", e.message); }
     }
+
+    const [firstPageResult] = await Promise.all([
+      lcPost("list_archives", { filters: { from: lcFrom, to: lcTo }, limit: 1 }),
+      Promise.all(Object.entries(agentKeyShifts).map(([key, shiftList]) => fetchDashAgentChats(key, shiftList))),
+      fetchDashChatwoot(),
+    ]);
+    let totalChats = (firstPageResult.found_chats ?? firstPageResult.total_chats ?? 0) + cwCount;
 
     // Scores/reviews from database filtered by month
     for (const rv of Object.values(reviews)) {
