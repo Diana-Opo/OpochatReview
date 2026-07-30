@@ -1964,7 +1964,10 @@ function openTotalChatsReport() {
     fromEl.value = `${y}-${pad(m + 1)}-01`;
     toEl.value = `${y}-${pad(m + 1)}-${pad(lastDay)}`;
   }
-  loadTotalChatsReport();
+  const content = document.getElementById("totalChatsContent");
+  if (content && !content.innerHTML.trim()) {
+    content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">Pick a date range and click Search.</div>`;
+  }
 }
 
 let _activeTotalChatsReport = null;
@@ -2171,7 +2174,10 @@ function openCampaignImpactReport() {
     // Campaign still running by default — ends at the current period's end date
     endEl.value = currentToStr;
   }
-  loadCampaignImpactReport();
+  const content = document.getElementById("campaignContent");
+  if (content && !content.innerHTML.trim()) {
+    content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">Pick your date ranges and click Search.</div>`;
+  }
 }
 
 function pctChange(from, to) {
