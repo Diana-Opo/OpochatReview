@@ -21,3 +21,16 @@ tr.chat-row:hover { background: #1a2d4a; cursor: pointer; }
   animation: spin .7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Native date input calendar icon defaults to dark/black — invert so it's visible
+   against this panel's dark navy background, and hint dark mode for the popup itself. */
+input[type="date"] {
+  color-scheme: dark;
+}
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.2);
+  cursor: pointer;
+}
+input[type="date"]::-webkit-inner-spin-button {
+  filter: invert(1);
+}
