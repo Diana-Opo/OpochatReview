@@ -355,6 +355,44 @@ async function syncLcAgents() {
   if (icon) icon.textContent = "⟳";
 }
 
+async function syncCwAgents() {
+  const btn = document.getElementById("btnSyncCwAgents");
+  const icon = document.getElementById("syncCwAgentsIcon");
+  const status = document.getElementById("cfg-cw-agents-status");
+  const list = document.getElementById("cfg-cw-agents-list");
+  btn.disabled = true;
+  if (icon) icon.textContent = "...";
+  if (status) status.textContent = "Syncing...";
+  try {
+    const res = await authFetch("/api/chatwoot-agents");
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || res.status);
+    const agentArr = Array.isArray(data) ? data : [];
+    cwAgents = agentArr;
+    renderShiftsTable();
+
+    if (status) status.textContent = agentArr.length
+      ? `${agentArr.length} agents synced from Chatwoot`
+      : "0 agents returned — check Chatwoot is enabled/configured";
+    if (list) {
+      list.innerHTML = agentArr.map(a =>
+        `<div class="flex items-center gap-2 px-2 py-1 rounded-lg bg-[#0a1628] text-xs text-white">
+          <div class="w-5 h-5 rounded-full bg-slate-300 shrink-0"></div>
+          <span class="font-medium">${escHtml(a.name || "")}</span>
+          <span class="text-slate-500 ml-auto">${escHtml(a.email || "")}</span>
+        </div>`
+      ).join("");
+      list.classList.remove("hidden");
+    }
+    showStatus(`${agentArr.length} agents synced from Chatwoot`, "success");
+  } catch (e) {
+    if (status) status.textContent = "Sync failed: " + e.message;
+    showStatus("Chatwoot agent sync failed: " + e.message, "error");
+  }
+  btn.disabled = false;
+  if (icon) icon.textContent = "⟳";
+}
+
 async function refreshOneSource(source, btnEl) {
   if (btnEl) { btnEl.disabled = true; btnEl.textContent = "…"; }
   try {
@@ -1562,24 +1600,32 @@ function cwAgentOptionsHtml(selectedEmail) {
 
 async function openSettings() {
   if (agents.length > 0) settingsAgents = agents;
-  try {
-    const [shiftsRes, usersRes, cwAgentsRes] = await Promise.all([
-      authFetch("/api/agent-shifts"),
-      authFetch("/api/app-users"),
-      authFetch("/api/chatwoot-agents"),
-    ]);
-    const fresh = await shiftsRes.json();
-    const appUsers = await usersRes.json();
-    const cwList = await cwAgentsRes.json();
-    if (Array.isArray(cwList)) cwAgents = cwList;
-    if (Array.isArray(fresh)) {
-      const userMap = {}, roleMap = {};
-      if (Array.isArray(appUsers)) appUsers.forEach(u => {
+  const [shiftsResult, usersResult, cwAgentsResult] = await Promise.allSettled([
+    authFetch("/api/agent-shifts").then(r => r.json()),
+    authFetch("/api/app-users").then(r => r.json()),
+    authFetch("/api/chatwoot-agents").then(r => r.json()),
+  ]);
+
+  if (cwAgentsResult.status === "fulfilled" && Array.isArray(cwAgentsResult.value)) {
+    cwAgents = cwAgentsResult.value;
+  } else {
+    console.error("[openSettings] chatwoot-agents failed:", cwAgentsResult.reason || cwAgentsResult.value);
+  }
+
+  if (shiftsResult.status === "fulfilled" && Array.isArray(shiftsResult.value)) {
+    const userMap = {}, roleMap = {};
+    if (usersResult.status === "fulfilled" && Array.isArray(usersResult.value)) {
+      usersResult.value.forEach(u => {
         if (u.employee_name) { userMap[u.employee_name] = u.username; roleMap[u.employee_name] = u.role || "user"; }
       });
-      agentShifts = fresh.map(s => ({ ...s, username: userMap[s.employee] || "", userRole: roleMap[s.employee] || "user" }));
+    } else {
+      console.error("[openSettings] app-users failed:", usersResult.reason || usersResult.value);
     }
-  } catch {}
+    agentShifts = shiftsResult.value.map(s => ({ ...s, username: userMap[s.employee] || "", userRole: roleMap[s.employee] || "user" }));
+  } else {
+    console.error("[openSettings] agent-shifts failed:", shiftsResult.reason || shiftsResult.value);
+  }
+
   renderShiftsTable();
 }
 

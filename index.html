@@ -335,6 +335,22 @@
             <div id="cfg-agents-list" class="mt-3 space-y-1 max-h-48 overflow-y-auto hidden"></div>
           </div>
 
+          <!-- Chatwoot Agent List -->
+          <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <h3 class="font-semibold text-white text-sm">Chatwoot Agent List</h3>
+                <p class="text-xs text-slate-400 mt-0.5">Sync agent list from Chatwoot — run when a new agent is added</p>
+              </div>
+              <button onclick="syncCwAgents()" id="btnSyncCwAgents"
+                class="flex items-center gap-1.5 text-xs bg-[#1a2d4a] text-[#F5B800] hover:bg-[#243d61] px-3 py-1.5 rounded-lg transition font-medium">
+                <span id="syncCwAgentsIcon">⟳</span> Sync Now
+              </button>
+            </div>
+            <div id="cfg-cw-agents-status" class="text-xs text-slate-400">Not synced yet — click Sync Now</div>
+            <div id="cfg-cw-agents-list" class="mt-3 space-y-1 max-h-48 overflow-y-auto hidden"></div>
+          </div>
+
           <!-- Knowledge Base -->
           <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5">
             <div class="flex items-center justify-between mb-3">
