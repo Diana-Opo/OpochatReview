@@ -2135,8 +2135,17 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
     dailyByEmployee[empName][dayKey][platform]++;
   }
 
-  function hasSupervisorNote(events) {
-    return events.some(e => e.text && (e.visibility === "agents" || e.type === "annotation"));
+  // Only counts as "needed help" if the private note/annotation was left by a DIFFERENT
+  // agent account than the one handling the chat — excludes an agent's own self-notes
+  // (e.g. "are you there?" idle reminders), which don't indicate anyone else stepped in.
+  function hasSupervisorNote(events, users, key) {
+    return events.some(e => {
+      if (!e.text || !(e.visibility === "agents" || e.type === "annotation")) return false;
+      const author = users.find(u => u.id === e.author_id);
+      const authorName = (author?.name || "").toLowerCase().trim();
+      if (!authorName) return false;
+      return authorName !== key && authorName.split(" ")[0] !== key;
+    });
   }
 
   async function fetchAgentChats(key, shiftList) {
@@ -2179,7 +2188,7 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
           empName = uniqueEmpsForKey[0];
         }
         emp[empName].livechat++;
-        if (hasSupervisorNote(events)) emp[empName].supervised++;
+        if (hasSupervisorNote(events, users, key)) emp[empName].supervised++;
         bumpDaily(empName, istDayKey(new Date(chatTime).getTime()), "livechat");
       }
     } while (pid);
@@ -2228,18 +2237,20 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
         if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0, supervised: 0 };
         emp[n].chatwoot++;
         bumpDaily(n, istDayKey((conv.created_at || 0) * 1000), "chatwoot");
-        matched.push({ id: conv.id, employee: n });
+        matched.push({ id: conv.id, employee: n, assigneeId: assignee.id });
       }
 
-      // Check each matched conversation for private/internal notes (supervisor help).
-      // Bounded concurrency — this is one extra request per conversation.
-      await Promise.all(matched.map(async ({ id, employee }) => {
+      // Check each matched conversation for a private/internal note left by a DIFFERENT
+      // agent than the one assigned — excludes an agent's own self-notes. Bounded
+      // concurrency — this is one extra request per conversation.
+      await Promise.all(matched.map(async ({ id, employee, assigneeId }) => {
         try {
           const release = await cwAcquire();
           let msgData;
           try { msgData = await cwGet(`/conversations/${id}/messages`); } finally { release(); }
           const msgs = msgData.payload || msgData || [];
-          if (Array.isArray(msgs) && msgs.some(m => m.private === true)) emp[employee].supervised++;
+          const hasNote = Array.isArray(msgs) && msgs.some(m => m.private === true && String(m.sender?.id) !== String(assigneeId));
+          if (hasNote) emp[employee].supervised++;
         } catch (e) { console.error(`[total-chats] cw private-note check failed for ${id}:`, e.message); }
       }));
     } catch (e) { console.error("[total-chats] Chatwoot error:", e.message); }
