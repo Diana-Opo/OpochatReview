@@ -2605,6 +2605,7 @@ function closeSaveReportModal(confirmed) {
   if (_saveReportModalResolve) { _saveReportModalResolve(value || null); _saveReportModalResolve = null; }
 }
 
+
 async function saveReportSnapshot(type, params, data, defaultLabel) {
   const label = await openSaveReportModal(defaultLabel);
   if (!label) return;
@@ -2675,14 +2676,15 @@ async function refreshSavedReportsPanel(type, containerId) {
   }
 }
 
-async function deleteSavedReport(type, id, containerId) {
-  if (!confirm("Delete this saved report?")) return;
-  try {
-    const res = await authFetch(`/api/saved-reports/${id}`, { method: "DELETE" });
-    const d = await res.json();
-    if (!res.ok || d.error) throw new Error(d.error || res.status);
-    refreshSavedReportsPanel(type, containerId);
-  } catch (e) { showStatus("Delete failed: " + e.message, "error"); }
+function deleteSavedReport(type, id, containerId) {
+  showConfirmModal("This will permanently delete this saved report.", async () => {
+    try {
+      const res = await authFetch(`/api/saved-reports/${id}`, { method: "DELETE" });
+      const d = await res.json();
+      if (!res.ok || d.error) throw new Error(d.error || res.status);
+      refreshSavedReportsPanel(type, containerId);
+    } catch (e) { showStatus("Delete failed: " + e.message, "error"); }
+  });
 }
 
 async function loadSavedReport(type, id) {
