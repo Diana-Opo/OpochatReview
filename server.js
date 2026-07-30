@@ -2326,6 +2326,7 @@ app.get("/api/reports/campaign-impact", authMiddleware, async (req, res) => {
         livechat: e.livechat,
         chatwoot: e.chatwoot,
         total: e.total,
+        supervised: e.supervised || 0,
         during_campaign_livechat: duringLc,
         during_campaign_chatwoot: duringCw,
         during_campaign_total: duringLc + duringCw,

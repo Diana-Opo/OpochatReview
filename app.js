@@ -2241,6 +2241,8 @@ function renderCampaignReport(content, data) {
 
   const empRows = employees.map(e => {
     const pct = e.total ? (e.during_campaign_total / e.total) * 100 : 0;
+    const supervised = e.supervised ?? 0;
+    const pctSupervised = e.total ? (supervised / e.total) * 100 : 0;
     return `
     <tr class="border-t border-[#1a2d4a]">
       <td class="px-4 py-2.5 text-white text-sm text-center">${escHtml(e.name)}</td>
@@ -2249,6 +2251,8 @@ function renderCampaignReport(content, data) {
       <td class="px-4 py-2.5 text-center text-white text-sm">${e.total}</td>
       <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${e.during_campaign_total}</td>
       <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${pct.toFixed(1)}%</td>
+      <td class="px-4 py-2.5 text-center text-orange-400 font-semibold text-sm">${supervised}</td>
+      <td class="px-4 py-2.5 text-center text-orange-400 text-sm">${pctSupervised.toFixed(1)}%</td>
     </tr>`;
   }).join("");
 
@@ -2301,6 +2305,8 @@ function renderCampaignReport(content, data) {
               <th class="px-4 py-2 font-medium">Total</th>
               <th class="px-4 py-2 font-medium">During Campaign</th>
               <th class="px-4 py-2 font-medium">% During Campaign</th>
+              <th class="px-4 py-2 font-medium" title="Chats with a note from another agent — needed help">Needed Help</th>
+              <th class="px-4 py-2 font-medium">% Needed Help</th>
             </tr>
           </thead>
           <tbody>${empRows}</tbody>
@@ -2379,6 +2385,8 @@ function downloadCampaignImpactPdf() {
 
   const rows = employees.map((e, i) => {
     const pct = e.total ? (e.during_campaign_total / e.total) * 100 : 0;
+    const supervised = e.supervised ?? 0;
+    const pctSupervised = e.total ? (supervised / e.total) * 100 : 0;
     return `
     <tr style="background:${i % 2 ? "#f9fafb" : "#fff"}">
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#1f2937;text-align:center">${escHtml(e.name)}</td>
@@ -2387,6 +2395,8 @@ function downloadCampaignImpactPdf() {
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#111827;text-align:center">${e.total}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#2563eb;text-align:center">${e.during_campaign_total}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#2563eb;text-align:center">${pct.toFixed(1)}%</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#c2410c;text-align:center">${supervised}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#c2410c;text-align:center">${pctSupervised.toFixed(1)}%</td>
     </tr>`;
   }).join("");
 
@@ -2462,6 +2472,8 @@ ${dailyImg ? `<div class="card"><div class="sec-title">Daily Volume — Current 
       <th class="num">Total</th>
       <th class="num">During Campaign</th>
       <th class="num">% During Campaign</th>
+      <th class="num">Needed Help</th>
+      <th class="num">% Needed Help</th>
     </tr>
   </thead>
   <tbody>${rows}</tbody>
