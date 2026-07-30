@@ -71,6 +71,10 @@
             class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
             <span class="text-xs">📈</span> Monthly Overview
           </button>
+          <button onclick="showPage('report-total-chats')" id="nav-report-total-chats"
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
+            <span class="text-xs">🔢</span> Total Chats
+          </button>
         </div>
       </div>
       <button onclick="showPage('employees')" id="nav-employees"
@@ -232,6 +236,35 @@
           </div>
         </div>
         <div id="monthlyOverviewContent" class="p-6 grid grid-cols-2 gap-5"></div>
+      </div>
+
+      <!-- ── REPORT: TOTAL CHATS ──────────────────────────────────────────── -->
+      <div id="page-report-total-chats" class="hidden h-full overflow-y-auto">
+        <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a] sticky top-0 z-10">
+          <h2 class="text-base font-bold text-white mb-3">Total Chats</h2>
+          <div class="flex flex-wrap items-end gap-3">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">From</label>
+              <input type="date" id="totalChatsFrom"
+                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">To</label>
+              <input type="date" id="totalChatsTo"
+                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Agent</label>
+              <select id="totalChatsAgent"
+                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30">
+                <option value="">All Employees</option>
+              </select>
+            </div>
+            <button onclick="loadTotalChatsReport()"
+              class="bg-[#F5B800] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#D4A000] transition">Search</button>
+          </div>
+        </div>
+        <div id="totalChatsContent" class="p-6"></div>
       </div>
 
       <!-- ── EMPLOYEES ───────────────────────────────────────────────────── -->

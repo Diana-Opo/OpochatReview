@@ -180,7 +180,7 @@ async function initApp() {
 
   // Navigate to correct page immediately — before any async calls so there's no flash
   const lastPage = localStorage.getItem("lastPage");
-  const validPages = ["dashboard", "chats", "reports", "report-monthly", "employees", "config"];
+  const validPages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "employees", "config"];
   const adminPages = ["employees", "config"];
   const startPage = validPages.includes(lastPage) && (!adminPages.includes(lastPage) || currentUser.role === "admin")
     ? lastPage : "chats";
@@ -199,7 +199,7 @@ async function initApp() {
 }
 
 // ── Page navigation ───────────────────────────────────────────────────────────
-const REPORT_PAGES = ["reports", "report-monthly"];
+const REPORT_PAGES = ["reports", "report-monthly", "report-total-chats"];
 
 function toggleReportsMenu() {
   const submenu = document.getElementById("reports-submenu");
@@ -211,7 +211,7 @@ function toggleReportsMenu() {
 }
 
 function showPage(name) {
-  const pages = ["dashboard", "chats", "reports", "report-monthly", "employees", "config"];
+  const pages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "employees", "config"];
   pages.forEach(p => {
     document.getElementById(`page-${p}`)?.classList.add("hidden");
     const btn = document.getElementById(`nav-${p}`);
@@ -236,6 +236,7 @@ function showPage(name) {
   if (name === "dashboard") loadDashboard();
   if (name === "reports") openReports();
   if (name === "report-monthly") openMonthlyOverview();
+  if (name === "report-total-chats") openTotalChatsReport();
   if (name === "employees") openSettings();
   if (name === "config") loadKnowledgeStatus();
   localStorage.setItem("lastPage", name);
@@ -1879,6 +1880,93 @@ async function loadMonthlyOverview() {
         plugins: [ChartDataLabels],
       });
     }
+  } catch (e) {
+    content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+// ── Total Chats Report ────────────────────────────────────────────────────────
+
+function populateTotalChatsAgentFilter() {
+  const sel = document.getElementById("totalChatsAgent");
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">All Employees</option>';
+  const employees = (Array.isArray(agentShifts) ? [...agentShifts] : []).sort((a, b) => a.employee.localeCompare(b.employee));
+  const seen = new Set();
+  employees.forEach(s => {
+    if (seen.has(s.employee)) return;
+    seen.add(s.employee);
+    const opt = document.createElement("option");
+    opt.value = s.employee;
+    opt.textContent = s.employee;
+    sel.appendChild(opt);
+  });
+  if (prev) sel.value = prev;
+}
+
+function openTotalChatsReport() {
+  populateTotalChatsAgentFilter();
+  const fromEl = document.getElementById("totalChatsFrom");
+  const toEl = document.getElementById("totalChatsTo");
+  if (fromEl && toEl && !fromEl.value && !toEl.value) {
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    fromEl.value = first.toISOString().slice(0, 10);
+    toEl.value = now.toISOString().slice(0, 10);
+  }
+  loadTotalChatsReport();
+}
+
+async function loadTotalChatsReport() {
+  const content = document.getElementById("totalChatsContent");
+  if (!content) return;
+  const dateFrom = document.getElementById("totalChatsFrom")?.value;
+  const dateTo = document.getElementById("totalChatsTo")?.value;
+  const employee = document.getElementById("totalChatsAgent")?.value || "";
+  if (!dateFrom || !dateTo) {
+    content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">Please pick a From and To date.</div>`;
+    return;
+  }
+  content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm"><span class="spinner"></span></div>`;
+
+  try {
+    const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
+    if (employee) params.set("employee", employee);
+    const res = await authFetch(`/api/reports/total-chats?${params.toString()}`);
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Error: ${escHtml(data.error || res.status)}</div>`;
+      return;
+    }
+    const employees = data.employees || [];
+    if (!employees.length) {
+      content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">No chats found for this range.</div>`;
+      return;
+    }
+    const rows = employees.map(e => `
+      <tr class="border-t border-[#1a2d4a]">
+        <td class="px-4 py-2.5 text-white text-sm">${escHtml(e.name)}</td>
+        <td class="px-4 py-2.5 text-right text-[#F5B800] font-semibold text-sm">${e.total}</td>
+      </tr>`).join("");
+    content.innerHTML = `
+      <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
+        <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
+          <span class="font-semibold text-white text-sm">${escHtml(dateFrom)} → ${escHtml(dateTo)}</span>
+          <span class="text-xs text-slate-500">${data.total_chats} total chats</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead>
+              <tr class="text-left text-xs text-slate-500 uppercase">
+                <th class="px-4 py-2 font-medium">Employee</th>
+                <th class="px-4 py-2 font-medium text-right">Chats</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
   } catch (e) {
     content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Error: ${escHtml(e.message)}</div>`;
   }

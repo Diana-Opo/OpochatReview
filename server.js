@@ -2002,6 +2002,160 @@ app.get("/api/stats", authMiddleware, async (req, res) => {
   res.json(result);
 });
 
+// Shared: count all chats (reviewed or not) per employee over an arbitrary date range.
+async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
+  const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
+  const fromDate = new Date(new Date(`${dateFrom}T00:00:00.000Z`).getTime() - ISTANBUL_OFFSET_MS);
+  const toDate   = new Date(new Date(`${dateTo}T23:59:59.999Z`).getTime() - ISTANBUL_OFFSET_MS);
+  const lcFrom = fromDate.toISOString().replace(/\.\d{3}Z$/, ".000000+00:00");
+  const lcTo   = toDate.toISOString().replace(/\.\d{3}Z$/, ".999999+00:00");
+
+  const [shifts, agentsRaw] = await Promise.all([
+    loadShifts(),
+    lcPost("list_agents", {}, LC_CONFIG_API),
+  ]);
+
+  const agentKeyShifts = {};
+  for (const s of shifts) {
+    if (employeeFilter && s.employee !== employeeFilter) continue;
+    const key = s.agentKey.toLowerCase().trim();
+    if (!agentKeyShifts[key]) agentKeyShifts[key] = [];
+    agentKeyShifts[key].push(s);
+  }
+
+  const rawAgentList = Array.isArray(agentsRaw) ? agentsRaw
+    : Array.isArray(agentsRaw?.agents) ? agentsRaw.agents
+    : Object.values(agentsRaw || {}).find(v => Array.isArray(v)) || [];
+
+  const agentKeyToEmail = {};
+  for (const a of rawAgentList) {
+    const low = a.name.toLowerCase().trim();
+    const fst = low.split(" ")[0];
+    for (const key of Object.keys(agentKeyShifts)) {
+      if ((low === key || fst === key) && !agentKeyToEmail[key]) {
+        agentKeyToEmail[key] = a.id;
+      }
+    }
+  }
+
+  function getIstHour(chatTime) {
+    if (!chatTime) return 0;
+    return ((new Date(chatTime).getTime() + ISTANBUL_OFFSET_MS) / 3600000) % 24;
+  }
+
+  let totalChats = null;
+  if (!employeeFilter) {
+    const firstPage = await lcPost("list_archives", { filters: { from: lcFrom, to: lcTo }, limit: 1 });
+    totalChats = firstPage.found_chats ?? firstPage.total_chats ?? 0;
+  }
+
+  const emp = {};
+
+  for (const [key, shiftList] of Object.entries(agentKeyShifts)) {
+    const agentEmail = agentKeyToEmail[key];
+    if (!agentEmail) continue;
+
+    const uniqueEmpsForKey = [...new Set(shiftList.map(s => s.employee))];
+    uniqueEmpsForKey.forEach(n => { if (!emp[n]) emp[n] = { total: 0 }; });
+    const isShared = uniqueEmpsForKey.length > 1;
+
+    let pid = null;
+    do {
+      const body = pid
+        ? { page_id: pid }
+        : { filters: { from: lcFrom, to: lcTo, agents: { values: [agentEmail] } }, limit: 100 };
+      const data = await lcPost("list_archives", body);
+      pid = data.next_page_id || null;
+
+      for (const c of data.chats || []) {
+        const thread = c.thread || (c.threads?.[0]) || {};
+        const users = c.users || [];
+        const events = thread.events || [];
+        const chatTime = thread.created_at || null;
+        const istHour = getIstHour(chatTime);
+
+        const chatAgents = allAgentsInThread(events, users, shifts, chatTime);
+        const agentInChat = chatAgents.some(a => {
+          const n = (a.name || "").toLowerCase().trim();
+          return n === key || n.split(" ")[0] === key;
+        });
+        if (!agentInChat) continue;
+
+        if (isShared) {
+          const matched = shiftList.find(s => istHour >= s.start && istHour < s.end);
+          const empName = (matched || shiftList[0]).employee;
+          emp[empName].total++;
+        } else {
+          const inShift = shiftList.some(s => istHour >= s.start && istHour < s.end);
+          if (!inShift) continue;
+          emp[uniqueEmpsForKey[0]].total++;
+        }
+      }
+    } while (pid);
+  }
+
+  if (chatwootEnabled()) {
+    try {
+      const cwFilter = [
+        { attribute_key: "status", filter_operator: "equal_to", values: ["resolved"], query_operator: "AND" },
+        { attribute_key: "created_at", filter_operator: "is_greater_than", values: [cwFilterDateFrom(lcFrom)], query_operator: "AND" },
+        { attribute_key: "created_at", filter_operator: "is_less_than", values: [cwFilterDateTo(lcTo)], query_operator: null },
+      ];
+      let cwPage = 1, cwAll = [], cwTotal = 0;
+      while (true) {
+        const d = await cwPost("/conversations/filter", { payload: cwFilter }, { page: cwPage });
+        const inner = d.data || d;
+        const convs = inner.payload || inner.conversations || [];
+        if (cwPage === 1) cwTotal = inner.meta?.all_count ?? inner.meta?.total_count ?? convs.length;
+        if (!convs.length) break;
+        cwAll = cwAll.concat(convs);
+        if (convs.length < 25 || cwAll.length >= cwTotal) break;
+        cwPage++;
+      }
+      const fromMs = new Date(lcFrom).getTime();
+      const toMs   = new Date(lcTo).getTime();
+      cwAll = cwAll.filter(c => {
+        const ms = (c.created_at || 0) * 1000;
+        return ms >= fromMs && ms <= toMs;
+      });
+      if (!employeeFilter && totalChats != null) totalChats += cwAll.length;
+      for (const conv of cwAll) {
+        const assignee = conv.meta?.assignee || null;
+        if (!assignee) continue;
+        const aEmail = (assignee.email || "").toLowerCase().trim();
+        const aName  = (assignee.name  || "").toLowerCase().trim();
+        const ms = shifts.find(s => {
+          if (employeeFilter && s.employee !== employeeFilter) return false;
+          if (!s.chatwootAgentId) return false;
+          const cwId = s.chatwootAgentId.toLowerCase().trim();
+          return cwId === aEmail || cwId === aName || cwId.split("@")[0] === aName;
+        });
+        if (!ms) continue;
+        const n = ms.employee;
+        if (!emp[n]) emp[n] = { total: 0 };
+        emp[n].total++;
+      }
+    } catch (e) { console.error("[total-chats] Chatwoot error:", e.message); }
+  }
+
+  const employees = Object.entries(emp)
+    .map(([name, d]) => ({ name, total: d.total }))
+    .sort((a, b) => b.total - a.total);
+
+  const grandTotal = employees.reduce((s, e) => s + e.total, 0);
+  return { date_from: dateFrom, date_to: dateTo, total_chats: totalChats ?? grandTotal, employees };
+}
+
+// Total chats per employee over an arbitrary date range, optionally filtered to one employee
+app.get("/api/reports/total-chats", authMiddleware, async (req, res) => {
+  try {
+    const { date_from, date_to, employee } = req.query;
+    if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
+    const result = await computeChatTotals({ dateFrom: date_from, dateTo: date_to, employeeFilter: employee || null });
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Dashboard stats for current month — independent of Chat Review page
 app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
   try {
