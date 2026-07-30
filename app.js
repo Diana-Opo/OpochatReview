@@ -2070,6 +2070,24 @@ function renderTotalChatsReport(content, dateFrom, dateTo, data) {
     </div>`;
 }
 
+// ── PDF letterhead (Opo Finance branding) ─────────────────────────────────────
+
+const OPO_BRAND_BLUE = "#1e70ff";
+const OPO_LOGO_DATA_URI = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMCIgaGVpZ2h0PSIzMCIgdmlld0JveD0iMCAwIDMwIDMwIiBmaWxsPSJub25lIj48cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTE0Ljk5OTggMEMyMy4yODQxIDAgMzAgNi43MTU1OCAzMCAxNC45OTk4QzMwIDIzLjI4NDEgMjMuMjg0MSAzMCAxNC45OTk4IDMwQzYuNzE1NTggMzAgMCAyMy4yODQxIDAgMTQuOTk5OEMzLjg4MjM0ZS0wNSA2LjcxNTYgNi43MTU2IDMuNTAzMThlLTA1IDE0Ljk5OTggMFpNMTQuOTg1OCAxLjE4NjczQzEzLjA5NzggMS4xODY3MyAxMS41Nzg1IDIuNzA2MDQgOC41Mzk5MyA1Ljc0NDY0TDUuNzQ0NjQgOC41Mzk5M0MyLjcwNjA0IDExLjU3ODUgMS4xODY3MyAxMy4wOTc4IDEuMTg2NzMgMTQuOTg1OEMxLjE4NjczIDE2Ljg3MzcgMi43MDYwNCAxOC4zOTMgNS43NDQ2NCAyMS40MzE3TDguNTM5OTMgMjQuMjI2OUMxMS41Nzg1IDI3LjI2NTUgMTMuMDk3OCAyOC43ODQ5IDE0Ljk4NTggMjguNzg0OUMxNi44NzM3IDI4Ljc4NDggMTguMzkzIDI3LjI2NTUgMjEuNDMxNyAyNC4yMjY5TDI0LjIyNjkgMjEuNDMxN0MyNy4yNjU1IDE4LjM5MzEgMjguNzg0OSAxNi44NzM3IDI4Ljc4NDkgMTQuOTg1OEMyOC43ODQ5IDEzLjA5NzggMjcuMjY1NSAxMS41Nzg1IDI0LjIyNjkgOC41Mzk5M0wyMS40MzE3IDUuNzQ0NjRDMTguMzkzIDIuNzA2MDQgMTYuODczNyAxLjE4NjczIDE0Ljk4NTggMS4xODY3M1oiIGZpbGw9IndoaXRlIj48L3BhdGg+PC9zdmc+";
+
+function opoLetterheadHtml() {
+  return `
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">
+  <div style="width:32px;height:32px;border-radius:9px;background:${OPO_BRAND_BLUE};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+    <img src="${OPO_LOGO_DATA_URI}" style="width:18px;height:18px;display:block" />
+  </div>
+  <div>
+    <div style="font-size:12.5px;font-weight:900;color:#0e0e1a;letter-spacing:.03em;line-height:1.1">OPO FINANCE</div>
+    <div style="font-size:7px;color:#9ca3af;letter-spacing:.09em;text-transform:uppercase;margin-top:1px">Support Quality Report</div>
+  </div>
+</div>`;
+}
+
 function downloadTotalChatsPdf() {
   if (!_activeTotalChatsReport) { showStatus("Run a search first", "error"); return; }
   const { dateFrom, dateTo, employeeFilter, data } = _activeTotalChatsReport;
@@ -2108,19 +2126,19 @@ function downloadTotalChatsPdf() {
   body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1f2937; background: #fff; }
   table { width: 100%; border-collapse: collapse; }
   th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
-       color: #6b7280; text-align: center; padding: 8px 10px; border-bottom: 2px solid #2563eb; }
+       color: #6b7280; text-align: center; padding: 8px 10px; border-bottom: 2px solid #1e70ff; }
   th.num { text-align: center; }
   .footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid #e5e7eb;
             font-size: 8px; color: #9ca3af; text-align: center; }
 </style>
 </head><body>
-
-<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #2563eb;padding-bottom:10px;margin-bottom:14px">
+${opoLetterheadHtml()}
+<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid ${OPO_BRAND_BLUE};padding-bottom:10px;margin-bottom:14px">
   <div>
     <div style="font-size:20px;font-weight:900;color:#111827;line-height:1.1">Total Chats Report</div>
     <div style="font-size:11px;color:#6b7280;margin-top:4px">${escHtml(dateFrom)} → ${escHtml(dateTo)}${employeeFilter ? ` · ${escHtml(employeeFilter)}` : ""}</div>
   </div>
-  <div style="background:#eff6ff;color:#2563eb;font-size:9px;font-weight:700;text-transform:uppercase;
+  <div style="background:#e9f2ff;color:#1e70ff;font-size:9px;font-weight:700;text-transform:uppercase;
               letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
     Generated ${new Date().toLocaleDateString()}
   </div>
@@ -2130,7 +2148,7 @@ function downloadTotalChatsPdf() {
   ${[
     ["LiveChat", grandLc, "#374151"],
     ["Chatwoot", grandCw, "#374151"],
-    ["Total", data.total_chats, "#2563eb"],
+    ["Total", data.total_chats, "#1e70ff"],
     ["Needed Help", grandSupervised, "#c2410c"],
     ["Mobile", grandMobile, "#0369a1"],
   ].map(([l,v,c]) => `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 6px;text-align:center">
@@ -2539,8 +2557,8 @@ function downloadCampaignImpactPdf() {
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#6b7280;text-align:center">${e.livechat}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#6b7280;text-align:center">${e.chatwoot}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#111827;text-align:center">${e.total}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#2563eb;text-align:center">${e.during_campaign_total}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#2563eb;text-align:center">${pct.toFixed(1)}%</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#1e70ff;text-align:center">${e.during_campaign_total}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#1e70ff;text-align:center">${pct.toFixed(1)}%</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#c2410c;text-align:center">${supervised}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#c2410c;text-align:center">${pctSupervised.toFixed(1)}%</td>
     </tr>`;
@@ -2554,7 +2572,7 @@ function downloadCampaignImpactPdf() {
   body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1f2937; background: #fff; }
   table { width: 100%; border-collapse: collapse; }
   th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
-       color: #6b7280; text-align: center; padding: 8px 10px; border-bottom: 2px solid #2563eb; }
+       color: #6b7280; text-align: center; padding: 8px 10px; border-bottom: 2px solid #1e70ff; }
   th.num { text-align: center; }
   .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
   .sec-title { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
@@ -2564,8 +2582,8 @@ function downloadCampaignImpactPdf() {
   .page-break { page-break-before: always; }
 </style>
 </head><body>
-
-<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #2563eb;padding-bottom:10px;margin-bottom:14px">
+${opoLetterheadHtml()}
+<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid ${OPO_BRAND_BLUE};padding-bottom:10px;margin-bottom:14px">
   <div>
     <div style="font-size:20px;font-weight:900;color:#111827;line-height:1.1">Campaign Impact Report</div>
     <div style="font-size:10.5px;color:#6b7280;margin-top:5px;line-height:1.6">
@@ -2574,7 +2592,7 @@ function downloadCampaignImpactPdf() {
       <div><strong style="color:#374151">Campaign:</strong> ${escHtml(campaign_start)} → ${escHtml(campaign_end)}</div>
     </div>
   </div>
-  <div style="background:#eff6ff;color:#2563eb;font-size:9px;font-weight:700;text-transform:uppercase;
+  <div style="background:#e9f2ff;color:#1e70ff;font-size:9px;font-weight:700;text-transform:uppercase;
               letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
     Generated ${new Date().toLocaleDateString()}
   </div>
@@ -2583,10 +2601,10 @@ function downloadCampaignImpactPdf() {
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
   ${[
     [`Total (Baseline)`, baseline.total, "#374151"],
-    [`Total (Current)`, current.total, "#2563eb"],
+    [`Total (Current)`, current.total, "#1e70ff"],
     ["Change", `${totalChange >= 0 ? "+" : ""}${totalChange.toFixed(1)}%`, totalChange >= 0 ? "#16a34a" : "#dc2626"],
     [`Avg/day before ${escHtml(campaign_start)}`, preAvg.toFixed(1), "#374151"],
-    [`Avg/day during campaign`, duringAvg.toFixed(1), "#2563eb"],
+    [`Avg/day during campaign`, duringAvg.toFixed(1), "#1e70ff"],
     ["Daily Load Change", `${avgChange >= 0 ? "+" : ""}${avgChange.toFixed(1)}%`, avgChange >= 0 ? "#16a34a" : "#dc2626"],
     ...(post_campaign.days > 0 ? [
       [`Avg/day after ${escHtml(campaign_end)}`, postAvg.toFixed(1), "#0369a1"],
@@ -2606,7 +2624,7 @@ function downloadCampaignImpactPdf() {
 <div class="card">
   <div class="sec-title">Key Findings</div>
   <ul style="list-style:none;padding:0;margin:0">
-    ${buildCampaignKeyFindings(data).map(f => `<li style="font-size:10px;color:#374151;line-height:1.6;margin-bottom:6px;padding-left:14px;position:relative"><span style="position:absolute;left:0;color:#2563eb">•</span>${f}</li>`).join("")}
+    ${buildCampaignKeyFindings(data).map(f => `<li style="font-size:10px;color:#374151;line-height:1.6;margin-bottom:6px;padding-left:14px;position:relative"><span style="position:absolute;left:0;color:#1e70ff">•</span>${f}</li>`).join("")}
   </ul>
 </div>
 
@@ -3190,14 +3208,14 @@ function downloadReportPdf() {
             font-size: 8px; color: #9ca3af; text-align: center; }
 </style>
 </head><body>
-
+${opoLetterheadHtml()}
 <!-- Header -->
-<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #2563eb;padding-bottom:10px;margin-bottom:12px">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid ${OPO_BRAND_BLUE};padding-bottom:10px;margin-bottom:12px">
   <div>
     <div style="font-size:22px;font-weight:900;color:#111827;line-height:1.1">${escHtml(r.employee)}</div>
     <div style="font-size:12px;color:#6b7280;margin-top:3px">${monthLabel(r.month)} Performance Report</div>
   </div>
-  <div style="background:#eff6ff;color:#2563eb;font-size:9px;font-weight:700;text-transform:uppercase;
+  <div style="background:#e9f2ff;color:#1e70ff;font-size:9px;font-weight:700;text-transform:uppercase;
               letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
     Generated ${new Date(r.generated_at).toLocaleDateString()}
   </div>
@@ -3206,7 +3224,7 @@ function downloadReportPdf() {
 <!-- Stats row -->
 <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:10px">
   ${[
-    ["Total Chats",    r.total_chats,                         "#2563eb"],
+    ["Total Chats",    r.total_chats,                         "#1e70ff"],
     ["In Shift",       r.chats_in_shift ?? "—",               "#374151"],
     ["Reviewed",       r.reviewed_chats,                      "#7c3aed"],
     ["Missed",         r.missed_chats,                        "#dc2626"],
