@@ -1999,10 +1999,10 @@ async function loadTotalChatsReport() {
     _activeTotalChatsReport = { dateFrom, dateTo, employeeFilter: employee, data };
     const rows = employees.map(e => `
       <tr class="border-t border-[#1a2d4a]">
-        <td class="px-4 py-2.5 text-white text-sm">${escHtml(e.name)}</td>
-        <td class="px-4 py-2.5 text-right text-slate-400 text-sm">${e.livechat ?? 0}</td>
-        <td class="px-4 py-2.5 text-right text-slate-400 text-sm">${e.chatwoot ?? 0}</td>
-        <td class="px-4 py-2.5 text-right text-[#F5B800] font-semibold text-sm">${e.total}</td>
+        <td class="px-4 py-2.5 text-white text-sm text-center">${escHtml(e.name)}</td>
+        <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${e.livechat ?? 0}</td>
+        <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${e.chatwoot ?? 0}</td>
+        <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${e.total}</td>
       </tr>`).join("");
     content.innerHTML = `
       <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
@@ -2013,11 +2013,11 @@ async function loadTotalChatsReport() {
         <div class="overflow-x-auto">
           <table class="w-full">
             <thead>
-              <tr class="text-left text-xs text-slate-500 uppercase">
+              <tr class="text-center text-xs text-slate-500 uppercase">
                 <th class="px-4 py-2 font-medium">Employee</th>
-                <th class="px-4 py-2 font-medium text-right">LiveChat</th>
-                <th class="px-4 py-2 font-medium text-right">Chatwoot</th>
-                <th class="px-4 py-2 font-medium text-right">Total</th>
+                <th class="px-4 py-2 font-medium">LiveChat</th>
+                <th class="px-4 py-2 font-medium">Chatwoot</th>
+                <th class="px-4 py-2 font-medium">Total</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -2041,10 +2041,10 @@ function downloadTotalChatsPdf() {
 
   const rows = employees.map((e, i) => `
     <tr style="background:${i % 2 ? "#f9fafb" : "#fff"}">
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#1f2937">${escHtml(e.name)}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#6b7280;text-align:right">${e.livechat ?? 0}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#6b7280;text-align:right">${e.chatwoot ?? 0}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;font-weight:700;color:#111827;text-align:right">${e.total}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#1f2937;text-align:center">${escHtml(e.name)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#6b7280;text-align:center">${e.livechat ?? 0}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;color:#6b7280;text-align:center">${e.chatwoot ?? 0}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5px;font-weight:700;color:#111827;text-align:center">${e.total}</td>
     </tr>`).join("");
 
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
@@ -2055,8 +2055,8 @@ function downloadTotalChatsPdf() {
   body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1f2937; background: #fff; }
   table { width: 100%; border-collapse: collapse; }
   th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
-       color: #6b7280; text-align: left; padding: 8px 10px; border-bottom: 2px solid #2563eb; }
-  th.num { text-align: right; }
+       color: #6b7280; text-align: center; padding: 8px 10px; border-bottom: 2px solid #2563eb; }
+  th.num { text-align: center; }
   .footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid #e5e7eb;
             font-size: 8px; color: #9ca3af; text-align: center; }
 </style>
@@ -2221,14 +2221,18 @@ function renderCampaignReport(content, data) {
       <div class="text-xl font-bold" style="color:${color}">${val}</div>
     </div>`;
 
-  const empRows = employees.map(e => `
+  const empRows = employees.map(e => {
+    const pct = e.total ? (e.during_campaign_total / e.total) * 100 : 0;
+    return `
     <tr class="border-t border-[#1a2d4a]">
-      <td class="px-4 py-2.5 text-white text-sm">${escHtml(e.name)}</td>
-      <td class="px-4 py-2.5 text-right text-slate-400 text-sm">${e.livechat}</td>
-      <td class="px-4 py-2.5 text-right text-slate-400 text-sm">${e.chatwoot}</td>
-      <td class="px-4 py-2.5 text-right text-white text-sm">${e.total}</td>
-      <td class="px-4 py-2.5 text-right text-[#F5B800] font-semibold text-sm">${e.during_campaign_total}</td>
-    </tr>`).join("");
+      <td class="px-4 py-2.5 text-white text-sm text-center">${escHtml(e.name)}</td>
+      <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${e.livechat}</td>
+      <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${e.chatwoot}</td>
+      <td class="px-4 py-2.5 text-center text-white text-sm">${e.total}</td>
+      <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${e.during_campaign_total}</td>
+      <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${pct.toFixed(1)}%</td>
+    </tr>`;
+  }).join("");
 
   const statCards = [
     statCard(`Total (${escHtml(baseline.date_from)} → ${escHtml(baseline.date_to)})`, baseline.total, "#94a3b8"),
@@ -2272,12 +2276,13 @@ function renderCampaignReport(content, data) {
       <div class="overflow-x-auto">
         <table class="w-full">
           <thead>
-            <tr class="text-left text-xs text-slate-500 uppercase">
+            <tr class="text-center text-xs text-slate-500 uppercase">
               <th class="px-4 py-2 font-medium">Employee</th>
-              <th class="px-4 py-2 font-medium text-right">LiveChat</th>
-              <th class="px-4 py-2 font-medium text-right">Chatwoot</th>
-              <th class="px-4 py-2 font-medium text-right">Total</th>
-              <th class="px-4 py-2 font-medium text-right">During Campaign</th>
+              <th class="px-4 py-2 font-medium">LiveChat</th>
+              <th class="px-4 py-2 font-medium">Chatwoot</th>
+              <th class="px-4 py-2 font-medium">Total</th>
+              <th class="px-4 py-2 font-medium">During Campaign</th>
+              <th class="px-4 py-2 font-medium">% During Campaign</th>
             </tr>
           </thead>
           <tbody>${empRows}</tbody>
@@ -2354,14 +2359,18 @@ function downloadCampaignImpactPdf() {
   const win = window.open("", "_blank");
   if (!win) { showStatus("Allow popups to download PDF", "error"); return; }
 
-  const rows = employees.map((e, i) => `
+  const rows = employees.map((e, i) => {
+    const pct = e.total ? (e.during_campaign_total / e.total) * 100 : 0;
+    return `
     <tr style="background:${i % 2 ? "#f9fafb" : "#fff"}">
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#1f2937">${escHtml(e.name)}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#6b7280;text-align:right">${e.livechat}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#6b7280;text-align:right">${e.chatwoot}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#111827;text-align:right">${e.total}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#2563eb;text-align:right">${e.during_campaign_total}</td>
-    </tr>`).join("");
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#1f2937;text-align:center">${escHtml(e.name)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#6b7280;text-align:center">${e.livechat}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#6b7280;text-align:center">${e.chatwoot}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#111827;text-align:center">${e.total}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#2563eb;text-align:center">${e.during_campaign_total}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;color:#2563eb;text-align:center">${pct.toFixed(1)}%</td>
+    </tr>`;
+  }).join("");
 
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Campaign Impact Report</title>
@@ -2371,8 +2380,8 @@ function downloadCampaignImpactPdf() {
   body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1f2937; background: #fff; }
   table { width: 100%; border-collapse: collapse; }
   th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
-       color: #6b7280; text-align: left; padding: 8px 10px; border-bottom: 2px solid #2563eb; }
-  th.num { text-align: right; }
+       color: #6b7280; text-align: center; padding: 8px 10px; border-bottom: 2px solid #2563eb; }
+  th.num { text-align: center; }
   .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
   .sec-title { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
                color: #6b7280; margin-bottom: 8px; }
@@ -2385,7 +2394,11 @@ function downloadCampaignImpactPdf() {
 <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #2563eb;padding-bottom:10px;margin-bottom:14px">
   <div>
     <div style="font-size:20px;font-weight:900;color:#111827;line-height:1.1">Campaign Impact Report</div>
-    <div style="font-size:11px;color:#6b7280;margin-top:4px">Baseline ${escHtml(baseline.date_from)} → ${escHtml(baseline.date_to)}  vs.  Current ${escHtml(current.date_from)} → ${escHtml(current.date_to)}  ·  Campaign ${escHtml(campaign_start)} → ${escHtml(campaign_end)}</div>
+    <div style="font-size:10.5px;color:#6b7280;margin-top:5px;line-height:1.6">
+      <div><strong style="color:#374151">Baseline:</strong> ${escHtml(baseline.date_from)} → ${escHtml(baseline.date_to)}</div>
+      <div><strong style="color:#374151">Current:</strong> ${escHtml(current.date_from)} → ${escHtml(current.date_to)}</div>
+      <div><strong style="color:#374151">Campaign:</strong> ${escHtml(campaign_start)} → ${escHtml(campaign_end)}</div>
+    </div>
   </div>
   <div style="background:#eff6ff;color:#2563eb;font-size:9px;font-weight:700;text-transform:uppercase;
               letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
@@ -2430,6 +2443,7 @@ ${dailyImg ? `<div class="card"><div class="sec-title">Daily Volume — Current 
       <th class="num">Chatwoot</th>
       <th class="num">Total</th>
       <th class="num">During Campaign</th>
+      <th class="num">% During Campaign</th>
     </tr>
   </thead>
   <tbody>${rows}</tbody>
