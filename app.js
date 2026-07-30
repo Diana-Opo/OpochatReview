@@ -1462,8 +1462,8 @@ async function loadDashboard() {
       },
       options: {
         scales: {
-          y: { min: 0, max: 10, grid: { color: "#f1f5f9" } },
-          x: { grid: { display: false } },
+          y: { min: 0, max: 10, grid: { color: "rgba(148,163,184,0.15)" }, ticks: { color: "#ffffff" } },
+          x: { grid: { display: false }, ticks: { color: "#ffffff" } },
         },
         plugins: {
           legend: { display: false },
@@ -1481,7 +1481,7 @@ async function loadDashboard() {
           },
           datalabels: {
             anchor: "end", align: "end", offset: 2,
-            color: "#374151", font: { weight: "bold", size: 12 },
+            color: "#ffffff", font: { weight: "bold", size: 12 },
             formatter: (v, ctx) => {
               const i = ctx.dataIndex;
               return (v > 0 ? v.toFixed(1) + "\n" : "") + `(${totals[i]})`;
