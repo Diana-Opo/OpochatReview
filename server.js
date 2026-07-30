@@ -237,7 +237,7 @@ function cwHeaders() {
 
 // Cap concurrent Chatwoot requests — checking each conversation for private notes
 // fires one request per conversation, which can otherwise fan out to dozens at once.
-const CW_MAX_CONCURRENT = 5;
+const CW_MAX_CONCURRENT = 10;
 let cwActive = 0;
 const cwQueue = [];
 
@@ -432,7 +432,7 @@ function lcAuth() {
 // Cap concurrent LiveChat requests — parallel report fetches (e.g. per-agent loops
 // across a 2-period campaign comparison) can otherwise fire dozens at once and trip
 // LiveChat's rate limit.
-const LC_MAX_CONCURRENT = 3;
+const LC_MAX_CONCURRENT = 5;
 let lcActive = 0;
 const lcQueue = [];
 
@@ -2078,7 +2078,7 @@ app.get("/api/stats", authMiddleware, async (req, res) => {
 });
 
 // Shared: count all chats (reviewed or not) per employee over an arbitrary date range.
-async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
+async function computeChatTotals({ dateFrom, dateTo, employeeFilter, includeSupervised = true }) {
   const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
   const fromDate = new Date(new Date(`${dateFrom}T00:00:00.000Z`).getTime() - ISTANBUL_OFFSET_MS);
   const toDate   = new Date(new Date(`${dateTo}T23:59:59.999Z`).getTime() - ISTANBUL_OFFSET_MS);
@@ -2242,17 +2242,20 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
 
       // Check each matched conversation for a private/internal note left by a DIFFERENT
       // agent than the one assigned — excludes an agent's own self-notes. Bounded
-      // concurrency — this is one extra request per conversation.
-      await Promise.all(matched.map(async ({ id, employee, assigneeId }) => {
-        try {
-          const release = await cwAcquire();
-          let msgData;
-          try { msgData = await cwGet(`/conversations/${id}/messages`); } finally { release(); }
-          const msgs = msgData.payload || msgData || [];
-          const hasNote = Array.isArray(msgs) && msgs.some(m => m.private === true && String(m.sender?.id) !== String(assigneeId));
-          if (hasNote) emp[employee].supervised++;
-        } catch (e) { console.error(`[total-chats] cw private-note check failed for ${id}:`, e.message); }
-      }));
+      // concurrency — this is one extra request per conversation, so skip entirely
+      // when the caller doesn't need it (e.g. a baseline period used only for totals).
+      if (includeSupervised) {
+        await Promise.all(matched.map(async ({ id, employee, assigneeId }) => {
+          try {
+            const release = await cwAcquire();
+            let msgData;
+            try { msgData = await cwGet(`/conversations/${id}/messages`); } finally { release(); }
+            const msgs = msgData.payload || msgData || [];
+            const hasNote = Array.isArray(msgs) && msgs.some(m => m.private === true && String(m.sender?.id) !== String(assigneeId));
+            if (hasNote) emp[employee].supervised++;
+          } catch (e) { console.error(`[total-chats] cw private-note check failed for ${id}:`, e.message); }
+        }));
+      }
     } catch (e) { console.error("[total-chats] Chatwoot error:", e.message); }
   }
 
@@ -2293,7 +2296,7 @@ app.get("/api/reports/campaign-impact", authMiddleware, async (req, res) => {
     }
 
     const [baseline, current] = await Promise.all([
-      computeChatTotals({ dateFrom: baseline_from, dateTo: baseline_to, employeeFilter: null }),
+      computeChatTotals({ dateFrom: baseline_from, dateTo: baseline_to, employeeFilter: null, includeSupervised: false }),
       computeChatTotals({ dateFrom: current_from, dateTo: current_to, employeeFilter: null }),
     ]);
 
