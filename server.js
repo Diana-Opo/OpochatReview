@@ -185,6 +185,18 @@ if (process.env.DATABASE_URL) {
     created_by TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
   )`).then(() => console.log("[db] saved_reports table ready")).catch(e => console.error("[db] saved_reports init:", e.message));
+
+  // ── claude_usage table (per-call token usage, for cost reporting) ──────────
+  pool.query(`CREATE TABLE IF NOT EXISTS claude_usage (
+    id SERIAL PRIMARY KEY,
+    purpose TEXT NOT NULL,
+    model TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL,
+    output_tokens INTEGER NOT NULL,
+    chat_id TEXT,
+    employee TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`).then(() => console.log("[db] claude_usage table ready")).catch(e => console.error("[db] claude_usage init:", e.message));
 }
 const LC_API = "https://api.livechatinc.com/v3.6/agent/action";
 const LC_CONFIG_API = "https://api.livechatinc.com/v3.6/configuration/action";
@@ -434,6 +446,27 @@ app.post("/api/change-password", authMiddleware, async (req, res) => {
 });
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+// $ per 1M tokens. Add an entry here if a different Claude model is ever used for review.
+const CLAUDE_PRICING = {
+  "claude-sonnet-4-6": { input: 3.00, output: 15.00 },
+};
+
+function calcClaudeCost(model, inputTokens, outputTokens) {
+  const p = CLAUDE_PRICING[model] || CLAUDE_PRICING["claude-sonnet-4-6"];
+  return (inputTokens / 1e6) * p.input + (outputTokens / 1e6) * p.output;
+}
+
+// Fire-and-forget usage logging — never blocks or fails the review flow.
+async function logClaudeUsage(purpose, model, inputTokens, outputTokens, meta = {}) {
+  if (!pool) return;
+  try {
+    await pool.query(
+      "INSERT INTO claude_usage (purpose, model, input_tokens, output_tokens, chat_id, employee) VALUES ($1,$2,$3,$4,$5,$6)",
+      [purpose, model, inputTokens || 0, outputTokens || 0, meta.chatId || null, meta.employee || null]
+    );
+  } catch (e) { console.error("[claude_usage] log failed:", e.message); }
+}
 
 function lcAuth() {
   const raw = `${process.env.LIVECHAT_ACCOUNT_ID}:${process.env.LIVECHAT_PAT}`;
@@ -1300,6 +1333,7 @@ ${transcript}`;
     throw new Error(`Claude API error: ${res.status} ${errBody}`);
   }
   const data = await res.json();
+  logClaudeUsage("chat_review", "claude-sonnet-4-6", data.usage?.input_tokens, data.usage?.output_tokens, { chatId, employee: agentName });
   let text = data.content[0].text.trim();
   if (text.startsWith("```")) {
     text = text.replace(/```json?\n?/, "").replace(/```$/, "").trim();
@@ -2509,6 +2543,81 @@ app.get("/api/reports/platform-status", authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Claude API cost report (today/week/month/custom range) from real tracked usage.
+// Only reflects usage logged since claude_usage tracking was added — no historical
+// backfill, since actual token counts weren't recorded before that.
+app.get("/api/reports/platform-costs", authMiddleware, async (req, res) => {
+  try {
+    if (!pool) {
+      return res.json({ tracking_since: null, today: null, week: null, month: null, custom: null, custom_range: null, daily: {}, by_purpose: {} });
+    }
+    const { date_from, date_to } = req.query;
+
+    const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
+    const pad = (n) => String(n).padStart(2, "0");
+    const nowIst = new Date(Date.now() + ISTANBUL_OFFSET_MS);
+    const y = nowIst.getUTCFullYear(), m = nowIst.getUTCMonth(), d = nowIst.getUTCDate();
+    const todayKey = `${y}-${pad(m + 1)}-${pad(d)}`;
+    const monthFromKey = `${y}-${pad(m + 1)}-01`;
+    const dow = nowIst.getUTCDay();
+    const daysSinceMonday = (dow + 6) % 7;
+    const weekFromKey = new Date(nowIst.getTime() - daysSinceMonday * 86400000).toISOString().slice(0, 10);
+
+    const rows = await pool.query(`
+      SELECT (created_at AT TIME ZONE 'UTC' + INTERVAL '3 hours')::date AS day,
+             purpose, model,
+             SUM(input_tokens)::bigint AS input_tokens,
+             SUM(output_tokens)::bigint AS output_tokens,
+             COUNT(*)::int AS calls
+      FROM claude_usage
+      GROUP BY day, purpose, model
+      ORDER BY day
+    `);
+
+    const daily = {};
+    const byPurpose = {};
+    let earliestDay = null;
+
+    for (const r of rows.rows) {
+      const dayKey = r.day.toISOString().slice(0, 10);
+      if (!earliestDay || dayKey < earliestDay) earliestDay = dayKey;
+      const inputTokens = Number(r.input_tokens), outputTokens = Number(r.output_tokens);
+      const cost = calcClaudeCost(r.model, inputTokens, outputTokens);
+
+      if (!daily[dayKey]) daily[dayKey] = { cost: 0, input_tokens: 0, output_tokens: 0, calls: 0 };
+      daily[dayKey].cost += cost;
+      daily[dayKey].input_tokens += inputTokens;
+      daily[dayKey].output_tokens += outputTokens;
+      daily[dayKey].calls += r.calls;
+
+      if (!byPurpose[r.purpose]) byPurpose[r.purpose] = { cost: 0, calls: 0 };
+      byPurpose[r.purpose].cost += cost;
+      byPurpose[r.purpose].calls += r.calls;
+    }
+
+    function sumRange(fromKey, toKey) {
+      let cost = 0, calls = 0, inputTokens = 0, outputTokens = 0;
+      for (const [day, dd] of Object.entries(daily)) {
+        if (day >= fromKey && day <= toKey) {
+          cost += dd.cost; calls += dd.calls; inputTokens += dd.input_tokens; outputTokens += dd.output_tokens;
+        }
+      }
+      return { cost, calls, input_tokens: inputTokens, output_tokens: outputTokens };
+    }
+
+    res.json({
+      tracking_since: earliestDay,
+      today: sumRange(todayKey, todayKey),
+      week: sumRange(weekFromKey, todayKey),
+      month: sumRange(monthFromKey, todayKey),
+      custom: (date_from && date_to) ? sumRange(date_from, date_to) : null,
+      custom_range: (date_from && date_to) ? { from: date_from, to: date_to } : null,
+      daily,
+      by_purpose: byPurpose,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Dashboard stats for current month — independent of Chat Review page
 app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
   try {
@@ -3369,6 +3478,7 @@ Analyze these notes and respond ONLY with a valid JSON object in this exact form
           }),
         });
         const data = await res.json();
+        logClaudeUsage("monthly_report", "claude-sonnet-4-6", data.usage?.input_tokens, data.usage?.output_tokens, { employee });
         const raw = data?.content?.[0]?.text || "";
         const jsonMatch = raw.match(/\{[\s\S]*\}/);
         if (jsonMatch) {

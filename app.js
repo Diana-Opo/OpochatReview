@@ -180,7 +180,7 @@ async function initApp() {
 
   // Navigate to correct page immediately — before any async calls so there's no flash
   const lastPage = localStorage.getItem("lastPage");
-  const validPages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "employees", "config"];
+  const validPages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "employees", "config"];
   const adminPages = ["employees", "config"];
   const startPage = validPages.includes(lastPage) && (!adminPages.includes(lastPage) || currentUser.role === "admin")
     ? lastPage : "chats";
@@ -199,7 +199,7 @@ async function initApp() {
 }
 
 // ── Page navigation ───────────────────────────────────────────────────────────
-const REPORT_PAGES = ["reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status"];
+const REPORT_PAGES = ["reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs"];
 
 function toggleReportsMenu() {
   const submenu = document.getElementById("reports-submenu");
@@ -211,7 +211,7 @@ function toggleReportsMenu() {
 }
 
 function showPage(name) {
-  const pages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "employees", "config"];
+  const pages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "employees", "config"];
   pages.forEach(p => {
     document.getElementById(`page-${p}`)?.classList.add("hidden");
     const btn = document.getElementById(`nav-${p}`);
@@ -239,6 +239,7 @@ function showPage(name) {
   if (name === "report-total-chats") openTotalChatsReport();
   if (name === "report-campaign") openCampaignImpactReport();
   if (name === "report-platform-status") loadPlatformStatus();
+  if (name === "report-platform-costs") openPlatformCostsPage();
   if (name === "employees") openSettings();
   if (name === "config") loadKnowledgeStatus();
   localStorage.setItem("lastPage", name);
@@ -2872,6 +2873,138 @@ function renderPlatformStatusChart(p) {
         x: { grid: { display: false }, ticks: { color: "#94a3b8", maxRotation: 90, minRotation: 90 } },
       },
       plugins: { legend: { display: false } },
+    },
+  });
+}
+
+// ── Platform Costs ──────────────────────────────────────────────────────────
+
+let _platformCostsData = null;
+let _platformCostsChart = null;
+
+function openPlatformCostsPage() {
+  const fromEl = document.getElementById("costsCustomFrom");
+  const toEl = document.getElementById("costsCustomTo");
+  if (fromEl && !fromEl.value) {
+    const pad = (n) => String(n).padStart(2, "0");
+    const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const now = new Date();
+    const weekAgo = new Date(now.getTime() - 6 * 86400000);
+    fromEl.value = fmt(weekAgo);
+    toEl.value = fmt(now);
+  }
+  loadPlatformCosts();
+}
+
+function fmtCost(v) {
+  return v == null ? "—" : "$" + v.toFixed(2);
+}
+
+async function loadPlatformCosts() {
+  const content = document.getElementById("platformCostsContent");
+  if (!content) return;
+  content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm"><span class="spinner"></span></div>`;
+  const dateFrom = document.getElementById("costsCustomFrom")?.value;
+  const dateTo = document.getElementById("costsCustomTo")?.value;
+  try {
+    const params = new URLSearchParams();
+    if (dateFrom && dateTo) { params.set("date_from", dateFrom); params.set("date_to", dateTo); }
+    const res = await authFetch(`/api/reports/platform-costs?${params.toString()}`);
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || res.status);
+    _platformCostsData = data;
+    renderPlatformCosts();
+  } catch (e) {
+    content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderPlatformCosts() {
+  const content = document.getElementById("platformCostsContent");
+  const data = _platformCostsData;
+  if (!content || !data) return;
+
+  if (!data.tracking_since) {
+    content.innerHTML = `
+      <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-8 text-center">
+        <p class="text-slate-400 text-sm">${data.today == null
+          ? "Cost tracking requires a database — DATABASE_URL isn't configured on this deployment."
+          : "No Claude usage tracked yet. Costs will appear here once reviews are run."}</p>
+      </div>`;
+    return;
+  }
+
+  const statCard = (label, val, color) => `
+    <div class="bg-[#0f1d35] rounded-xl border border-[#1a2d4a] p-4 text-center">
+      <div class="text-xs text-slate-500 uppercase font-medium mb-1">${label}</div>
+      <div class="text-xl font-bold" style="color:${color}">${val}</div>
+    </div>`;
+
+  const purposeLabel = { chat_review: "Chat Reviews", monthly_report: "Monthly Report Analysis" };
+  const purposeRows = Object.entries(data.by_purpose || {}).map(([k, v]) => `
+    <tr class="border-t border-[#1a2d4a]">
+      <td class="px-4 py-2.5 text-white text-sm text-center">${escHtml(purposeLabel[k] || k)}</td>
+      <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${v.calls}</td>
+      <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${fmtCost(v.cost)}</td>
+    </tr>`).join("");
+
+  content.innerHTML = `
+    <p class="text-xs text-slate-500 mb-4">Tracking Claude API usage since ${escHtml(data.tracking_since)}. Costs from before that date weren't recorded and can't be shown.</p>
+    <div class="grid grid-cols-3 gap-4 mb-5">
+      ${statCard("Today", fmtCost(data.today.cost), "#F5B800")}
+      ${statCard("This Week", fmtCost(data.week.cost), "#94a3b8")}
+      ${statCard("This Month", fmtCost(data.month.cost), "#94a3b8")}
+    </div>
+
+    ${data.custom ? `
+    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-4 mb-5">
+      <div class="text-xs text-slate-500 uppercase font-medium mb-1">Custom Range: ${escHtml(data.custom_range.from)} → ${escHtml(data.custom_range.to)}</div>
+      <div class="text-2xl font-bold text-[#F5B800]">${fmtCost(data.custom.cost)}</div>
+      <div class="text-xs text-slate-500 mt-1">${data.custom.calls} Claude calls · ${(data.custom.input_tokens / 1000).toFixed(0)}K input / ${(data.custom.output_tokens / 1000).toFixed(0)}K output tokens</div>
+    </div>` : ""}
+
+    <div class="grid grid-cols-2 gap-5 mb-5">
+      <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-4">
+        <div class="text-sm font-semibold text-white mb-3">Daily Cost</div>
+        ${Object.keys(data.daily || {}).length
+          ? `<canvas id="platformCostsCanvas" height="140"></canvas>`
+          : `<p class="text-center text-slate-600 text-sm py-6">No data yet</p>`}
+      </div>
+      <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
+        <div class="px-5 py-3 border-b border-[#1a2d4a]">
+          <span class="font-semibold text-white text-sm">Cost by Purpose</span>
+        </div>
+        <table class="w-full">
+          <thead>
+            <tr class="text-center text-xs text-slate-500 uppercase">
+              <th class="px-4 py-2 font-medium">Purpose</th>
+              <th class="px-4 py-2 font-medium">Calls</th>
+              <th class="px-4 py-2 font-medium">Cost</th>
+            </tr>
+          </thead>
+          <tbody>${purposeRows || `<tr><td colspan="3" class="text-center text-slate-600 text-sm py-6">No data</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>`;
+
+  renderPlatformCostsChart(data.daily);
+}
+
+function renderPlatformCostsChart(daily) {
+  if (_platformCostsChart) { try { _platformCostsChart.destroy(); } catch (_) {} }
+  const canvas = document.getElementById("platformCostsCanvas");
+  if (!canvas) return;
+  const days = Object.keys(daily || {}).sort().slice(-30);
+  const costs = days.map(d => daily[d].cost);
+  _platformCostsChart = new Chart(canvas.getContext("2d"), {
+    type: "bar",
+    data: { labels: days.map(d => d.slice(5)), datasets: [{ label: "Cost", data: costs, backgroundColor: "#F5B800", borderRadius: 4 }] },
+    options: {
+      scales: {
+        y: { beginAtZero: true, grid: { color: "#1a2d4a" }, ticks: { color: "#94a3b8", callback: (v) => "$" + v } },
+        x: { grid: { display: false }, ticks: { color: "#94a3b8", maxRotation: 90, minRotation: 90 } },
+      },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => "$" + ctx.parsed.y.toFixed(3) } } },
     },
   });
 }
