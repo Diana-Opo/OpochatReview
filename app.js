@@ -2139,6 +2139,14 @@ function downloadTotalChatsPdf() {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   ${PDF_FORCE_PRINT_COLORS_CSS}
   html { background: ${PDF_BG}; }
+  /* Full-bleed background — position:fixed repeats on every printed page (unlike
+     @page background, which browsers render inconsistently), and bleeds past the
+     @page margin so no white strip shows at the top/bottom/side of any page. */
+  body::before {
+    content: ""; position: fixed; top: -1.5cm; left: -16mm; right: -16mm; bottom: -1.5cm;
+    background: ${PDF_BG}; z-index: -1;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
   table { width: 100%; border-collapse: collapse; }
   th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
@@ -2587,12 +2595,21 @@ function downloadCampaignImpactPdf() {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   ${PDF_FORCE_PRINT_COLORS_CSS}
   html { background: ${PDF_BG}; }
+  /* Full-bleed background — position:fixed repeats on every printed page (unlike
+     @page background, which browsers render inconsistently), and bleeds past the
+     @page margin so no white strip shows at the top/bottom/side of any page. */
+  body::before {
+    content: ""; position: fixed; top: -1.5cm; left: -16mm; right: -16mm; bottom: -1.5cm;
+    background: ${PDF_BG}; z-index: -1;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
   table { width: 100%; border-collapse: collapse; }
   th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
        color: ${PDF_TEXT_DIM}; text-align: center; padding: 8px 10px; border-bottom: 2px solid ${OPO_BRAND_BLUE}; }
   th.num { text-align: center; }
-  .card { background: ${PDF_CARD_BG}; border: 1px solid ${PDF_BORDER}; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
+  .card { background: ${PDF_CARD_BG}; border: 1px solid ${PDF_BORDER}; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;
+          page-break-inside: avoid; break-inside: avoid; }
   .sec-title { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
                color: ${PDF_TEXT_DIM}; margin-bottom: 8px; }
   .footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid ${PDF_BORDER};
@@ -3346,9 +3363,18 @@ function downloadReportPdf() {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   ${PDF_FORCE_PRINT_COLORS_CSS}
   html { background: ${PDF_BG}; }
+  /* Full-bleed background — position:fixed repeats on every printed page (unlike
+     @page background, which browsers render inconsistently), and bleeds past the
+     @page margin so no white strip shows at the top/bottom/side of any page. */
+  body::before {
+    content: ""; position: fixed; top: -1.5cm; left: -16mm; right: -16mm; bottom: -1.5cm;
+    background: ${PDF_BG}; z-index: -1;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
 
-  .card { background: ${PDF_CARD_BG}; border: 1px solid ${PDF_BORDER}; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+  .card { background: ${PDF_CARD_BG}; border: 1px solid ${PDF_BORDER}; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px;
+          page-break-inside: avoid; break-inside: avoid; }
   .sec-title { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
                color: ${PDF_TEXT_DIM}; margin-bottom: 8px; }
   .srow { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
