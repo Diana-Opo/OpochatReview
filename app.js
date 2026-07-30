@@ -2587,8 +2587,26 @@ ${dailyImg ? `<div class="card"><div class="sec-title">Daily Volume — Current 
 
 // ── Saved Report Snapshots (Total Chats / Campaign Impact) ────────────────────
 
+let _saveReportModalResolve = null;
+
+function openSaveReportModal(defaultLabel) {
+  return new Promise((resolve) => {
+    _saveReportModalResolve = resolve;
+    const input = document.getElementById("saveReportLabelInput");
+    input.value = defaultLabel;
+    document.getElementById("saveReportModal").classList.remove("hidden");
+    setTimeout(() => { input.focus(); input.select(); }, 50);
+  });
+}
+
+function closeSaveReportModal(confirmed) {
+  document.getElementById("saveReportModal").classList.add("hidden");
+  const value = confirmed ? document.getElementById("saveReportLabelInput").value.trim() : null;
+  if (_saveReportModalResolve) { _saveReportModalResolve(value || null); _saveReportModalResolve = null; }
+}
+
 async function saveReportSnapshot(type, params, data, defaultLabel) {
-  const label = prompt("Name this report:", defaultLabel);
+  const label = await openSaveReportModal(defaultLabel);
   if (!label) return;
   try {
     const res = await authFetch("/api/saved-reports", {

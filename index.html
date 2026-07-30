@@ -585,6 +585,25 @@
     </div>
   </div>
 
+  <!-- ── Save Report Modal ─────────────────────────────────────────────────── -->
+  <div id="saveReportModal" class="hidden fixed inset-0 bg-[#060d1e]/90 z-[110] flex items-center justify-center p-4"
+    onclick="if (event.target === this) closeSaveReportModal(false)">
+    <div class="bg-[#0f1d35] rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-[#1a2d4a]">
+      <div class="flex items-center gap-2 mb-1">
+        <div class="w-9 h-9 bg-[#F5B800] rounded-xl flex items-center justify-center text-black text-lg">💾</div>
+        <h2 class="text-lg font-bold text-white">Save Report</h2>
+      </div>
+      <p class="text-xs text-slate-400 mb-4">Give this report a name so you can find it later.</p>
+      <input id="saveReportLabelInput" type="text" placeholder="Report name"
+        onkeydown="if (event.key === 'Enter') closeSaveReportModal(true); if (event.key === 'Escape') closeSaveReportModal(false);"
+        class="w-full bg-[#0a1628] border border-[#1a2d4a] text-white placeholder-slate-500 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30 mb-4" />
+      <div class="flex justify-end gap-2">
+        <button onclick="closeSaveReportModal(false)" class="px-4 py-2 rounded-lg text-sm text-slate-300 hover:bg-[#1a2d4a] transition">Cancel</button>
+        <button onclick="closeSaveReportModal(true)" class="px-4 py-2 rounded-lg text-sm font-semibold bg-[#F5B800] text-black hover:bg-[#D4A000] transition">Save</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Login Modal ───────────────────────────────────────────────────────── -->
   <div id="loginModal" class="hidden fixed inset-0 bg-[#060d1e]/90 z-[100] flex items-center justify-center p-4">
     <div class="bg-[#0f1d35] rounded-2xl shadow-2xl w-full max-w-sm p-8 border border-[#1a2d4a]">
