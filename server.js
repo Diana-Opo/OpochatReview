@@ -187,27 +187,39 @@ function chatwootEnabled() { return !!(CHATWOOT_BASE_URL && CHATWOOT_ACCOUNT_ID 
 
 // Devise token auth session (refreshed automatically on 401)
 let cwSession = null; // { accessToken, client, uid }
+let cwLastSignInError = null;
 
 async function cwSignIn() {
-  if (!CHATWOOT_EMAIL || !CHATWOOT_PASSWORD) return false;
+  if (!CHATWOOT_EMAIL || !CHATWOOT_PASSWORD) { cwLastSignInError = "CHATWOOT_EMAIL/CHATWOOT_PASSWORD not set"; return false; }
   try {
     const r = await fetch(`${CHATWOOT_BASE_URL}/auth/sign_in`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: CHATWOOT_EMAIL, password: CHATWOOT_PASSWORD }),
     });
-    if (!r.ok) { console.error("[chatwoot] sign_in failed:", r.status); return false; }
+    if (!r.ok) {
+      const body = await r.text().catch(() => "");
+      cwLastSignInError = `sign_in HTTP ${r.status}: ${body.slice(0, 200)}`;
+      console.error("[chatwoot] sign_in failed:", cwLastSignInError);
+      return false;
+    }
     const accessToken = r.headers.get("access-token");
     const client = r.headers.get("client");
     const uid = r.headers.get("uid");
     if (accessToken && client && uid) {
       cwSession = { accessToken, client, uid };
+      cwLastSignInError = null;
       console.log("[chatwoot] signed in as", uid);
       return true;
     }
-    console.error("[chatwoot] sign_in: missing session headers");
+    cwLastSignInError = "sign_in ok but missing access-token/client/uid response headers";
+    console.error("[chatwoot]", cwLastSignInError);
     return false;
-  } catch (e) { console.error("[chatwoot] sign_in error:", e.message); return false; }
+  } catch (e) {
+    cwLastSignInError = `sign_in request threw: ${e.message}`;
+    console.error("[chatwoot] sign_in error:", e.message);
+    return false;
+  }
 }
 
 function cwHeaders() {
@@ -232,7 +244,11 @@ async function cwGet(path, params = {}, _retried = false) {
     const ok = await cwSignIn();
     if (ok) return cwGet(path, params, true);
   }
-  if (!r.ok) { const e = await r.text(); throw new Error(`Chatwoot GET ${path} ${r.status}: ${e.slice(0, 200)}`); }
+  if (!r.ok) {
+    const e = await r.text();
+    const hint = !cwSession && cwLastSignInError ? ` (sign-in issue: ${cwLastSignInError})` : "";
+    throw new Error(`Chatwoot GET ${path} ${r.status}: ${e.slice(0, 200)}${hint}`);
+  }
   return r.json();
 }
 
@@ -249,7 +265,11 @@ async function cwPost(path, body, params = {}, _retried = false) {
     const ok = await cwSignIn();
     if (ok) return cwPost(path, body, params, true);
   }
-  if (!r.ok) { const e = await r.text(); throw new Error(`Chatwoot POST ${path} ${r.status}: ${e.slice(0, 200)}`); }
+  if (!r.ok) {
+    const e = await r.text();
+    const hint = !cwSession && cwLastSignInError ? ` (sign-in issue: ${cwLastSignInError})` : "";
+    throw new Error(`Chatwoot POST ${path} ${r.status}: ${e.slice(0, 200)}${hint}`);
+  }
   return r.json();
 }
 
