@@ -7,6 +7,7 @@ import { fileURLToPath } from "url";
 import pg from "pg";
 import cron from "node-cron";
 import crypto from "crypto";
+import { AsyncLocalStorage } from "async_hooks";
 const { Pool } = pg;
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
@@ -516,14 +517,35 @@ const LC_MAX_CONCURRENT = 3;
 let lcActive = 0;
 const lcQueue = [];
 
+// Background jobs (backfills, nightly cron finalize) run through a SEPARATE, smaller
+// pool so a big backfill can never starve interactive requests (e.g. the Employees
+// page's agent list, or a live report search) behind hundreds of queued slots.
+// lcBackgroundContext tags the current async call chain so lcAcquire() can route it
+// to the right pool without threading a flag through every function signature.
+const LC_MAX_CONCURRENT_BG = 2;
+let lcActiveBg = 0;
+const lcQueueBg = [];
+const lcBackgroundContext = new AsyncLocalStorage();
+
+function runLcBackground(fn) {
+  return lcBackgroundContext.run({ background: true }, fn);
+}
+
 function lcAcquire() {
+  const isBackground = lcBackgroundContext.getStore()?.background;
+  const max = isBackground ? LC_MAX_CONCURRENT_BG : LC_MAX_CONCURRENT;
+  const queue = isBackground ? lcQueueBg : lcQueue;
   return new Promise((resolve) => {
     const tryAcquire = () => {
-      if (lcActive < LC_MAX_CONCURRENT) {
-        lcActive++;
-        resolve(() => { lcActive--; const next = lcQueue.shift(); if (next) next(); });
+      const nowActive = isBackground ? lcActiveBg : lcActive;
+      if (nowActive < max) {
+        if (isBackground) lcActiveBg++; else lcActive++;
+        resolve(() => {
+          if (isBackground) { lcActiveBg--; const next = lcQueueBg.shift(); if (next) next(); }
+          else { lcActive--; const next = lcQueue.shift(); if (next) next(); }
+        });
       } else {
-        lcQueue.push(tryAcquire);
+        queue.push(tryAcquire);
       }
     };
     tryAcquire();
@@ -2949,7 +2971,7 @@ async function computeAgentActivity({ dateFrom, dateTo, employeeFilter }) {
 // so the DB has a permanent, accurate record without anyone needing to view the
 // report that day. Runs at 1am Istanbul time — 1 hour after the day actually ends,
 // to avoid any clock-skew edge cases right at midnight.
-cron.schedule("0 1 * * *", async () => {
+cron.schedule("0 1 * * *", () => runLcBackground(async () => {
   const yesterdayKey = new Date(Date.now() + AGENT_ACTIVITY_ISTANBUL_OFFSET_MS - 24 * 3600000).toISOString().slice(0, 10);
 
   try {
@@ -2967,7 +2989,7 @@ cron.schedule("0 1 * * *", async () => {
     const result = await computeAndStoreChatTotalsDay(yesterdayKey);
     console.log(`[chat-totals-cron] finalized ${yesterdayKey} for ${result.employees.length} employees`);
   } catch (e) { console.error("[chat-totals-cron] failed:", e.message); }
-}, { timezone: "Europe/Istanbul" });
+}), { timezone: "Europe/Istanbul" });
 
 app.get("/api/reports/agent-activity", authMiddleware, async (req, res) => {
   try {
@@ -3012,10 +3034,10 @@ app.post("/api/reports/agent-activity/backfill", authMiddleware, adminOnly, asyn
     backfillJobs.agentActivity = job;
     res.json({ started: true, days_total: days.length });
 
-    // Run every day concurrently — the shared lcAcquire limiter already caps true
-    // concurrency, so this keeps it fully saturated across the whole backlog
-    // instead of idling between day-sized batches.
-    Promise.all(days.map((day) =>
+    // Run every day concurrently, through the background LiveChat pool — kept
+    // separate from the interactive pool so a big backfill can't starve normal
+    // report searches / the Employees agent list while it runs.
+    runLcBackground(() => Promise.all(days.map((day) =>
       computeAndStoreAgentActivityDay(day, allShifts, agentKeyToEmail)
         .then((result) => {
           Object.keys(result).forEach((e) => job.employees.add(e));
@@ -3023,7 +3045,7 @@ app.post("/api/reports/agent-activity/backfill", authMiddleware, adminOnly, asyn
           console.log(`[agent-activity-backfill] ${day} done (${Object.keys(result).length} employees) [${job.daysDone}/${job.daysTotal}]`);
         })
         .catch((e) => { job.daysDone++; console.error(`[agent-activity-backfill] ${day} failed:`, e.message); })
-    )).then(() => { job.running = false; console.log(`[agent-activity-backfill] finished: ${job.daysTotal} days, ${job.employees.size} employees`); });
+    ))).then(() => { job.running = false; console.log(`[agent-activity-backfill] finished: ${job.daysTotal} days, ${job.employees.size} employees`); });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3053,7 +3075,7 @@ app.post("/api/reports/total-chats/backfill", authMiddleware, adminOnly, async (
     backfillJobs.totalChats = job;
     res.json({ started: true, days_total: days.length });
 
-    Promise.all(days.map((day) =>
+    runLcBackground(() => Promise.all(days.map((day) =>
       computeAndStoreChatTotalsDay(day)
         .then((result) => {
           result.employees.forEach((e) => job.employees.add(e.name));
@@ -3061,7 +3083,7 @@ app.post("/api/reports/total-chats/backfill", authMiddleware, adminOnly, async (
           console.log(`[total-chats-backfill] ${day} done (${result.employees.length} employees) [${job.daysDone}/${job.daysTotal}]`);
         })
         .catch((e) => { job.daysDone++; console.error(`[total-chats-backfill] ${day} failed:`, e.message); })
-    )).then(() => { job.running = false; console.log(`[total-chats-backfill] finished: ${job.daysTotal} days, ${job.employees.size} employees`); });
+    ))).then(() => { job.running = false; console.log(`[total-chats-backfill] finished: ${job.daysTotal} days, ${job.employees.size} employees`); });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
