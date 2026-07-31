@@ -2978,6 +2978,14 @@ app.get("/api/reports/agent-activity", authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// In-memory progress trackers for the two backfill jobs below. A wide date range
+// (many months) can take minutes to finish because of the LiveChat concurrency
+// cap — holding the HTTP request open that long gets killed by Railway's proxy
+// ("upstream error", not valid JSON) before Express ever responds. So the route
+// now responds immediately once the job is kicked off, and the frontend polls
+// the matching /status endpoint instead of awaiting one giant request.
+const backfillJobs = { agentActivity: null, totalChats: null };
+
 // One-time (or occasional) backfill: live-fetch every day in the range for every
 // visible employee and upsert into agent_activity_daily. Use this to seed history
 // that predates the nightly cron — normal report reads never need this since past
@@ -2987,9 +2995,12 @@ app.post("/api/reports/agent-activity/backfill", authMiddleware, adminOnly, asyn
     if (!pool) return res.status(503).json({ error: "No database configured" });
     const { date_from, date_to } = req.body || {};
     if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
+    if (backfillJobs.agentActivity?.running) {
+      return res.json({ started: false, already_running: true });
+    }
 
     const allShifts = visibleShifts(await loadShifts());
-    if (!allShifts.length) return res.json({ days_processed: 0, employees: [] });
+    if (!allShifts.length) return res.json({ started: true, days_total: 0 });
     const agentKeyToEmail = await buildAgentKeyToEmail();
 
     const days = [];
@@ -2997,19 +3008,29 @@ app.post("/api/reports/agent-activity/backfill", authMiddleware, adminOnly, asyn
       days.push(d.toISOString().slice(0, 10));
     }
 
+    const job = { running: true, daysTotal: days.length, daysDone: 0, employees: new Set() };
+    backfillJobs.agentActivity = job;
+    res.json({ started: true, days_total: days.length });
+
     // Run every day concurrently — the shared lcAcquire limiter already caps true
     // concurrency, so this keeps it fully saturated across the whole backlog
     // instead of idling between day-sized batches.
-    const dayResults = await Promise.all(days.map((day) =>
+    Promise.all(days.map((day) =>
       computeAndStoreAgentActivityDay(day, allShifts, agentKeyToEmail)
-        .then((result) => { console.log(`[agent-activity-backfill] ${day} done (${Object.keys(result).length} employees)`); return result; })
-        .catch((e) => { console.error(`[agent-activity-backfill] ${day} failed:`, e.message); return {}; })
-    ));
-    const touchedEmployees = new Set();
-    dayResults.forEach((result) => Object.keys(result).forEach((e) => touchedEmployees.add(e)));
-
-    res.json({ days_processed: days.length, employees: [...touchedEmployees].sort() });
+        .then((result) => {
+          Object.keys(result).forEach((e) => job.employees.add(e));
+          job.daysDone++;
+          console.log(`[agent-activity-backfill] ${day} done (${Object.keys(result).length} employees) [${job.daysDone}/${job.daysTotal}]`);
+        })
+        .catch((e) => { job.daysDone++; console.error(`[agent-activity-backfill] ${day} failed:`, e.message); })
+    )).then(() => { job.running = false; console.log(`[agent-activity-backfill] finished: ${job.daysTotal} days, ${job.employees.size} employees`); });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/reports/agent-activity/backfill/status", authMiddleware, adminOnly, (req, res) => {
+  const job = backfillJobs.agentActivity;
+  if (!job) return res.json({ running: false });
+  res.json({ running: job.running, days_total: job.daysTotal, days_done: job.daysDone, employees: job.employees.size });
 });
 
 // One-time (or occasional) backfill for chat_totals_daily — seeds history for
@@ -3019,22 +3040,35 @@ app.post("/api/reports/total-chats/backfill", authMiddleware, adminOnly, async (
     if (!pool) return res.status(503).json({ error: "No database configured" });
     const { date_from, date_to } = req.body || {};
     if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
+    if (backfillJobs.totalChats?.running) {
+      return res.json({ started: false, already_running: true });
+    }
 
     const days = [];
     for (let d = new Date(`${date_from}T00:00:00Z`); d <= new Date(`${date_to}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
       days.push(d.toISOString().slice(0, 10));
     }
 
-    const dayResults = await Promise.all(days.map((day) =>
-      computeAndStoreChatTotalsDay(day)
-        .then((result) => { console.log(`[total-chats-backfill] ${day} done (${result.employees.length} employees)`); return result; })
-        .catch((e) => { console.error(`[total-chats-backfill] ${day} failed:`, e.message); return { employees: [] }; })
-    ));
-    const touchedEmployees = new Set();
-    dayResults.forEach((result) => result.employees.forEach((e) => touchedEmployees.add(e.name)));
+    const job = { running: true, daysTotal: days.length, daysDone: 0, employees: new Set() };
+    backfillJobs.totalChats = job;
+    res.json({ started: true, days_total: days.length });
 
-    res.json({ days_processed: days.length, employees: [...touchedEmployees].sort() });
+    Promise.all(days.map((day) =>
+      computeAndStoreChatTotalsDay(day)
+        .then((result) => {
+          result.employees.forEach((e) => job.employees.add(e.name));
+          job.daysDone++;
+          console.log(`[total-chats-backfill] ${day} done (${result.employees.length} employees) [${job.daysDone}/${job.daysTotal}]`);
+        })
+        .catch((e) => { job.daysDone++; console.error(`[total-chats-backfill] ${day} failed:`, e.message); })
+    )).then(() => { job.running = false; console.log(`[total-chats-backfill] finished: ${job.daysTotal} days, ${job.employees.size} employees`); });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/reports/total-chats/backfill/status", authMiddleware, adminOnly, (req, res) => {
+  const job = backfillJobs.totalChats;
+  if (!job) return res.json({ running: false });
+  res.json({ running: job.running, days_total: job.daysTotal, days_done: job.daysDone, employees: job.employees.size });
 });
 
 // Dashboard stats for current month — independent of Chat Review page

@@ -2112,7 +2112,6 @@ async function backfillTotalChats() {
   const icon = document.getElementById("backfillTotalChatsIcon");
   btn.disabled = true;
   if (icon) icon.textContent = "…";
-  showStatus(`Backfilling ${dateFrom} → ${dateTo}... this can take a while`, "success");
 
   try {
     const res = await authFetch("/api/reports/total-chats/backfill", {
@@ -2121,13 +2120,33 @@ async function backfillTotalChats() {
     });
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || res.status);
-    showStatus(`Backfilled ${data.days_processed} day(s) for ${data.employees.length} employee(s)`, "success");
-    loadTotalChatsReport();
+
+    if (data.already_running) {
+      showStatus("A backfill is already running in the background...", "success");
+    } else {
+      showStatus(`Backfill started for ${data.days_total} day(s) — running in the background, this can take a while`, "success");
+    }
+
+    const poll = setInterval(async () => {
+      try {
+        const sres = await authFetch("/api/reports/total-chats/backfill/status");
+        const sdata = await sres.json();
+        if (!sdata.running) {
+          clearInterval(poll);
+          showStatus(`Backfill done — ${sdata.days_total} day(s), ${sdata.employees} employee(s)`, "success");
+          btn.disabled = false;
+          if (icon) icon.textContent = "⏬";
+          loadTotalChatsReport();
+        } else {
+          showStatus(`Backfilling... ${sdata.days_done}/${sdata.days_total} day(s) done`, "success");
+        }
+      } catch (e) { /* transient poll error, keep trying */ }
+    }, 4000);
   } catch (e) {
     showStatus("Backfill failed: " + e.message, "error");
+    btn.disabled = false;
+    if (icon) icon.textContent = "⏬";
   }
-  btn.disabled = false;
-  if (icon) icon.textContent = "⏬";
 }
 
 function downloadTotalChatsPdf() {
@@ -3175,7 +3194,6 @@ async function backfillAgentActivity() {
   const icon = document.getElementById("backfillActivityIcon");
   btn.disabled = true;
   if (icon) icon.textContent = "…";
-  showStatus(`Backfilling ${dateFrom} → ${dateTo}... this can take a while`, "success");
 
   try {
     const res = await authFetch("/api/reports/agent-activity/backfill", {
@@ -3184,13 +3202,33 @@ async function backfillAgentActivity() {
     });
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || res.status);
-    showStatus(`Backfilled ${data.days_processed} day(s) for ${data.employees.length} employee(s)`, "success");
-    loadAgentActivity();
+
+    if (data.already_running) {
+      showStatus("A backfill is already running in the background...", "success");
+    } else {
+      showStatus(`Backfill started for ${data.days_total} day(s) — running in the background, this can take a while`, "success");
+    }
+
+    const poll = setInterval(async () => {
+      try {
+        const sres = await authFetch("/api/reports/agent-activity/backfill/status");
+        const sdata = await sres.json();
+        if (!sdata.running) {
+          clearInterval(poll);
+          showStatus(`Backfill done — ${sdata.days_total} day(s), ${sdata.employees} employee(s)`, "success");
+          btn.disabled = false;
+          if (icon) icon.textContent = "⏬";
+          loadAgentActivity();
+        } else {
+          showStatus(`Backfilling... ${sdata.days_done}/${sdata.days_total} day(s) done`, "success");
+        }
+      } catch (e) { /* transient poll error, keep trying */ }
+    }, 4000);
   } catch (e) {
     showStatus("Backfill failed: " + e.message, "error");
+    btn.disabled = false;
+    if (icon) icon.textContent = "⏬";
   }
-  btn.disabled = false;
-  if (icon) icon.textContent = "⏬";
 }
 
 function downloadAgentActivityPdf() {
