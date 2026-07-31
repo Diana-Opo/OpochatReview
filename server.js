@@ -512,7 +512,7 @@ function lcAuth() {
 // Cap concurrent LiveChat requests — parallel report fetches (e.g. per-agent loops
 // across a 2-period campaign comparison) can otherwise fire dozens at once and trip
 // LiveChat's rate limit.
-const LC_MAX_CONCURRENT = 5;
+const LC_MAX_CONCURRENT = 3;
 let lcActive = 0;
 const lcQueue = [];
 
@@ -547,9 +547,10 @@ async function lcPost(action, body, baseUrl = LC_API, _retry = 0) {
     release();
   }
 
-  if (res.status === 429 && _retry < 6) {
+  if (res.status === 429 && _retry < 8) {
     const retryAfterSec = Number(res.headers.get("retry-after")) || 0;
-    const waitMs = retryAfterSec > 0 ? retryAfterSec * 1000 : Math.min(500 * 2 ** _retry, 8000);
+    const jitter = Math.random() * 300;
+    const waitMs = retryAfterSec > 0 ? retryAfterSec * 1000 + jitter : Math.min(500 * 2 ** _retry, 15000) + jitter;
     await new Promise((r) => setTimeout(r, waitMs));
     return lcPost(action, body, baseUrl, _retry + 1);
   }
@@ -2448,7 +2449,12 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
   const cachedDays = await getChatTotalsCachedDays(dateFrom, dateTo);
   const daysToFetch = days.filter((d) => d === todayKey || !cachedDays.has(d));
   if (daysToFetch.length) {
-    await Promise.all(daysToFetch.map((d) => computeAndStoreChatTotalsDay(d)));
+    // A persistent failure fetching one day (e.g. LiveChat rate-limiting even after
+    // retries) must not take down the whole report — other days still get cached and
+    // returned; the failed day just stays uncached and gets retried on the next search.
+    await Promise.all(daysToFetch.map((d) =>
+      computeAndStoreChatTotalsDay(d).catch((e) => console.error(`[chat-totals] failed to fetch ${d}:`, e.message))
+    ));
   }
 
   const dbData = await loadChatTotalsRangeFromDB(dateFrom, dateTo, employeeFilter);
@@ -2914,7 +2920,11 @@ async function computeAgentActivity({ dateFrom, dateTo, employeeFilter }) {
   const daysToFetch = days.filter((d) => d === todayKey || !cachedDays.has(d));
   if (daysToFetch.length && shifts.length) {
     const agentKeyToEmail = await buildAgentKeyToEmail();
-    await Promise.all(daysToFetch.map((d) => computeAndStoreAgentActivityDay(d, shifts, agentKeyToEmail)));
+    // Same as chat totals: one day's persistent failure shouldn't take down the whole
+    // report — it just stays uncached and gets retried on the next search.
+    await Promise.all(daysToFetch.map((d) =>
+      computeAndStoreAgentActivityDay(d, shifts, agentKeyToEmail).catch((e) => console.error(`[agent-activity] failed to fetch ${d}:`, e.message))
+    ));
   }
 
   const dbData = await loadAgentActivityRangeFromDB(dateFrom, dateTo, employeeFilter);
@@ -2993,6 +3003,7 @@ app.post("/api/reports/agent-activity/backfill", authMiddleware, adminOnly, asyn
     const dayResults = await Promise.all(days.map((day) =>
       computeAndStoreAgentActivityDay(day, allShifts, agentKeyToEmail)
         .then((result) => { console.log(`[agent-activity-backfill] ${day} done (${Object.keys(result).length} employees)`); return result; })
+        .catch((e) => { console.error(`[agent-activity-backfill] ${day} failed:`, e.message); return {}; })
     ));
     const touchedEmployees = new Set();
     dayResults.forEach((result) => Object.keys(result).forEach((e) => touchedEmployees.add(e)));
@@ -3017,6 +3028,7 @@ app.post("/api/reports/total-chats/backfill", authMiddleware, adminOnly, async (
     const dayResults = await Promise.all(days.map((day) =>
       computeAndStoreChatTotalsDay(day)
         .then((result) => { console.log(`[total-chats-backfill] ${day} done (${result.employees.length} employees)`); return result; })
+        .catch((e) => { console.error(`[total-chats-backfill] ${day} failed:`, e.message); return { employees: [] }; })
     ));
     const touchedEmployees = new Set();
     dayResults.forEach((result) => result.employees.forEach((e) => touchedEmployees.add(e.name)));
