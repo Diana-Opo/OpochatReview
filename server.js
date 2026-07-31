@@ -2673,8 +2673,13 @@ async function computeAgentActivity({ dateFrom, dateTo, employeeFilter }) {
             filters: { from, to, agents: { values: [agentEmail] } },
           }, LC_REPORTS_AGENTS_API);
           const rec = data?.records?.[agentEmail] || {};
+          const shiftDurationHours = s.end - s.start;
+          const acceptingHours = (rec.accepting_chats_time || 0) / 3600;
           const onlineHours = (rec.logged_in_time || 0) / 3600;
-          const closedHours = (rec.not_accepting_chats_time || 0) / 3600;
+          // "Closed" = any part of the shift chats couldn't reach them — not-accepting
+          // AND logged-out time both count, so this is the shift window minus actual
+          // accepting time (not just accepting_chats_time's API-reported complement).
+          const closedHours = Math.max(0, shiftDurationHours - acceptingHours);
           if (!result[s.employee][day]) result[s.employee][day] = { onlineHours: 0, closedHours: 0 };
           result[s.employee][day].onlineHours += onlineHours;
           result[s.employee][day].closedHours += closedHours;

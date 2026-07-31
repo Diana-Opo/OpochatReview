@@ -3125,7 +3125,7 @@ function renderAgentActivity(content, dateFrom, dateTo, data) {
             <tr class="text-center text-xs text-slate-500 uppercase">
               <th class="px-4 py-2 font-medium">Date</th>
               <th class="px-4 py-2 font-medium">Online</th>
-              <th class="px-4 py-2 font-medium" title="Hours during their shift with chat-accepting turned off">Chat Closed</th>
+              <th class="px-4 py-2 font-medium" title="Shift duration minus time actually accepting chats — includes both 'not accepting' and logged-out time">Chat Closed</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
