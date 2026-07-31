@@ -2103,6 +2103,33 @@ function opoLetterheadHtml() {
 </div>`;
 }
 
+async function backfillTotalChats() {
+  const dateFrom = document.getElementById("totalChatsFrom")?.value;
+  const dateTo = document.getElementById("totalChatsTo")?.value;
+  if (!dateFrom || !dateTo) { showStatus("Pick a From and To date first", "error"); return; }
+
+  const btn = document.getElementById("btnBackfillTotalChats");
+  const icon = document.getElementById("backfillTotalChatsIcon");
+  btn.disabled = true;
+  if (icon) icon.textContent = "…";
+  showStatus(`Backfilling ${dateFrom} → ${dateTo}... this can take a while`, "success");
+
+  try {
+    const res = await authFetch("/api/reports/total-chats/backfill", {
+      method: "POST",
+      body: JSON.stringify({ date_from: dateFrom, date_to: dateTo }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || res.status);
+    showStatus(`Backfilled ${data.days_processed} day(s) for ${data.employees.length} employee(s)`, "success");
+    loadTotalChatsReport();
+  } catch (e) {
+    showStatus("Backfill failed: " + e.message, "error");
+  }
+  btn.disabled = false;
+  if (icon) icon.textContent = "⏬";
+}
+
 function downloadTotalChatsPdf() {
   if (!_activeTotalChatsReport) { showStatus("Run a search first", "error"); return; }
   const { dateFrom, dateTo, employeeFilter, data } = _activeTotalChatsReport;

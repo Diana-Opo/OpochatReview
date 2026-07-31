@@ -207,6 +207,18 @@ if (process.env.DATABASE_URL) {
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (employee, date)
   )`).then(() => console.log("[db] agent_activity_daily table ready")).catch(e => console.error("[db] agent_activity_daily init:", e.message));
+
+  // ── chat_totals_daily table (cached per-employee, per-day chat counts) ──────
+  pool.query(`CREATE TABLE IF NOT EXISTS chat_totals_daily (
+    employee TEXT NOT NULL,
+    date TEXT NOT NULL,
+    livechat INTEGER NOT NULL DEFAULT 0,
+    chatwoot INTEGER NOT NULL DEFAULT 0,
+    supervised INTEGER NOT NULL DEFAULT 0,
+    mobile INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (employee, date)
+  )`).then(() => console.log("[db] chat_totals_daily table ready")).catch(e => console.error("[db] chat_totals_daily init:", e.message));
 }
 const LC_API = "https://api.livechatinc.com/v3.6/agent/action";
 const LC_CONFIG_API = "https://api.livechatinc.com/v3.6/configuration/action";
@@ -2134,7 +2146,10 @@ app.get("/api/stats", authMiddleware, async (req, res) => {
 });
 
 // Shared: count all chats (reviewed or not) per employee over an arbitrary date range.
-async function computeChatTotals({ dateFrom, dateTo, employeeFilter, includeSupervised = true }) {
+// This is the "live" implementation that always hits LiveChat/Chatwoot directly — used
+// to refresh a single day (today, or during a backfill), never called with a wide range
+// directly by routes anymore. See computeChatTotals() below for the cached entry point.
+async function computeChatTotalsLive({ dateFrom, dateTo, employeeFilter, includeSupervised = true }) {
   const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
   const fromDate = new Date(new Date(`${dateFrom}T00:00:00.000Z`).getTime() - ISTANBUL_OFFSET_MS);
   const toDate   = new Date(new Date(`${dateTo}T23:59:59.999Z`).getTime() - ISTANBUL_OFFSET_MS);
@@ -2334,6 +2349,98 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter, includeSupe
   return { date_from: dateFrom, date_to: dateTo, total_chats: totalChats ?? grandTotal, employees, daily, dailyByEmployee };
 }
 
+// ── Chat Totals cache (chat_totals_daily) ─────────────────────────────────────
+// Same strategy as Agent Activity: past days are cache-only, "today" is always
+// re-fetched live and upserted. Used by both Total Chats and Campaign Impact
+// (both call computeChatTotals()), so both benefit from the same cache.
+
+function istTodayKeyChats() {
+  const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
+  return new Date(Date.now() + ISTANBUL_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+async function upsertChatTotalsDay(employee, date, livechat, chatwoot, supervised, mobile) {
+  if (!pool) return;
+  try {
+    await pool.query(
+      `INSERT INTO chat_totals_daily (employee, date, livechat, chatwoot, supervised, mobile, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,NOW())
+       ON CONFLICT (employee, date) DO UPDATE SET livechat=$3, chatwoot=$4, supervised=$5, mobile=$6, updated_at=NOW()`,
+      [employee, date, livechat, chatwoot, supervised, mobile]
+    );
+  } catch (e) { console.error(`[chat_totals_daily] upsert failed for ${employee} ${date}:`, e.message); }
+}
+
+async function loadChatTotalsRangeFromDB(dateFrom, dateTo, employeeFilter) {
+  if (!pool) return {};
+  try {
+    const params = [dateFrom, dateTo];
+    let q = "SELECT employee, date, livechat, chatwoot, supervised, mobile FROM chat_totals_daily WHERE date >= $1 AND date <= $2";
+    if (employeeFilter) { params.push(employeeFilter); q += " AND employee = $3"; }
+    const r = await pool.query(q, params);
+    const out = {}; // employee -> date -> {livechat, chatwoot, supervised, mobile}
+    for (const row of r.rows) {
+      if (!out[row.employee]) out[row.employee] = {};
+      out[row.employee][row.date] = {
+        livechat: row.livechat, chatwoot: row.chatwoot, supervised: row.supervised, mobile: row.mobile,
+      };
+    }
+    return out;
+  } catch (e) { console.error("[chat_totals_daily] load failed:", e.message); return {}; }
+}
+
+// Live-fetch one day (all visible employees, full supervised check) and upsert into the DB.
+async function computeAndStoreChatTotalsDay(dateKey) {
+  const result = await computeChatTotalsLive({ dateFrom: dateKey, dateTo: dateKey, employeeFilter: null, includeSupervised: true });
+  await Promise.all(result.employees.map((e) =>
+    upsertChatTotalsDay(e.name, dateKey, e.livechat, e.chatwoot, e.supervised, e.mobile)
+  ));
+  return result;
+}
+
+// Cached entry point — same signature/shape as before, so existing callers
+// (Total Chats, Campaign Impact) don't need to change at all.
+async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
+  const todayKey = istTodayKeyChats();
+
+  const days = [];
+  for (let d = new Date(`${dateFrom}T00:00:00Z`); d <= new Date(`${dateTo}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
+    days.push(d.toISOString().slice(0, 10));
+  }
+
+  if (days.includes(todayKey)) {
+    await computeAndStoreChatTotalsDay(todayKey);
+  }
+
+  const dbData = await loadChatTotalsRangeFromDB(dateFrom, dateTo, employeeFilter);
+
+  const daily = {};           // company-wide per day
+  const dailyByEmployee = {}; // per employee per day
+  const empTotals = {};       // employee -> summed { livechat, chatwoot, supervised, mobile }
+
+  for (const [employee, byDay] of Object.entries(dbData)) {
+    dailyByEmployee[employee] = {};
+    for (const [date, d] of Object.entries(byDay)) {
+      dailyByEmployee[employee][date] = { livechat: d.livechat, chatwoot: d.chatwoot };
+      if (!daily[date]) daily[date] = { livechat: 0, chatwoot: 0 };
+      daily[date].livechat += d.livechat;
+      daily[date].chatwoot += d.chatwoot;
+      if (!empTotals[employee]) empTotals[employee] = { livechat: 0, chatwoot: 0, supervised: 0, mobile: 0 };
+      empTotals[employee].livechat += d.livechat;
+      empTotals[employee].chatwoot += d.chatwoot;
+      empTotals[employee].supervised += d.supervised;
+      empTotals[employee].mobile += d.mobile;
+    }
+  }
+
+  const employees = Object.entries(empTotals)
+    .map(([name, d]) => ({ name, livechat: d.livechat, chatwoot: d.chatwoot, total: d.livechat + d.chatwoot, supervised: d.supervised, mobile: d.mobile }))
+    .sort((a, b) => b.total - a.total);
+
+  const totalChats = employees.reduce((s, e) => s + e.total, 0);
+  return { date_from: dateFrom, date_to: dateTo, total_chats: totalChats, employees, daily, dailyByEmployee };
+}
+
 // Total chats per employee over an arbitrary date range, optionally filtered to one employee
 app.get("/api/reports/total-chats", authMiddleware, async (req, res) => {
   try {
@@ -2396,8 +2503,11 @@ app.get("/api/reports/campaign-impact", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "baseline_from, baseline_to, current_from, current_to, campaign_start, campaign_end required" });
     }
 
+    // Both periods are read from the shared chat_totals_daily cache (only "today", if
+    // present in either range, triggers a live fetch) — no more need to skip the
+    // expensive supervised check for baseline just to save time.
     const [baseline, current] = await Promise.all([
-      computeChatTotals({ dateFrom: baseline_from, dateTo: baseline_to, employeeFilter: null, includeSupervised: false }),
+      computeChatTotals({ dateFrom: baseline_from, dateTo: baseline_to, employeeFilter: null }),
       computeChatTotals({ dateFrom: current_from, dateTo: current_to, employeeFilter: null }),
     ]);
 
@@ -2765,15 +2875,23 @@ async function computeAgentActivity({ dateFrom, dateTo, employeeFilter }) {
 // report that day. Runs at 1am Istanbul time — 1 hour after the day actually ends,
 // to avoid any clock-skew edge cases right at midnight.
 cron.schedule("0 1 * * *", async () => {
+  const yesterdayKey = new Date(Date.now() + AGENT_ACTIVITY_ISTANBUL_OFFSET_MS - 24 * 3600000).toISOString().slice(0, 10);
+
   try {
-    const yesterdayKey = new Date(Date.now() + AGENT_ACTIVITY_ISTANBUL_OFFSET_MS - 24 * 3600000).toISOString().slice(0, 10);
     console.log(`[agent-activity-cron] finalizing ${yesterdayKey}...`);
     const allShifts = visibleShifts(await loadShifts());
-    if (!allShifts.length) return;
-    const agentKeyToEmail = await buildAgentKeyToEmail();
-    const result = await computeAndStoreAgentActivityDay(yesterdayKey, allShifts, agentKeyToEmail);
-    console.log(`[agent-activity-cron] finalized ${yesterdayKey} for ${Object.keys(result).length} employees`);
+    if (allShifts.length) {
+      const agentKeyToEmail = await buildAgentKeyToEmail();
+      const result = await computeAndStoreAgentActivityDay(yesterdayKey, allShifts, agentKeyToEmail);
+      console.log(`[agent-activity-cron] finalized ${yesterdayKey} for ${Object.keys(result).length} employees`);
+    }
   } catch (e) { console.error("[agent-activity-cron] failed:", e.message); }
+
+  try {
+    console.log(`[chat-totals-cron] finalizing ${yesterdayKey}...`);
+    const result = await computeAndStoreChatTotalsDay(yesterdayKey);
+    console.log(`[chat-totals-cron] finalized ${yesterdayKey} for ${result.employees.length} employees`);
+  } catch (e) { console.error("[chat-totals-cron] failed:", e.message); }
 }, { timezone: "Europe/Istanbul" });
 
 app.get("/api/reports/agent-activity", authMiddleware, async (req, res) => {
@@ -2813,6 +2931,30 @@ app.post("/api/reports/agent-activity/backfill", authMiddleware, adminOnly, asyn
     ));
     const touchedEmployees = new Set();
     dayResults.forEach((result) => Object.keys(result).forEach((e) => touchedEmployees.add(e)));
+
+    res.json({ days_processed: days.length, employees: [...touchedEmployees].sort() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// One-time (or occasional) backfill for chat_totals_daily — seeds history for
+// Total Chats / Campaign Impact that predates the nightly cron.
+app.post("/api/reports/total-chats/backfill", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: "No database configured" });
+    const { date_from, date_to } = req.body || {};
+    if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
+
+    const days = [];
+    for (let d = new Date(`${date_from}T00:00:00Z`); d <= new Date(`${date_to}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
+      days.push(d.toISOString().slice(0, 10));
+    }
+
+    const dayResults = await Promise.all(days.map((day) =>
+      computeAndStoreChatTotalsDay(day)
+        .then((result) => { console.log(`[total-chats-backfill] ${day} done (${result.employees.length} employees)`); return result; })
+    ));
+    const touchedEmployees = new Set();
+    dayResults.forEach((result) => result.employees.forEach((e) => touchedEmployees.add(e.name)));
 
     res.json({ days_processed: days.length, employees: [...touchedEmployees].sort() });
   } catch (e) { res.status(500).json({ error: e.message }); }

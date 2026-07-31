@@ -290,8 +290,13 @@
               class="flex items-center gap-1.5 bg-[#1a2d4a] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
               📁 Saved Reports
             </button>
+            <button onclick="backfillTotalChats()" id="btnBackfillTotalChats"
+              class="admin-only hidden flex items-center gap-1.5 bg-[#1a2d4a] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              <span id="backfillTotalChatsIcon">⏬</span> Backfill Cache
+            </button>
           </div>
           <div id="savedTotalChatsPanel" class="hidden mt-3 bg-[#0f1d35] rounded-xl border border-[#1a2d4a] max-h-64 overflow-y-auto"></div>
+          <p class="text-xs text-slate-500 mt-2">Past days are served from cache (updated nightly); only today's data is fetched live. Use "Backfill Cache" to seed history for the From/To range shown above (admin only).</p>
         </div>
         <div id="totalChatsContent" class="p-6"></div>
       </div>
