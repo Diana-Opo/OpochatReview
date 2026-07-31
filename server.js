@@ -2131,10 +2131,11 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter, includeSupe
   const lcFrom = fromDate.toISOString().replace(/\.\d{3}Z$/, ".000000+00:00");
   const lcTo   = toDate.toISOString().replace(/\.\d{3}Z$/, ".999999+00:00");
 
-  const [shifts, agentsRaw] = await Promise.all([
+  const [allShifts, agentsRaw] = await Promise.all([
     loadShifts(),
     lcPost("list_agents", {}, LC_CONFIG_API),
   ]);
+  const shifts = visibleShifts(allShifts);
 
   const agentKeyShifts = {};
   for (const s of shifts) {
@@ -2630,10 +2631,11 @@ async function computeAgentActivity({ dateFrom, dateTo, employeeFilter }) {
     return new Date(localMidnightUtcMs + hour * 3600000).toISOString();
   }
 
-  const [shifts, agentsRaw] = await Promise.all([
+  const [allShifts, agentsRaw] = await Promise.all([
     loadShifts(),
     lcPost("list_agents", {}, LC_CONFIG_API),
   ]);
+  const shifts = visibleShifts(allShifts);
 
   const rawAgentList = Array.isArray(agentsRaw) ? agentsRaw
     : Array.isArray(agentsRaw?.agents) ? agentsRaw.agents
@@ -2718,11 +2720,12 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
     const lcFrom = fromDate.toISOString().replace(/\.\d{3}Z$/, ".000000+00:00");
     const lcTo   = toDate.toISOString().replace(/\.\d{3}Z$/, ".999999+00:00");
 
-    const [reviews, shifts, agentsRaw] = await Promise.all([
+    const [reviews, allShifts, agentsRaw] = await Promise.all([
       loadReviews(),
       loadShifts(),
       lcPost("list_agents", {}, LC_CONFIG_API),
     ]);
+    const shifts = visibleShifts(allShifts);
 
     // Build agentKey → [shifts] (may have multiple employees for shared accounts)
     const agentKeyShifts = {};
@@ -3041,6 +3044,13 @@ async function loadShifts() {
   } catch { return []; }
 }
 
+// Shifts whose employee has the "Chart" checkbox unchecked in Employees — excluded
+// from all cross-employee reports (Total Chats, Campaign Impact, Agent Activity,
+// Dashboard, Monthly Overview), same as they're already hidden from the Dashboard chart.
+function visibleShifts(shifts) {
+  return shifts.filter(s => s.showInChart !== false);
+}
+
 async function saveShifts(shifts) {
   if (pool) {
     await pool.query("ALTER TABLE agent_shifts ADD COLUMN IF NOT EXISTS show_in_chart BOOLEAN NOT NULL DEFAULT TRUE").catch(() => {});
@@ -3236,7 +3246,8 @@ async function runNightlyReview() {
 app.get("/api/reports/monthly-overview", authMiddleware, async (req, res) => {
   try {
     const year = (req.query.year || new Date().getFullYear()).toString();
-    const [reviews, shifts] = await Promise.all([loadReviews(), loadShifts()]);
+    const [reviews, allShifts] = await Promise.all([loadReviews(), loadShifts()]);
+    const shifts = visibleShifts(allShifts);
 
     // agent name/key → employee name lookup
     const agentToEmp = {};
