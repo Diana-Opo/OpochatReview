@@ -2481,11 +2481,18 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
 
   const dbData = await loadChatTotalsRangeFromDB(dateFrom, dateTo, employeeFilter);
 
+  // dbData reflects whatever was ever computed/cached for a given employee name,
+  // which can include employees since unchecked from "Chart" (or removed). Restrict
+  // to currently-visible employees so hidden ones don't reappear here even though
+  // their historical rows are still sitting in chat_totals_daily.
+  const visibleEmployees = new Set(visibleShifts(await loadShifts()).map((s) => s.employee));
+
   const daily = {};           // company-wide per day
   const dailyByEmployee = {}; // per employee per day
   const empTotals = {};       // employee -> summed { livechat, chatwoot, supervised, mobile }
 
   for (const [employee, byDay] of Object.entries(dbData)) {
+    if (!visibleEmployees.has(employee)) continue;
     dailyByEmployee[employee] = {};
     for (const [date, d] of Object.entries(byDay)) {
       dailyByEmployee[employee][date] = { livechat: d.livechat, chatwoot: d.chatwoot };
