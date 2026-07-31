@@ -296,7 +296,7 @@
             </button>
           </div>
           <div id="savedTotalChatsPanel" class="hidden mt-3 bg-[#0f1d35] rounded-xl border border-[#1a2d4a] max-h-64 overflow-y-auto"></div>
-          <p class="text-xs text-slate-500 mt-2">Past days are served from cache (updated nightly); only today's data is fetched live. Use "Backfill Cache" to seed history for the From/To range shown above (admin only).</p>
+          <p class="text-xs text-slate-500 mt-2">Cached days are served instantly; any day not yet cached (or today) is fetched live automatically. "Backfill Cache" is optional — it just pre-warms the From/To range shown above so the first search of it is fast too (admin only).</p>
         </div>
         <div id="totalChatsContent" class="p-6"></div>
       </div>
@@ -433,7 +433,7 @@
               <span id="backfillActivityIcon">⏬</span> Backfill Cache
             </button>
           </div>
-          <p class="text-xs text-slate-500 mt-2">Hours are scoped to each employee's own shift window per day. Past days are served from cache (updated nightly); only today's data is fetched live. Use "Backfill Cache" to seed history for the From/To range shown above (admin only).</p>
+          <p class="text-xs text-slate-500 mt-2">Hours are scoped to each employee's own shift window per day. Cached days are served instantly; any day not yet cached (or today) is fetched live automatically. "Backfill Cache" is optional — it just pre-warms the range so the first search of it is fast too (admin only).</p>
         </div>
         <div id="activityContent" class="p-6"></div>
       </div>

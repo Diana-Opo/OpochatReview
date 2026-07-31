@@ -208,6 +208,14 @@ if (process.env.DATABASE_URL) {
     PRIMARY KEY (employee, date)
   )`).then(() => console.log("[db] agent_activity_daily table ready")).catch(e => console.error("[db] agent_activity_daily init:", e.message));
 
+  // Marks a day as "fully computed" independent of per-employee rows — an employee
+  // with zero chats/hours that day has no row in the *_daily tables, so without this
+  // marker there'd be no way to tell "never computed" apart from "genuinely zero".
+  pool.query(`CREATE TABLE IF NOT EXISTS agent_activity_cached_days (
+    date TEXT PRIMARY KEY,
+    computed_at TIMESTAMPTZ DEFAULT NOW()
+  )`).then(() => console.log("[db] agent_activity_cached_days table ready")).catch(e => console.error("[db] agent_activity_cached_days init:", e.message));
+
   // ── chat_totals_daily table (cached per-employee, per-day chat counts) ──────
   pool.query(`CREATE TABLE IF NOT EXISTS chat_totals_daily (
     employee TEXT NOT NULL,
@@ -219,6 +227,11 @@ if (process.env.DATABASE_URL) {
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (employee, date)
   )`).then(() => console.log("[db] chat_totals_daily table ready")).catch(e => console.error("[db] chat_totals_daily init:", e.message));
+
+  pool.query(`CREATE TABLE IF NOT EXISTS chat_totals_cached_days (
+    date TEXT PRIMARY KEY,
+    computed_at TIMESTAMPTZ DEFAULT NOW()
+  )`).then(() => console.log("[db] chat_totals_cached_days table ready")).catch(e => console.error("[db] chat_totals_cached_days init:", e.message));
 }
 const LC_API = "https://api.livechatinc.com/v3.6/agent/action";
 const LC_CONFIG_API = "https://api.livechatinc.com/v3.6/configuration/action";
@@ -2389,12 +2402,33 @@ async function loadChatTotalsRangeFromDB(dateFrom, dateTo, employeeFilter) {
   } catch (e) { console.error("[chat_totals_daily] load failed:", e.message); return {}; }
 }
 
-// Live-fetch one day (all visible employees, full supervised check) and upsert into the DB.
+async function markChatTotalsDayCached(dateKey) {
+  if (!pool) return;
+  try {
+    await pool.query(
+      `INSERT INTO chat_totals_cached_days (date, computed_at) VALUES ($1, NOW())
+       ON CONFLICT (date) DO UPDATE SET computed_at = NOW()`,
+      [dateKey]
+    );
+  } catch (e) { console.error(`[chat_totals_cached_days] mark failed for ${dateKey}:`, e.message); }
+}
+
+async function getChatTotalsCachedDays(dateFrom, dateTo) {
+  if (!pool) return new Set();
+  try {
+    const r = await pool.query("SELECT date FROM chat_totals_cached_days WHERE date >= $1 AND date <= $2", [dateFrom, dateTo]);
+    return new Set(r.rows.map((row) => row.date));
+  } catch (e) { console.error("[chat_totals_cached_days] load failed:", e.message); return new Set(); }
+}
+
+// Live-fetch one day (all visible employees, full supervised check), upsert into the
+// DB, and mark the day as cached (even if some/all employees had zero chats that day).
 async function computeAndStoreChatTotalsDay(dateKey) {
   const result = await computeChatTotalsLive({ dateFrom: dateKey, dateTo: dateKey, employeeFilter: null, includeSupervised: true });
   await Promise.all(result.employees.map((e) =>
     upsertChatTotalsDay(e.name, dateKey, e.livechat, e.chatwoot, e.supervised, e.mobile)
   ));
+  await markChatTotalsDayCached(dateKey);
   return result;
 }
 
@@ -2408,8 +2442,13 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
     days.push(d.toISOString().slice(0, 10));
   }
 
-  if (days.includes(todayKey)) {
-    await computeAndStoreChatTotalsDay(todayKey);
+  // Any day that isn't cached yet (never computed, e.g. a historical range no one has
+  // viewed before) gets live-fetched on this request, same as "today" always does —
+  // no manual backfill required for a report to just work the first time it's viewed.
+  const cachedDays = await getChatTotalsCachedDays(dateFrom, dateTo);
+  const daysToFetch = days.filter((d) => d === todayKey || !cachedDays.has(d));
+  if (daysToFetch.length) {
+    await Promise.all(daysToFetch.map((d) => computeAndStoreChatTotalsDay(d)));
   }
 
   const dbData = await loadChatTotalsRangeFromDB(dateFrom, dateTo, employeeFilter);
@@ -2799,6 +2838,25 @@ async function loadAgentActivityRangeFromDB(dateFrom, dateTo, employeeFilter) {
   } catch (e) { console.error("[agent_activity_daily] load failed:", e.message); return {}; }
 }
 
+async function markAgentActivityDayCached(dateKey) {
+  if (!pool) return;
+  try {
+    await pool.query(
+      `INSERT INTO agent_activity_cached_days (date, computed_at) VALUES ($1, NOW())
+       ON CONFLICT (date) DO UPDATE SET computed_at = NOW()`,
+      [dateKey]
+    );
+  } catch (e) { console.error(`[agent_activity_cached_days] mark failed for ${dateKey}:`, e.message); }
+}
+
+async function getAgentActivityCachedDays(dateFrom, dateTo) {
+  if (!pool) return new Set();
+  try {
+    const r = await pool.query("SELECT date FROM agent_activity_cached_days WHERE date >= $1 AND date <= $2", [dateFrom, dateTo]);
+    return new Set(r.rows.map((row) => row.date));
+  } catch (e) { console.error("[agent_activity_cached_days] load failed:", e.message); return new Set(); }
+}
+
 // Live-fetch one day's real availability for the given shifts and upsert into the DB.
 // Returns { employee: { onlineHours, closedHours } } for that single day.
 async function computeAndStoreAgentActivityDay(dateKey, shiftsToCompute, agentKeyToEmail) {
@@ -2830,6 +2888,7 @@ async function computeAndStoreAgentActivityDay(dateKey, shiftsToCompute, agentKe
   })());
   await Promise.all(tasks);
   await Promise.all(Object.entries(result).map(([employee, d]) => upsertAgentActivityDay(employee, dateKey, d.onlineHours, d.closedHours)));
+  await markAgentActivityDayCached(dateKey);
   return result;
 }
 
@@ -2846,10 +2905,16 @@ async function computeAgentActivity({ dateFrom, dateTo, employeeFilter }) {
     days.push(d.toISOString().slice(0, 10));
   }
 
+  // Any day not yet cached gets live-fetched here (same as "today" always does) —
+  // no manual backfill required. Always computed for EVERY visible employee (not just
+  // employeeFilter's subset), otherwise marking the day "cached" here would wrongly
+  // cause other employees' data for that day to be silently skipped forever.
   const todayKey = istTodayKey();
-  if (days.includes(todayKey) && relevantShifts.length) {
+  const cachedDays = await getAgentActivityCachedDays(dateFrom, dateTo);
+  const daysToFetch = days.filter((d) => d === todayKey || !cachedDays.has(d));
+  if (daysToFetch.length && shifts.length) {
     const agentKeyToEmail = await buildAgentKeyToEmail();
-    await computeAndStoreAgentActivityDay(todayKey, relevantShifts, agentKeyToEmail);
+    await Promise.all(daysToFetch.map((d) => computeAndStoreAgentActivityDay(d, shifts, agentKeyToEmail)));
   }
 
   const dbData = await loadAgentActivityRangeFromDB(dateFrom, dateTo, employeeFilter);
