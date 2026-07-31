@@ -2668,24 +2668,18 @@ async function computeAgentActivity({ dateFrom, dateTo, employeeFilter }) {
         const from = istLocalToUtcIso(day, s.start);
         const to = istLocalToUtcIso(day, s.end);
         try {
-          const data = await lcPost("performance", {
+          // agents/performance's accepting/not_accepting/logged_in_time fields always
+          // fill the entire queried window (they don't reflect true presence at all —
+          // confirmed by testing an agent known to be absent, which still showed ~the
+          // full window as "not accepting"). agents/availability is the endpoint that
+          // actually measures real online/session time, so use that instead.
+          const data = await lcPost("availability", {
             distribution: "day",
             filters: { from, to, agents: { values: [agentEmail] } },
           }, LC_REPORTS_AGENTS_API);
-          const rec = data?.records?.[agentEmail] || {};
           const shiftDurationHours = s.end - s.start;
-          const acceptingHours = (rec.accepting_chats_time || 0) / 3600;
-          const notAcceptingHours = (rec.not_accepting_chats_time || 0) / 3600;
-          // logged_in_time from this endpoint isn't reliable for sub-day window queries
-          // (it echoes back ~the queried window size regardless of real activity), so
-          // "online" is derived from the two fields that do vary correctly: any time
-          // the agent was in EITHER routing state (accepting or not-accepting) counts
-          // as logged in; time outside both is truly logged out.
-          const onlineHours = acceptingHours + notAcceptingHours;
-          // "Closed" = any part of the shift chats couldn't reach them — not-accepting
-          // AND logged-out time both count, so this is the shift window minus actual
-          // accepting time (not just accepting_chats_time's API-reported complement).
-          const closedHours = Math.max(0, shiftDurationHours - acceptingHours);
+          const onlineHours = Math.min(shiftDurationHours, data?.total || 0);
+          const closedHours = Math.max(0, shiftDurationHours - onlineHours);
           if (!result[s.employee][day]) result[s.employee][day] = { onlineHours: 0, closedHours: 0 };
           result[s.employee][day].onlineHours += onlineHours;
           result[s.employee][day].closedHours += closedHours;
