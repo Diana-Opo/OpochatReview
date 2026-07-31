@@ -197,6 +197,16 @@ if (process.env.DATABASE_URL) {
     employee TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
   )`).then(() => console.log("[db] claude_usage table ready")).catch(e => console.error("[db] claude_usage init:", e.message));
+
+  // ── agent_activity_daily table (cached per-employee, per-day online/closed hours) ──
+  pool.query(`CREATE TABLE IF NOT EXISTS agent_activity_daily (
+    employee TEXT NOT NULL,
+    date TEXT NOT NULL,
+    online_hours REAL NOT NULL,
+    closed_hours REAL NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (employee, date)
+  )`).then(() => console.log("[db] agent_activity_daily table ready")).catch(e => console.error("[db] agent_activity_daily init:", e.message));
 }
 const LC_API = "https://api.livechatinc.com/v3.6/agent/action";
 const LC_CONFIG_API = "https://api.livechatinc.com/v3.6/configuration/action";
@@ -2620,27 +2630,27 @@ app.get("/api/reports/platform-costs", authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Per-employee, per-day: hours logged in and hours with chat-accepting closed,
-// scoped to each employee's own shift window (so shared LiveChat logins split
-// correctly by time-of-day, same as the rest of the app).
-async function computeAgentActivity({ dateFrom, dateTo, employeeFilter }) {
-  const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
+// ── Agent Activity (online/closed hours) — cached in agent_activity_daily ─────
+// Past days are read from the DB only (populated by the nightly 1am job below);
+// "today" is always re-fetched live from LiveChat and upserted, since it's still
+// accumulating. This avoids hitting the LiveChat API for every report view.
 
-  function istLocalToUtcIso(dayKey, hour) {
-    const localMidnightUtcMs = new Date(`${dayKey}T00:00:00.000Z`).getTime() - ISTANBUL_OFFSET_MS;
-    return new Date(localMidnightUtcMs + hour * 3600000).toISOString();
-  }
+const AGENT_ACTIVITY_ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
 
-  const [allShifts, agentsRaw] = await Promise.all([
-    loadShifts(),
-    lcPost("list_agents", {}, LC_CONFIG_API),
-  ]);
-  const shifts = visibleShifts(allShifts);
+function istLocalToUtcIso(dayKey, hour) {
+  const localMidnightUtcMs = new Date(`${dayKey}T00:00:00.000Z`).getTime() - AGENT_ACTIVITY_ISTANBUL_OFFSET_MS;
+  return new Date(localMidnightUtcMs + hour * 3600000).toISOString();
+}
 
+function istTodayKey() {
+  return new Date(Date.now() + AGENT_ACTIVITY_ISTANBUL_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+async function buildAgentKeyToEmail() {
+  const agentsRaw = await lcPost("list_agents", {}, LC_CONFIG_API);
   const rawAgentList = Array.isArray(agentsRaw) ? agentsRaw
     : Array.isArray(agentsRaw?.agents) ? agentsRaw.agents
     : Object.values(agentsRaw || {}).find(v => Array.isArray(v)) || [];
-
   const agentKeyToEmail = {};
   for (const a of rawAgentList) {
     const low = a.name.toLowerCase().trim();
@@ -2648,7 +2658,77 @@ async function computeAgentActivity({ dateFrom, dateTo, employeeFilter }) {
     if (!agentKeyToEmail[low]) agentKeyToEmail[low] = a.id;
     if (!agentKeyToEmail[fst]) agentKeyToEmail[fst] = a.id;
   }
+  return agentKeyToEmail;
+}
 
+async function upsertAgentActivityDay(employee, date, onlineHours, closedHours) {
+  if (!pool) return;
+  try {
+    await pool.query(
+      `INSERT INTO agent_activity_daily (employee, date, online_hours, closed_hours, updated_at)
+       VALUES ($1,$2,$3,$4,NOW())
+       ON CONFLICT (employee, date) DO UPDATE SET online_hours=$3, closed_hours=$4, updated_at=NOW()`,
+      [employee, date, onlineHours, closedHours]
+    );
+  } catch (e) { console.error(`[agent_activity_daily] upsert failed for ${employee} ${date}:`, e.message); }
+}
+
+async function loadAgentActivityRangeFromDB(dateFrom, dateTo, employeeFilter) {
+  if (!pool) return {};
+  try {
+    const params = [dateFrom, dateTo];
+    let q = "SELECT employee, date, online_hours, closed_hours FROM agent_activity_daily WHERE date >= $1 AND date <= $2";
+    if (employeeFilter) { params.push(employeeFilter); q += " AND employee = $3"; }
+    const r = await pool.query(q, params);
+    const out = {};
+    for (const row of r.rows) {
+      if (!out[row.employee]) out[row.employee] = {};
+      out[row.employee][row.date] = { onlineHours: +row.online_hours, closedHours: +row.closed_hours };
+    }
+    return out;
+  } catch (e) { console.error("[agent_activity_daily] load failed:", e.message); return {}; }
+}
+
+// Live-fetch one day's real availability for the given shifts and upsert into the DB.
+// Returns { employee: { onlineHours, closedHours } } for that single day.
+async function computeAndStoreAgentActivityDay(dateKey, shiftsToCompute, agentKeyToEmail) {
+  const result = {};
+  const tasks = shiftsToCompute.map((s) => (async () => {
+    const agentEmail = agentKeyToEmail[s.agentKey.toLowerCase().trim()];
+    if (!agentEmail) return;
+    const from = istLocalToUtcIso(dateKey, s.start);
+    const to = istLocalToUtcIso(dateKey, s.end);
+    try {
+      // agents/performance's accepting/not_accepting/logged_in_time fields always
+      // fill the entire queried window (they don't reflect true presence at all —
+      // confirmed by testing an agent known to be absent, which still showed ~the
+      // full window as "not accepting"). agents/availability is the endpoint that
+      // actually measures real online/session time, so use that instead.
+      const data = await lcPost("availability", {
+        distribution: "day",
+        filters: { from, to, agents: { values: [agentEmail] } },
+      }, LC_REPORTS_AGENTS_API);
+      const shiftDurationHours = s.end - s.start;
+      const onlineHours = Math.min(shiftDurationHours, data?.total || 0);
+      const closedHours = Math.max(0, shiftDurationHours - onlineHours);
+      if (!result[s.employee]) result[s.employee] = { onlineHours: 0, closedHours: 0 };
+      result[s.employee].onlineHours += onlineHours;
+      result[s.employee].closedHours += closedHours;
+    } catch (e) {
+      console.error(`[agent-activity] ${s.employee} ${dateKey} failed:`, e.message);
+    }
+  })());
+  await Promise.all(tasks);
+  await Promise.all(Object.entries(result).map(([employee, d]) => upsertAgentActivityDay(employee, dateKey, d.onlineHours, d.closedHours)));
+  return result;
+}
+
+// Per-employee, per-day: hours logged in and hours with chat-accepting closed,
+// scoped to each employee's own shift window (so shared LiveChat logins split
+// correctly by time-of-day, same as the rest of the app).
+async function computeAgentActivity({ dateFrom, dateTo, employeeFilter }) {
+  const allShifts = await loadShifts();
+  const shifts = visibleShifts(allShifts);
   const relevantShifts = employeeFilter ? shifts.filter(s => s.employee === employeeFilter) : shifts;
 
   const days = [];
@@ -2656,52 +2736,45 @@ async function computeAgentActivity({ dateFrom, dateTo, employeeFilter }) {
     days.push(d.toISOString().slice(0, 10));
   }
 
-  const result = {}; // employee -> day -> { onlineHours, closedHours }
-  relevantShifts.forEach(s => { if (!result[s.employee]) result[s.employee] = {}; });
-
-  const tasks = [];
-  for (const s of relevantShifts) {
-    const agentEmail = agentKeyToEmail[s.agentKey.toLowerCase().trim()];
-    if (!agentEmail) continue;
-    for (const day of days) {
-      tasks.push((async () => {
-        const from = istLocalToUtcIso(day, s.start);
-        const to = istLocalToUtcIso(day, s.end);
-        try {
-          // agents/performance's accepting/not_accepting/logged_in_time fields always
-          // fill the entire queried window (they don't reflect true presence at all —
-          // confirmed by testing an agent known to be absent, which still showed ~the
-          // full window as "not accepting"). agents/availability is the endpoint that
-          // actually measures real online/session time, so use that instead.
-          const data = await lcPost("availability", {
-            distribution: "day",
-            filters: { from, to, agents: { values: [agentEmail] } },
-          }, LC_REPORTS_AGENTS_API);
-          const shiftDurationHours = s.end - s.start;
-          const onlineHours = Math.min(shiftDurationHours, data?.total || 0);
-          const closedHours = Math.max(0, shiftDurationHours - onlineHours);
-          if (!result[s.employee][day]) result[s.employee][day] = { onlineHours: 0, closedHours: 0 };
-          result[s.employee][day].onlineHours += onlineHours;
-          result[s.employee][day].closedHours += closedHours;
-        } catch (e) {
-          console.error(`[agent-activity] ${s.employee} ${day} failed:`, e.message);
-        }
-      })());
-    }
+  const todayKey = istTodayKey();
+  if (days.includes(todayKey) && relevantShifts.length) {
+    const agentKeyToEmail = await buildAgentKeyToEmail();
+    await computeAndStoreAgentActivityDay(todayKey, relevantShifts, agentKeyToEmail);
   }
-  await Promise.all(tasks);
 
-  const employees = Object.entries(result).map(([name, byDay]) => {
-    const daysArr = Object.entries(byDay)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, d]) => ({ date, onlineHours: +d.onlineHours.toFixed(2), closedHours: +d.closedHours.toFixed(2) }));
+  const dbData = await loadAgentActivityRangeFromDB(dateFrom, dateTo, employeeFilter);
+
+  const employeeNames = [...new Set(relevantShifts.map(s => s.employee))].sort((a, b) => a.localeCompare(b));
+  const employees = employeeNames.map((name) => {
+    const byDay = dbData[name] || {};
+    const daysArr = days.map((date) => ({
+      date,
+      onlineHours: +(byDay[date]?.onlineHours ?? 0).toFixed(2),
+      closedHours: +(byDay[date]?.closedHours ?? 0).toFixed(2),
+    }));
     const totalOnline = daysArr.reduce((s, d) => s + d.onlineHours, 0);
     const totalClosed = daysArr.reduce((s, d) => s + d.closedHours, 0);
     return { name, days: daysArr, totalOnline: +totalOnline.toFixed(2), totalClosed: +totalClosed.toFixed(2) };
-  }).sort((a, b) => a.name.localeCompare(b.name));
+  });
 
   return { date_from: dateFrom, date_to: dateTo, employees };
 }
+
+// Nightly job: finalize "yesterday" (now fully complete) for every visible shift,
+// so the DB has a permanent, accurate record without anyone needing to view the
+// report that day. Runs at 1am Istanbul time — 1 hour after the day actually ends,
+// to avoid any clock-skew edge cases right at midnight.
+cron.schedule("0 1 * * *", async () => {
+  try {
+    const yesterdayKey = new Date(Date.now() + AGENT_ACTIVITY_ISTANBUL_OFFSET_MS - 24 * 3600000).toISOString().slice(0, 10);
+    console.log(`[agent-activity-cron] finalizing ${yesterdayKey}...`);
+    const allShifts = visibleShifts(await loadShifts());
+    if (!allShifts.length) return;
+    const agentKeyToEmail = await buildAgentKeyToEmail();
+    const result = await computeAndStoreAgentActivityDay(yesterdayKey, allShifts, agentKeyToEmail);
+    console.log(`[agent-activity-cron] finalized ${yesterdayKey} for ${Object.keys(result).length} employees`);
+  } catch (e) { console.error("[agent-activity-cron] failed:", e.message); }
+}, { timezone: "Europe/Istanbul" });
 
 app.get("/api/reports/agent-activity", authMiddleware, async (req, res) => {
   try {
