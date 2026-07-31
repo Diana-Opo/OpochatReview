@@ -200,6 +200,7 @@ if (process.env.DATABASE_URL) {
 }
 const LC_API = "https://api.livechatinc.com/v3.6/agent/action";
 const LC_CONFIG_API = "https://api.livechatinc.com/v3.6/configuration/action";
+const LC_REPORTS_AGENTS_API = "https://api.livechatinc.com/v3.6/reports/agents";
 
 // ── Chatwoot config ───────────────────────────────────────────────────────────
 const CHATWOOT_BASE_URL = (process.env.CHATWOOT_BASE_URL || "").replace(/\/$/, "");
@@ -2615,6 +2616,92 @@ app.get("/api/reports/platform-costs", authMiddleware, async (req, res) => {
       daily,
       by_purpose: byPurpose,
     });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Per-employee, per-day: hours logged in and hours with chat-accepting closed,
+// scoped to each employee's own shift window (so shared LiveChat logins split
+// correctly by time-of-day, same as the rest of the app).
+async function computeAgentActivity({ dateFrom, dateTo, employeeFilter }) {
+  const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+  function istLocalToUtcIso(dayKey, hour) {
+    const localMidnightUtcMs = new Date(`${dayKey}T00:00:00.000Z`).getTime() - ISTANBUL_OFFSET_MS;
+    return new Date(localMidnightUtcMs + hour * 3600000).toISOString();
+  }
+
+  const [shifts, agentsRaw] = await Promise.all([
+    loadShifts(),
+    lcPost("list_agents", {}, LC_CONFIG_API),
+  ]);
+
+  const rawAgentList = Array.isArray(agentsRaw) ? agentsRaw
+    : Array.isArray(agentsRaw?.agents) ? agentsRaw.agents
+    : Object.values(agentsRaw || {}).find(v => Array.isArray(v)) || [];
+
+  const agentKeyToEmail = {};
+  for (const a of rawAgentList) {
+    const low = a.name.toLowerCase().trim();
+    const fst = low.split(" ")[0];
+    if (!agentKeyToEmail[low]) agentKeyToEmail[low] = a.id;
+    if (!agentKeyToEmail[fst]) agentKeyToEmail[fst] = a.id;
+  }
+
+  const relevantShifts = employeeFilter ? shifts.filter(s => s.employee === employeeFilter) : shifts;
+
+  const days = [];
+  for (let d = new Date(`${dateFrom}T00:00:00Z`); d <= new Date(`${dateTo}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
+    days.push(d.toISOString().slice(0, 10));
+  }
+
+  const result = {}; // employee -> day -> { onlineHours, closedHours }
+  relevantShifts.forEach(s => { if (!result[s.employee]) result[s.employee] = {}; });
+
+  const tasks = [];
+  for (const s of relevantShifts) {
+    const agentEmail = agentKeyToEmail[s.agentKey.toLowerCase().trim()];
+    if (!agentEmail) continue;
+    for (const day of days) {
+      tasks.push((async () => {
+        const from = istLocalToUtcIso(day, s.start);
+        const to = istLocalToUtcIso(day, s.end);
+        try {
+          const data = await lcPost("performance", {
+            distribution: "day",
+            filters: { from, to, agents: { values: [agentEmail] } },
+          }, LC_REPORTS_AGENTS_API);
+          const rec = data?.records?.[agentEmail] || {};
+          const onlineHours = (rec.logged_in_time || 0) / 3600;
+          const closedHours = (rec.not_accepting_chats_time || 0) / 3600;
+          if (!result[s.employee][day]) result[s.employee][day] = { onlineHours: 0, closedHours: 0 };
+          result[s.employee][day].onlineHours += onlineHours;
+          result[s.employee][day].closedHours += closedHours;
+        } catch (e) {
+          console.error(`[agent-activity] ${s.employee} ${day} failed:`, e.message);
+        }
+      })());
+    }
+  }
+  await Promise.all(tasks);
+
+  const employees = Object.entries(result).map(([name, byDay]) => {
+    const daysArr = Object.entries(byDay)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, d]) => ({ date, onlineHours: +d.onlineHours.toFixed(2), closedHours: +d.closedHours.toFixed(2) }));
+    const totalOnline = daysArr.reduce((s, d) => s + d.onlineHours, 0);
+    const totalClosed = daysArr.reduce((s, d) => s + d.closedHours, 0);
+    return { name, days: daysArr, totalOnline: +totalOnline.toFixed(2), totalClosed: +totalClosed.toFixed(2) };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+
+  return { date_from: dateFrom, date_to: dateTo, employees };
+}
+
+app.get("/api/reports/agent-activity", authMiddleware, async (req, res) => {
+  try {
+    const { date_from, date_to, employee } = req.query;
+    if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
+    const result = await computeAgentActivity({ dateFrom: date_from, dateTo: date_to, employeeFilter: employee || null });
+    res.json(result);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

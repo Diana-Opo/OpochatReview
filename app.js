@@ -180,7 +180,7 @@ async function initApp() {
 
   // Navigate to correct page immediately — before any async calls so there's no flash
   const lastPage = localStorage.getItem("lastPage");
-  const validPages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "employees", "config"];
+  const validPages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "report-agent-activity", "employees", "config"];
   const adminPages = ["employees", "config"];
   const startPage = validPages.includes(lastPage) && (!adminPages.includes(lastPage) || currentUser.role === "admin")
     ? lastPage : "chats";
@@ -199,7 +199,7 @@ async function initApp() {
 }
 
 // ── Page navigation ───────────────────────────────────────────────────────────
-const REPORT_PAGES = ["reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs"];
+const REPORT_PAGES = ["reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "report-agent-activity"];
 
 function toggleReportsMenu() {
   const submenu = document.getElementById("reports-submenu");
@@ -211,7 +211,7 @@ function toggleReportsMenu() {
 }
 
 function showPage(name) {
-  const pages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "employees", "config"];
+  const pages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "report-agent-activity", "employees", "config"];
   pages.forEach(p => {
     document.getElementById(`page-${p}`)?.classList.add("hidden");
     const btn = document.getElementById(`nav-${p}`);
@@ -240,6 +240,7 @@ function showPage(name) {
   if (name === "report-campaign") openCampaignImpactReport();
   if (name === "report-platform-status") loadPlatformStatus();
   if (name === "report-platform-costs") openPlatformCostsPage();
+  if (name === "report-agent-activity") openAgentActivityPage();
   if (name === "employees") openSettings();
   if (name === "config") loadKnowledgeStatus();
   localStorage.setItem("lastPage", name);
@@ -3025,6 +3026,176 @@ function renderPlatformCostsChart(daily) {
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => "$" + ctx.parsed.y.toFixed(3) } } },
     },
   });
+}
+
+// ── Agent Activity ──────────────────────────────────────────────────────────
+
+let _activeAgentActivity = null;
+
+function populateAgentActivityFilter() {
+  const sel = document.getElementById("activityAgent");
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">All Employees</option>';
+  const employees = (Array.isArray(agentShifts) ? [...agentShifts] : []).sort((a, b) => a.employee.localeCompare(b.employee));
+  const seen = new Set();
+  employees.forEach(s => {
+    if (seen.has(s.employee)) return;
+    seen.add(s.employee);
+    const opt = document.createElement("option");
+    opt.value = s.employee;
+    opt.textContent = s.employee;
+    sel.appendChild(opt);
+  });
+  if (prev) sel.value = prev;
+}
+
+function openAgentActivityPage() {
+  populateAgentActivityFilter();
+  const fromEl = document.getElementById("activityFrom");
+  const toEl = document.getElementById("activityTo");
+  if (fromEl && !fromEl.value) {
+    const pad = (n) => String(n).padStart(2, "0");
+    const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const now = new Date();
+    const weekAgo = new Date(now.getTime() - 6 * 86400000);
+    fromEl.value = fmt(weekAgo);
+    toEl.value = fmt(now);
+  }
+  const content = document.getElementById("activityContent");
+  if (content && !content.innerHTML.trim()) {
+    content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">Pick a date range and click Search.</div>`;
+  }
+}
+
+async function loadAgentActivity() {
+  const content = document.getElementById("activityContent");
+  if (!content) return;
+  const dateFrom = document.getElementById("activityFrom")?.value;
+  const dateTo = document.getElementById("activityTo")?.value;
+  const employee = document.getElementById("activityAgent")?.value || "";
+  if (!dateFrom || !dateTo) {
+    content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">Please pick a From and To date.</div>`;
+    return;
+  }
+  content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm"><span class="spinner"></span></div>`;
+  _activeAgentActivity = null;
+
+  try {
+    const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
+    if (employee) params.set("employee", employee);
+    const res = await authFetch(`/api/reports/agent-activity?${params.toString()}`);
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || res.status);
+    if (!data.employees?.length) {
+      content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">No shift data found for this range.</div>`;
+      return;
+    }
+    _activeAgentActivity = { dateFrom, dateTo, employeeFilter: employee, data };
+    renderAgentActivity(content, dateFrom, dateTo, data);
+  } catch (e) {
+    content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderAgentActivity(content, dateFrom, dateTo, data) {
+  const cards = data.employees.map(e => {
+    const rows = e.days.map(d => `
+      <tr class="border-t border-[#1a2d4a]">
+        <td class="px-4 py-2 text-slate-300 text-sm text-center">${escHtml(d.date)}</td>
+        <td class="px-4 py-2 text-center text-emerald-400 text-sm">${d.onlineHours.toFixed(1)}h</td>
+        <td class="px-4 py-2 text-center text-orange-400 text-sm">${d.closedHours.toFixed(1)}h</td>
+      </tr>`).join("");
+    return `
+    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
+      <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
+        <span class="font-semibold text-white text-sm">${escHtml(e.name)}</span>
+        <span class="text-xs text-slate-500">Online: <span class="text-emerald-400 font-semibold">${e.totalOnline.toFixed(1)}h</span> · Chat Closed: <span class="text-orange-400 font-semibold">${e.totalClosed.toFixed(1)}h</span></span>
+      </div>
+      <div class="overflow-x-auto max-h-64 overflow-y-auto">
+        <table class="w-full">
+          <thead class="sticky top-0 bg-[#0f1d35]">
+            <tr class="text-center text-xs text-slate-500 uppercase">
+              <th class="px-4 py-2 font-medium">Date</th>
+              <th class="px-4 py-2 font-medium">Online</th>
+              <th class="px-4 py-2 font-medium" title="Hours during their shift with chat-accepting turned off">Chat Closed</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join("");
+
+  content.innerHTML = `
+    <div class="mb-4 text-sm text-slate-400">${escHtml(dateFrom)} → ${escHtml(dateTo)}</div>
+    <div class="grid grid-cols-2 gap-5">${cards}</div>`;
+}
+
+function downloadAgentActivityPdf() {
+  if (!_activeAgentActivity) { showStatus("Run a search first", "error"); return; }
+  const { dateFrom, dateTo, employeeFilter, data } = _activeAgentActivity;
+
+  const win = window.open("", "_blank");
+  if (!win) { showStatus("Allow popups to download PDF", "error"); return; }
+
+  const sections = data.employees.map(e => {
+    const rows = e.days.map((d, i) => `
+      <tr style="background:${i % 2 ? PDF_CARD_BG : PDF_BG}">
+        <td style="padding:6px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10px;color:${PDF_TEXT_DIM};text-align:center">${escHtml(d.date)}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10px;color:#4ade80;text-align:center">${d.onlineHours.toFixed(1)}h</td>
+        <td style="padding:6px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10px;color:#fb923c;text-align:center">${d.closedHours.toFixed(1)}h</td>
+      </tr>`).join("");
+    return `
+    <div class="card" style="page-break-inside: avoid;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:11px;font-weight:700;color:${PDF_TEXT}">${escHtml(e.name)}</span>
+        <span style="font-size:9px;color:${PDF_TEXT_DIM}">Online: <strong style="color:#4ade80">${e.totalOnline.toFixed(1)}h</strong> · Chat Closed: <strong style="color:#fb923c">${e.totalClosed.toFixed(1)}h</strong></span>
+      </div>
+      <table>
+        <thead><tr><th>Date</th><th class="num">Online</th><th class="num">Chat Closed</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }).join("");
+
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Agent Activity — ${escHtml(dateFrom)} to ${escHtml(dateTo)}</title>
+<style>
+  @page { size: A4 portrait; margin: 1.5cm 16mm; background: ${PDF_BG}; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  ${PDF_FORCE_PRINT_COLORS_CSS}
+  html { background: ${PDF_BG}; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+       color: ${PDF_TEXT_DIM}; text-align: center; padding: 6px 10px; border-bottom: 2px solid ${OPO_BRAND_BLUE}; }
+  th.num { text-align: center; }
+  .card { background: ${PDF_CARD_BG}; border: 1px solid ${PDF_BORDER}; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;
+          page-break-inside: avoid; break-inside: avoid; }
+  .footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid ${PDF_BORDER};
+            font-size: 8px; color: ${PDF_TEXT_DIM}; text-align: center; }
+</style>
+</head><body>
+${opoLetterheadHtml()}
+<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid ${OPO_BRAND_BLUE};padding-bottom:10px;margin-bottom:14px">
+  <div>
+    <div style="font-size:20px;font-weight:900;color:${PDF_TEXT};line-height:1.1">Agent Activity Report</div>
+    <div style="font-size:11px;color:${PDF_TEXT_DIM};margin-top:4px">${escHtml(dateFrom)} → ${escHtml(dateTo)}${employeeFilter ? ` · ${escHtml(employeeFilter)}` : ""}</div>
+  </div>
+  <div style="background:#132a4d;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
+              letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
+    Generated ${new Date().toLocaleDateString()}
+  </div>
+</div>
+
+${sections}
+
+<div class="footer">Chat Review Dashboard — Agent Activity Report · ${escHtml(dateFrom)} → ${escHtml(dateTo)}</div>
+
+<script>setTimeout(() => window.print(), 350)<\/script>
+</body></html>`);
+  win.document.close();
 }
 
 async function openReports() {
