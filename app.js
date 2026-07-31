@@ -3139,6 +3139,33 @@ function renderAgentActivity(content, dateFrom, dateTo, data) {
     <div class="grid grid-cols-2 gap-5">${cards}</div>`;
 }
 
+async function backfillAgentActivity() {
+  const dateFrom = document.getElementById("activityFrom")?.value;
+  const dateTo = document.getElementById("activityTo")?.value;
+  if (!dateFrom || !dateTo) { showStatus("Pick a From and To date first", "error"); return; }
+
+  const btn = document.getElementById("btnBackfillActivity");
+  const icon = document.getElementById("backfillActivityIcon");
+  btn.disabled = true;
+  if (icon) icon.textContent = "…";
+  showStatus(`Backfilling ${dateFrom} → ${dateTo}... this can take a while`, "success");
+
+  try {
+    const res = await authFetch("/api/reports/agent-activity/backfill", {
+      method: "POST",
+      body: JSON.stringify({ date_from: dateFrom, date_to: dateTo }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || res.status);
+    showStatus(`Backfilled ${data.days_processed} day(s) for ${data.employees.length} employee(s)`, "success");
+    loadAgentActivity();
+  } catch (e) {
+    showStatus("Backfill failed: " + e.message, "error");
+  }
+  btn.disabled = false;
+  if (icon) icon.textContent = "⏬";
+}
+
 function downloadAgentActivityPdf() {
   if (!_activeAgentActivity) { showStatus("Run a search first", "error"); return; }
   const { dateFrom, dateTo, employeeFilter, data } = _activeAgentActivity;

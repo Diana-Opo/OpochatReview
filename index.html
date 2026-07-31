@@ -423,8 +423,12 @@
               class="flex items-center gap-1.5 bg-[#1a2d4a] text-[#F5B800] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
               📄 Export PDF
             </button>
+            <button onclick="backfillAgentActivity()" id="btnBackfillActivity"
+              class="admin-only hidden flex items-center gap-1.5 bg-[#1a2d4a] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              <span id="backfillActivityIcon">⏬</span> Backfill Cache
+            </button>
           </div>
-          <p class="text-xs text-slate-500 mt-2">Hours are scoped to each employee's own shift window per day. Past days are served from cache (updated nightly); only today's data is fetched live.</p>
+          <p class="text-xs text-slate-500 mt-2">Hours are scoped to each employee's own shift window per day. Past days are served from cache (updated nightly); only today's data is fetched live. Use "Backfill Cache" to seed history for the From/To range shown above (admin only).</p>
         </div>
         <div id="activityContent" class="p-6"></div>
       </div>

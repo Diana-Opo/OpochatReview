@@ -2785,6 +2785,39 @@ app.get("/api/reports/agent-activity", authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// One-time (or occasional) backfill: live-fetch every day in the range for every
+// visible employee and upsert into agent_activity_daily. Use this to seed history
+// that predates the nightly cron — normal report reads never need this since past
+// days are cache-only.
+app.post("/api/reports/agent-activity/backfill", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: "No database configured" });
+    const { date_from, date_to } = req.body || {};
+    if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
+
+    const allShifts = visibleShifts(await loadShifts());
+    if (!allShifts.length) return res.json({ days_processed: 0, employees: [] });
+    const agentKeyToEmail = await buildAgentKeyToEmail();
+
+    const days = [];
+    for (let d = new Date(`${date_from}T00:00:00Z`); d <= new Date(`${date_to}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
+      days.push(d.toISOString().slice(0, 10));
+    }
+
+    // Run every day concurrently — the shared lcAcquire limiter already caps true
+    // concurrency, so this keeps it fully saturated across the whole backlog
+    // instead of idling between day-sized batches.
+    const dayResults = await Promise.all(days.map((day) =>
+      computeAndStoreAgentActivityDay(day, allShifts, agentKeyToEmail)
+        .then((result) => { console.log(`[agent-activity-backfill] ${day} done (${Object.keys(result).length} employees)`); return result; })
+    ));
+    const touchedEmployees = new Set();
+    dayResults.forEach((result) => Object.keys(result).forEach((e) => touchedEmployees.add(e)));
+
+    res.json({ days_processed: days.length, employees: [...touchedEmployees].sort() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Dashboard stats for current month — independent of Chat Review page
 app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
   try {
