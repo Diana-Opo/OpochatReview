@@ -2675,7 +2675,13 @@ async function computeAgentActivity({ dateFrom, dateTo, employeeFilter }) {
           const rec = data?.records?.[agentEmail] || {};
           const shiftDurationHours = s.end - s.start;
           const acceptingHours = (rec.accepting_chats_time || 0) / 3600;
-          const onlineHours = (rec.logged_in_time || 0) / 3600;
+          const notAcceptingHours = (rec.not_accepting_chats_time || 0) / 3600;
+          // logged_in_time from this endpoint isn't reliable for sub-day window queries
+          // (it echoes back ~the queried window size regardless of real activity), so
+          // "online" is derived from the two fields that do vary correctly: any time
+          // the agent was in EITHER routing state (accepting or not-accepting) counts
+          // as logged in; time outside both is truly logged out.
+          const onlineHours = acceptingHours + notAcceptingHours;
           // "Closed" = any part of the shift chats couldn't reach them — not-accepting
           // AND logged-out time both count, so this is the shift window minus actual
           // accepting time (not just accepting_chats_time's API-reported complement).
