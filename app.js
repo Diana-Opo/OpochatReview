@@ -3032,6 +3032,13 @@ function renderPlatformCostsChart(daily) {
 
 let _activeAgentActivity = null;
 
+function fmtHoursMinutes(hoursFloat) {
+  const totalMinutes = Math.round((hoursFloat || 0) * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${h}h ${String(m).padStart(2, "0")}m`;
+}
+
 function populateAgentActivityFilter() {
   const sel = document.getElementById("activityAgent");
   if (!sel) return;
@@ -3103,14 +3110,14 @@ function renderAgentActivity(content, dateFrom, dateTo, data) {
     const rows = e.days.map(d => `
       <tr class="border-t border-[#1a2d4a]">
         <td class="px-4 py-2 text-slate-300 text-sm text-center">${escHtml(d.date)}</td>
-        <td class="px-4 py-2 text-center text-emerald-400 text-sm">${d.onlineHours.toFixed(1)}h</td>
-        <td class="px-4 py-2 text-center text-orange-400 text-sm">${d.closedHours.toFixed(1)}h</td>
+        <td class="px-4 py-2 text-center text-emerald-400 text-sm">${fmtHoursMinutes(d.onlineHours)}</td>
+        <td class="px-4 py-2 text-center text-orange-400 text-sm">${fmtHoursMinutes(d.closedHours)}</td>
       </tr>`).join("");
     return `
     <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
       <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
         <span class="font-semibold text-white text-sm">${escHtml(e.name)}</span>
-        <span class="text-xs text-slate-500">Online: <span class="text-emerald-400 font-semibold">${e.totalOnline.toFixed(1)}h</span> · Chat Closed: <span class="text-orange-400 font-semibold">${e.totalClosed.toFixed(1)}h</span></span>
+        <span class="text-xs text-slate-500">Online: <span class="text-emerald-400 font-semibold">${fmtHoursMinutes(e.totalOnline)}</span> · Chat Closed: <span class="text-orange-400 font-semibold">${fmtHoursMinutes(e.totalClosed)}</span></span>
       </div>
       <div class="overflow-x-auto max-h-64 overflow-y-auto">
         <table class="w-full">
@@ -3143,14 +3150,14 @@ function downloadAgentActivityPdf() {
     const rows = e.days.map((d, i) => `
       <tr style="background:${i % 2 ? PDF_CARD_BG : PDF_BG}">
         <td style="padding:6px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10px;color:${PDF_TEXT_DIM};text-align:center">${escHtml(d.date)}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10px;color:#4ade80;text-align:center">${d.onlineHours.toFixed(1)}h</td>
-        <td style="padding:6px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10px;color:#fb923c;text-align:center">${d.closedHours.toFixed(1)}h</td>
+        <td style="padding:6px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10px;color:#4ade80;text-align:center">${fmtHoursMinutes(d.onlineHours)}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10px;color:#fb923c;text-align:center">${fmtHoursMinutes(d.closedHours)}</td>
       </tr>`).join("");
     return `
     <div class="card" style="page-break-inside: avoid;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <span style="font-size:11px;font-weight:700;color:${PDF_TEXT}">${escHtml(e.name)}</span>
-        <span style="font-size:9px;color:${PDF_TEXT_DIM}">Online: <strong style="color:#4ade80">${e.totalOnline.toFixed(1)}h</strong> · Chat Closed: <strong style="color:#fb923c">${e.totalClosed.toFixed(1)}h</strong></span>
+        <span style="font-size:9px;color:${PDF_TEXT_DIM}">Online: <strong style="color:#4ade80">${fmtHoursMinutes(e.totalOnline)}</strong> · Chat Closed: <strong style="color:#fb923c">${fmtHoursMinutes(e.totalClosed)}</strong></span>
       </div>
       <table>
         <thead><tr><th>Date</th><th class="num">Online</th><th class="num">Chat Closed</th></tr></thead>
