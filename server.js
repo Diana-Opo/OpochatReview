@@ -2548,7 +2548,7 @@ app.get("/api/reports/chat-transfers", authMiddleware, async (req, res) => {
     const employees = result.employees
       .map((e) => ({ name: e.name, total: e.answered + e.transferred, answered: e.answered, transferred: e.transferred }))
       .filter((e) => e.total > 0)
-      .sort((a, b) => b.total - a.total);
+      .sort((a, b) => b.transferred - a.transferred);
     res.json({ date_from: result.date_from, date_to: result.date_to, employees });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
