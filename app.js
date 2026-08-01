@@ -180,7 +180,7 @@ async function initApp() {
 
   // Navigate to correct page immediately — before any async calls so there's no flash
   const lastPage = localStorage.getItem("lastPage");
-  const validPages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "report-agent-activity", "employees", "config"];
+  const validPages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "report-agent-activity", "report-chat-transfers", "employees", "config"];
   const adminPages = ["employees", "config"];
   const startPage = validPages.includes(lastPage) && (!adminPages.includes(lastPage) || currentUser.role === "admin")
     ? lastPage : "chats";
@@ -199,7 +199,7 @@ async function initApp() {
 }
 
 // ── Page navigation ───────────────────────────────────────────────────────────
-const REPORT_PAGES = ["reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "report-agent-activity"];
+const REPORT_PAGES = ["reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "report-agent-activity", "report-chat-transfers"];
 
 function toggleReportsMenu() {
   const submenu = document.getElementById("reports-submenu");
@@ -211,7 +211,7 @@ function toggleReportsMenu() {
 }
 
 function showPage(name) {
-  const pages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "report-agent-activity", "employees", "config"];
+  const pages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "report-agent-activity", "report-chat-transfers", "employees", "config"];
   pages.forEach(p => {
     document.getElementById(`page-${p}`)?.classList.add("hidden");
     const btn = document.getElementById(`nav-${p}`);
@@ -241,6 +241,7 @@ function showPage(name) {
   if (name === "report-platform-status") loadPlatformStatus();
   if (name === "report-platform-costs") openPlatformCostsPage();
   if (name === "report-agent-activity") openAgentActivityPage();
+  if (name === "report-chat-transfers") openChatTransfersReport();
   if (name === "employees") openSettings();
   if (name === "config") loadKnowledgeStatus();
   localStorage.setItem("lastPage", name);
@@ -2237,6 +2238,213 @@ ${opoLetterheadHtml()}
 </table>
 
 <div class="footer">Chat Review Dashboard — Total Chats Report · ${escHtml(dateFrom)} → ${escHtml(dateTo)}</div>
+
+<script>setTimeout(() => window.print(), 350)<\/script>
+</body></html>`);
+  win.document.close();
+}
+
+// ── Chat Transfers Report ──────────────────────────────────────────────────────
+
+let _activeChatTransfersReport = null;
+
+function populateChatTransfersAgentFilter() {
+  const sel = document.getElementById("transfersAgent");
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">All Employees</option>';
+  const employees = (Array.isArray(agentShifts) ? [...agentShifts] : []).sort((a, b) => a.employee.localeCompare(b.employee));
+  const seen = new Set();
+  employees.forEach(s => {
+    if (seen.has(s.employee)) return;
+    seen.add(s.employee);
+    const opt = document.createElement("option");
+    opt.value = s.employee;
+    opt.textContent = s.employee;
+    sel.appendChild(opt);
+  });
+  if (prev) sel.value = prev;
+}
+
+function openChatTransfersReport() {
+  populateChatTransfersAgentFilter();
+  const fromEl = document.getElementById("transfersFrom");
+  const toEl = document.getElementById("transfersTo");
+  if (fromEl && toEl && !fromEl.value && !toEl.value) {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    const pad = (n) => String(n).padStart(2, "0");
+    fromEl.value = `${y}-${pad(m + 1)}-01`;
+    toEl.value = `${y}-${pad(m + 1)}-${pad(lastDay)}`;
+  }
+  const content = document.getElementById("transfersContent");
+  if (content && !content.innerHTML.trim()) {
+    content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">Pick a date range and click Search.</div>`;
+  }
+}
+
+async function loadChatTransfersReport() {
+  const content = document.getElementById("transfersContent");
+  if (!content) return;
+  const dateFrom = document.getElementById("transfersFrom")?.value;
+  const dateTo = document.getElementById("transfersTo")?.value;
+  const employee = document.getElementById("transfersAgent")?.value || "";
+  if (!dateFrom || !dateTo) {
+    content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">Please pick a From and To date.</div>`;
+    return;
+  }
+  content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm"><span class="spinner"></span></div>`;
+  _activeChatTransfersReport = null;
+
+  try {
+    const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
+    if (employee) params.set("employee", employee);
+    const res = await authFetch(`/api/reports/chat-transfers?${params.toString()}`);
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Error: ${escHtml(data.error || res.status)}</div>`;
+      return;
+    }
+    const employees = data.employees || [];
+    if (!employees.length) {
+      content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">No chats found for this range.</div>`;
+      return;
+    }
+    _activeChatTransfersReport = { dateFrom, dateTo, employeeFilter: employee, data };
+    renderChatTransfersReport(content, dateFrom, dateTo, data);
+  } catch (e) {
+    content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderChatTransfersReport(content, dateFrom, dateTo, data) {
+  const employees = data.employees || [];
+  const rows = employees.map(e => {
+    const pctTransferred = e.total ? (e.transferred / e.total) * 100 : 0;
+    return `
+    <tr class="border-t border-[#1a2d4a]">
+      <td class="px-4 py-2.5 text-white text-sm text-center">${escHtml(e.name)}</td>
+      <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${e.total}</td>
+      <td class="px-4 py-2.5 text-center text-emerald-400 font-semibold text-sm">${e.answered}</td>
+      <td class="px-4 py-2.5 text-center text-rose-400 font-semibold text-sm">${e.transferred}</td>
+      <td class="px-4 py-2.5 text-center text-rose-400 text-sm">${pctTransferred.toFixed(1)}%</td>
+    </tr>`;
+  }).join("");
+
+  const grandTotal = employees.reduce((s, e) => s + e.total, 0);
+  const grandAnswered = employees.reduce((s, e) => s + e.answered, 0);
+  const grandTransferred = employees.reduce((s, e) => s + e.transferred, 0);
+  const statCard = (label, val, color) => `
+    <div class="bg-[#0f1d35] rounded-xl border border-[#1a2d4a] p-4 text-center">
+      <div class="text-xs text-slate-500 uppercase font-medium mb-1">${label}</div>
+      <div class="text-xl font-bold" style="color:${color}">${val}</div>
+    </div>`;
+
+  content.innerHTML = `
+    <div class="grid grid-cols-3 gap-4 mb-5">
+      ${statCard("Total (LiveChat)", grandTotal, "#F5B800")}
+      ${statCard("Answered Solo", grandAnswered, "#34d399")}
+      ${statCard("Transferred", grandTransferred, "#fb7185")}
+    </div>
+    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
+      <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
+        <span class="font-semibold text-white text-sm">${escHtml(dateFrom)} → ${escHtml(dateTo)}</span>
+        <span class="text-xs text-slate-500">${grandTotal} total chats</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead>
+            <tr class="text-center text-xs text-slate-500 uppercase">
+              <th class="px-4 py-2 font-medium">Employee</th>
+              <th class="px-4 py-2 font-medium">Total</th>
+              <th class="px-4 py-2 font-medium" title="Only this employee ever sent a message in the chat">Answered Solo</th>
+              <th class="px-4 py-2 font-medium" title="More than one agent sent a message in the chat">Transferred</th>
+              <th class="px-4 py-2 font-medium">% Transferred</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function downloadChatTransfersPdf() {
+  if (!_activeChatTransfersReport) { showStatus("Run a search first", "error"); return; }
+  const { dateFrom, dateTo, employeeFilter, data } = _activeChatTransfersReport;
+  const employees = data.employees || [];
+  const grandTotal = employees.reduce((s, e) => s + e.total, 0);
+  const grandAnswered = employees.reduce((s, e) => s + e.answered, 0);
+  const grandTransferred = employees.reduce((s, e) => s + e.transferred, 0);
+
+  const win = window.open("", "_blank");
+  if (!win) { showStatus("Allow popups to download PDF", "error"); return; }
+
+  const rows = employees.map((e, i) => {
+    const pctTransferred = e.total ? (e.transferred / e.total) * 100 : 0;
+    return `
+    <tr style="background:${i % 2 ? PDF_CARD_BG : PDF_BG}">
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;color:${PDF_TEXT};text-align:center">${escHtml(e.name)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;font-weight:700;color:#ffffff;text-align:center">${e.total}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;font-weight:700;color:#34d399;text-align:center">${e.answered}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;font-weight:700;color:#fb7185;text-align:center">${e.transferred}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;color:#fb7185;text-align:center">${pctTransferred.toFixed(1)}%</td>
+    </tr>`;
+  }).join("");
+
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Chat Transfers — ${escHtml(dateFrom)} to ${escHtml(dateTo)}</title>
+<style>
+  @page { size: A4 portrait; margin: 1.5cm 16mm; background: ${PDF_BG}; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  ${PDF_FORCE_PRINT_COLORS_CSS}
+  html { background: ${PDF_BG}; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+       color: ${PDF_TEXT_DIM}; text-align: center; padding: 8px 10px; border-bottom: 2px solid ${OPO_BRAND_BLUE}; }
+  th.num { text-align: center; }
+  .footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid ${PDF_BORDER};
+            font-size: 8px; color: ${PDF_TEXT_DIM}; text-align: center; }
+</style>
+</head><body>
+${opoLetterheadHtml()}
+<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid ${OPO_BRAND_BLUE};padding-bottom:10px;margin-bottom:14px">
+  <div>
+    <div style="font-size:20px;font-weight:900;color:${PDF_TEXT};line-height:1.1">Chat Transfers Report</div>
+    <div style="font-size:11px;color:${PDF_TEXT_DIM};margin-top:4px">${escHtml(dateFrom)} → ${escHtml(dateTo)}${employeeFilter ? ` · ${escHtml(employeeFilter)}` : ""} · LiveChat only</div>
+  </div>
+  <div style="background:#132a4d;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
+              letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
+    Generated ${new Date().toLocaleDateString()}
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
+  ${[
+    ["Total (LiveChat)", grandTotal, OPO_BRAND_BLUE],
+    ["Answered Solo", grandAnswered, "#34d399"],
+    ["Transferred", grandTransferred, "#fb7185"],
+  ].map(([l,v,c]) => `<div style="background:${PDF_CARD_BG};border:1px solid ${PDF_BORDER};border-radius:8px;padding:10px 6px;text-align:center">
+    <div style="font-size:8px;color:${PDF_TEXT_DIM};text-transform:uppercase;font-weight:700;letter-spacing:.04em;margin-bottom:5px">${l}</div>
+    <div style="font-size:18px;font-weight:900;color:${c}">${v}</div>
+  </div>`).join("")}
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Employee</th>
+      <th class="num">Total</th>
+      <th class="num">Answered Solo</th>
+      <th class="num">Transferred</th>
+      <th class="num">% Transferred</th>
+    </tr>
+  </thead>
+  <tbody>${rows}</tbody>
+</table>
+
+<div class="footer">Chat Review Dashboard — Chat Transfers Report · ${escHtml(dateFrom)} → ${escHtml(dateTo)}</div>
 
 <script>setTimeout(() => window.print(), 350)<\/script>
 </body></html>`);
