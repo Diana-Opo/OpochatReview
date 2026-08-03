@@ -79,14 +79,6 @@
             class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
             <span class="text-xs">🚀</span> Campaign Impact
           </button>
-          <button onclick="showPage('report-platform-status')" id="nav-report-platform-status"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
-            <span class="text-xs">📡</span> Platform Status
-          </button>
-          <button onclick="showPage('report-platform-costs')" id="nav-report-platform-costs"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
-            <span class="text-xs">💰</span> Platform Costs
-          </button>
           <button onclick="showPage('report-agent-activity')" id="nav-report-agent-activity"
             class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
             <span class="text-xs">⏱️</span> Agent Activity
@@ -94,6 +86,25 @@
           <button onclick="showPage('report-chat-transfers')" id="nav-report-chat-transfers"
             class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
             <span class="text-xs">🔀</span> Chat Transfers
+          </button>
+        </div>
+      </div>
+      <!-- Platform category -->
+      <div>
+        <button onclick="togglePlatformMenu()" id="nav-platform-header"
+          class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all">
+          <span class="text-base w-5 text-center">🧩</span>
+          <span class="flex-1">Platform</span>
+          <span id="platform-chevron" class="text-xs transition-transform duration-200">▼</span>
+        </button>
+        <div id="platform-submenu" class="ml-2 mt-0.5 space-y-0.5">
+          <button onclick="showPage('report-platform-status')" id="nav-report-platform-status"
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
+            <span class="text-xs">📡</span> Platform Status
+          </button>
+          <button onclick="showPage('report-platform-costs')" id="nav-report-platform-costs"
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
+            <span class="text-xs">💰</span> Platform Costs
           </button>
         </div>
       </div>

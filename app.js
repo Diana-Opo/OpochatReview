@@ -199,11 +199,21 @@ async function initApp() {
 }
 
 // ── Page navigation ───────────────────────────────────────────────────────────
-const REPORT_PAGES = ["reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "report-agent-activity", "report-chat-transfers"];
+const REPORT_PAGES = ["reports", "report-monthly", "report-total-chats", "report-campaign", "report-agent-activity", "report-chat-transfers"];
+const PLATFORM_PAGES = ["report-platform-status", "report-platform-costs"];
 
 function toggleReportsMenu() {
   const submenu = document.getElementById("reports-submenu");
   const chevron = document.getElementById("reports-chevron");
+  if (!submenu) return;
+  const open = !submenu.classList.contains("hidden");
+  submenu.classList.toggle("hidden", open);
+  if (chevron) chevron.style.transform = open ? "rotate(-90deg)" : "";
+}
+
+function togglePlatformMenu() {
+  const submenu = document.getElementById("platform-submenu");
+  const chevron = document.getElementById("platform-chevron");
   if (!submenu) return;
   const open = !submenu.classList.contains("hidden");
   submenu.classList.toggle("hidden", open);
@@ -217,7 +227,7 @@ function showPage(name) {
     const btn = document.getElementById(`nav-${p}`);
     if (btn) {
       btn.classList.remove("bg-slate-700", "text-white");
-      btn.classList.add(REPORT_PAGES.includes(p) ? "text-slate-400" : "text-slate-300");
+      btn.classList.add((REPORT_PAGES.includes(p) || PLATFORM_PAGES.includes(p)) ? "text-slate-400" : "text-slate-300");
     }
   });
   document.getElementById(`page-${name}`)?.classList.remove("hidden");
@@ -230,6 +240,13 @@ function showPage(name) {
   if (REPORT_PAGES.includes(name)) {
     const submenu = document.getElementById("reports-submenu");
     const chevron = document.getElementById("reports-chevron");
+    if (submenu) submenu.classList.remove("hidden");
+    if (chevron) chevron.style.transform = "";
+  }
+  // Keep platform submenu open when on any platform sub-page
+  if (PLATFORM_PAGES.includes(name)) {
+    const submenu = document.getElementById("platform-submenu");
+    const chevron = document.getElementById("platform-chevron");
     if (submenu) submenu.classList.remove("hidden");
     if (chevron) chevron.style.transform = "";
   }
