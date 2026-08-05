@@ -14,6 +14,7 @@ let currentPage = 0;
 let agentChart = null;
 let totalChats = 0;
 let agentShifts = [];
+let weekendOverrides = []; // date-specific shift overrides — see server.js loadWeekendOverrides()
 let allChats = [];
 let activeEmployeeShift = null;
 let currentUser = null; // { username, role, employee_name }
@@ -189,6 +190,7 @@ async function initApp() {
   // Load agents + shifts in background (populate filter dropdowns)
   await loadAgents();
   try { const r = await authFetch("/api/agent-shifts"); agentShifts = await r.json(); } catch {}
+  try { const r = await authFetch("/api/weekend-overrides"); weekendOverrides = await r.json(); } catch {}
   renderAgentFilter();
   loadKnowledgeStatus();
   document.getElementById("btnLoad").addEventListener("click", () => loadChats(null));
@@ -201,6 +203,16 @@ async function initApp() {
 // ── Page navigation ───────────────────────────────────────────────────────────
 const REPORT_PAGES = ["reports", "report-monthly", "report-total-chats", "report-campaign", "report-agent-activity", "report-chat-transfers"];
 const PLATFORM_PAGES = ["report-platform-status", "report-platform-costs"];
+const REVIEW_PAGES = ["chats"];
+
+function toggleReviewsMenu() {
+  const submenu = document.getElementById("reviews-submenu");
+  const chevron = document.getElementById("reviews-chevron");
+  if (!submenu) return;
+  const open = !submenu.classList.contains("hidden");
+  submenu.classList.toggle("hidden", open);
+  if (chevron) chevron.style.transform = open ? "rotate(-90deg)" : "";
+}
 
 function toggleReportsMenu() {
   const submenu = document.getElementById("reports-submenu");
@@ -227,7 +239,7 @@ function showPage(name) {
     const btn = document.getElementById(`nav-${p}`);
     if (btn) {
       btn.classList.remove("bg-slate-700", "text-white");
-      btn.classList.add((REPORT_PAGES.includes(p) || PLATFORM_PAGES.includes(p)) ? "text-slate-400" : "text-slate-300");
+      btn.classList.add((REPORT_PAGES.includes(p) || PLATFORM_PAGES.includes(p) || REVIEW_PAGES.includes(p)) ? "text-slate-400" : "text-slate-300");
     }
   });
   document.getElementById(`page-${name}`)?.classList.remove("hidden");
@@ -247,6 +259,13 @@ function showPage(name) {
   if (PLATFORM_PAGES.includes(name)) {
     const submenu = document.getElementById("platform-submenu");
     const chevron = document.getElementById("platform-chevron");
+    if (submenu) submenu.classList.remove("hidden");
+    if (chevron) chevron.style.transform = "";
+  }
+  // Keep reviews submenu open when on any reviews sub-page
+  if (REVIEW_PAGES.includes(name)) {
+    const submenu = document.getElementById("reviews-submenu");
+    const chevron = document.getElementById("reviews-chevron");
     if (submenu) submenu.classList.remove("hidden");
     if (chevron) chevron.style.transform = "";
   }
@@ -505,11 +524,21 @@ function agentMatchesShift(agentName, shift, platform, agentEmail) {
 
 function applyEmployeeHourFilter(list) {
   if (!activeEmployeeShift) return list;
+  // Employees sharing this shift's identity on the chat's platform — an override
+  // naming one of them takes priority over everyone's static hour windows, not
+  // just activeEmployeeShift's own.
+  const sameKeyEmployees = agentShifts.filter(s => s.agentKey === activeEmployeeShift.agentKey).map(s => s.employee);
+  const sameCwIdEmployees = activeEmployeeShift.chatwootAgentId
+    ? agentShifts.filter(s => s.chatwootAgentId && s.chatwootAgentId.toLowerCase().trim() === activeEmployeeShift.chatwootAgentId.toLowerCase().trim()).map(s => s.employee)
+    : [activeEmployeeShift.employee];
   return list.filter(c => {
-    const h = getTehranHour(c.started_at);
-    if (h < activeEmployeeShift.start || h >= activeEmployeeShift.end) return false;
     const chatAgents = c.agents || [];
-    return chatAgents.some(a => agentMatchesShift(a.name, activeEmployeeShift, c.platform, a.email));
+    if (!chatAgents.some(a => agentMatchesShift(a.name, activeEmployeeShift, c.platform, a.email))) return false;
+    const h = getTehranHour(c.started_at);
+    const candidates = c.platform === "chatwoot" ? sameCwIdEmployees : sameKeyEmployees;
+    const overrideEmp = findOverrideEmployee(c.platform, getIstanbulDayKey(c.started_at), h, candidates);
+    if (overrideEmp) return overrideEmp === activeEmployeeShift.employee;
+    return h >= activeEmployeeShift.start && h < activeEmployeeShift.end;
   });
 }
 
@@ -1282,6 +1311,7 @@ function getEmployeeName(agentName, dateStr, platform, agentEmail) {
   const full = agentName.toLowerCase().trim();
   const first = full.split(" ")[0];
   const h = getTehranHour(dateStr);
+  const dayKey = getIstanbulDayKey(dateStr);
 
   if (platform === "chatwoot") {
     // Email is a unique identity on CW — match without hour check
@@ -1290,20 +1320,22 @@ function getEmployeeName(agentName, dateStr, platform, agentEmail) {
       const m = agentShifts.find(s => s.chatwootAgentId && s.chatwootAgentId.toLowerCase().trim() === email);
       if (m) return m.employee;
     }
-    // Fallback: name match respects shift hours
-    const m2 = agentShifts.find(s => {
-      if (h < s.start || h >= s.end) return false;
+    // Candidates by name/email-prefix (hour applied below, unless an exact-date override wins)
+    const candidates = agentShifts.filter(s => {
       if (!s.chatwootAgentId) return false;
       const cwId = s.chatwootAgentId.toLowerCase().trim();
       return cwId === full || cwId.split("@")[0] === first;
     });
+    const overrideEmp = findOverrideEmployee("chatwoot", dayKey, h, candidates.map(s => s.employee));
+    if (overrideEmp) return overrideEmp;
+    const m2 = candidates.find(s => h >= s.start && h < s.end);
     return m2 ? m2.employee : agentName;
   }
 
-  const match = agentShifts.find(s => {
-    if (h < s.start || h >= s.end) return false;
-    return s.agentKey === full || s.agentKey === first;
-  });
+  const candidates = agentShifts.filter(s => s.agentKey === full || s.agentKey === first);
+  const overrideEmp = findOverrideEmployee("livechat", dayKey, h, candidates.map(s => s.employee));
+  if (overrideEmp) return overrideEmp;
+  const match = candidates.find(s => h >= s.start && h < s.end);
   return match ? match.employee : agentName;
 }
 
@@ -1557,6 +1589,23 @@ function iranDayToUtc(dateStr, isEnd) {
 
 function getTehranHour(dateStr) {
   return parseInt(new Date(dateStr).toLocaleString("en-US", { timeZone: "Europe/Istanbul", hour: "numeric", hour12: false }));
+}
+
+// Istanbul-local "YYYY-MM-DD" for a chat timestamp — matches how weekend_overrides
+// (and server.js's istDayKeyFromIso) key their date-specific shift overrides.
+function getIstanbulDayKey(dateStr) {
+  const IST_OFFSET_MS = 3 * 60 * 60 * 1000;
+  return new Date(new Date(dateStr).getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+// Exact-date weekend shift override for this platform/day/hour, or null if none applies
+// (caller should then fall back to the recurring agentShifts hour window).
+// candidateEmployees scopes the lookup to whoever could plausibly own this chat's raw
+// identity — without it, an unrelated employee's override for the same platform/date/
+// hour under a different account would shadow the real match.
+function findOverrideEmployee(platform, dayKey, hour, candidateEmployees) {
+  const m = weekendOverrides.find(o => o.platform === platform && o.date === dayKey && hour >= o.start && hour < o.end && candidateEmployees.includes(o.employee));
+  return m ? m.employee : null;
 }
 
 function getEmployee(agentName, dateStr) {

@@ -237,6 +237,20 @@ if (process.env.DATABASE_URL) {
     date TEXT PRIMARY KEY,
     computed_at TIMESTAMPTZ DEFAULT NOW()
   )`).then(() => console.log("[db] chat_totals_cached_days table ready")).catch(e => console.error("[db] chat_totals_cached_days init:", e.message));
+
+  // ── weekend_overrides table (date-specific shift assignments, overrides the
+  // static recurring agent_shifts hour windows — needed because weekend duty
+  // rotates day-to-day among employees who may share a LiveChat/Chatwoot login
+  // with someone else's differently-timed weekday shift) ──────────────────────
+  pool.query(`CREATE TABLE IF NOT EXISTS weekend_overrides (
+    id SERIAL PRIMARY KEY,
+    shift_date TEXT NOT NULL,
+    employee TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    start_hour INTEGER NOT NULL,
+    end_hour INTEGER NOT NULL
+  )`).then(() => console.log("[db] weekend_overrides table ready")).catch(e => console.error("[db] weekend_overrides init:", e.message));
+  pool.query(`CREATE INDEX IF NOT EXISTS weekend_overrides_date_platform_idx ON weekend_overrides (shift_date, platform)`).catch(() => {});
 }
 const LC_API = "https://api.livechatinc.com/v3.6/agent/action";
 const LC_CONFIG_API = "https://api.livechatinc.com/v3.6/configuration/action";
@@ -1092,6 +1106,14 @@ function groupAgentsOnShift(groupName, users, shifts, chatStartedAt) {
 function getTehranHourFromIso(iso) {
   try { return new Date(new Date(iso).toLocaleString("en-US", { timeZone: "Europe/Istanbul" })).getHours(); }
   catch { return -1; }
+}
+
+// Istanbul-local "YYYY-MM-DD" for a chat timestamp — used to look up weekend_overrides,
+// which are keyed by the same date the shift sheet uses.
+const IST_OFFSET_MS = 3 * 60 * 60 * 1000;
+function istDayKeyFromIso(iso) {
+  if (!iso) return null;
+  return new Date(new Date(iso).getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 // Known LiveChat client IDs (confirmed from agent session data)
@@ -2196,9 +2218,10 @@ async function computeChatTotalsLive({ dateFrom, dateTo, employeeFilter, include
   const lcFrom = fromDate.toISOString().replace(/\.\d{3}Z$/, ".000000+00:00");
   const lcTo   = toDate.toISOString().replace(/\.\d{3}Z$/, ".999999+00:00");
 
-  const [allShifts, agentsRaw] = await Promise.all([
+  const [allShifts, agentsRaw, weekendOverrides] = await Promise.all([
     loadShifts(),
     lcPost("list_agents", {}, LC_CONFIG_API),
+    loadWeekendOverrides(),
   ]);
   const shifts = visibleShifts(allShifts);
 
@@ -2290,8 +2313,13 @@ async function computeChatTotalsLive({ dateFrom, dateTo, employeeFilter, include
         });
         if (!agentInChat) continue;
 
+        const dayKey = istDayKey(new Date(chatTime).getTime());
+        const overrideEmp = findOverrideEmployee(weekendOverrides, "livechat", dayKey, istHour, uniqueEmpsForKey);
+
         let empName = null;
-        if (isShared) {
+        if (overrideEmp) {
+          empName = overrideEmp;
+        } else if (isShared) {
           const matched = shiftList.find(s => istHour >= s.start && istHour < s.end);
           empName = (matched || shiftList[0]).employee;
         } else {
@@ -2305,7 +2333,7 @@ async function computeChatTotalsLive({ dateFrom, dateTo, employeeFilter, include
         // More than one distinct agent sent a public message in this thread → the chat
         // moved between agents (transferred) at some point, from this employee's side.
         if (chatAgents.length > 1) emp[empName].transferred++; else emp[empName].answered++;
-        bumpDaily(empName, istDayKey(new Date(chatTime).getTime()), "livechat");
+        bumpDaily(empName, dayKey, "livechat");
       }
     } while (pid);
   }
@@ -2977,10 +3005,11 @@ async function computeAgentActivity({ dateFrom, dateTo, employeeFilter }) {
   const daysToFetch = days.filter((d) => d === todayKey || !cachedDays.has(d));
   if (daysToFetch.length && shifts.length) {
     const agentKeyToEmail = await buildAgentKeyToEmail();
+    const weekendOverrides = await loadWeekendOverrides();
     // Same as chat totals: one day's persistent failure shouldn't take down the whole
     // report — it just stays uncached and gets retried on the next search.
     await Promise.all(daysToFetch.map((d) =>
-      computeAndStoreAgentActivityDay(d, shifts, agentKeyToEmail).catch((e) => console.error(`[agent-activity] failed to fetch ${d}:`, e.message))
+      computeAndStoreAgentActivityDay(d, shiftsForDate(shifts, weekendOverrides, d, "livechat"), agentKeyToEmail).catch((e) => console.error(`[agent-activity] failed to fetch ${d}:`, e.message))
     ));
   }
 
@@ -3014,7 +3043,8 @@ cron.schedule("0 1 * * *", () => runLcBackground(async () => {
     const allShifts = visibleShifts(await loadShifts());
     if (allShifts.length) {
       const agentKeyToEmail = await buildAgentKeyToEmail();
-      const result = await computeAndStoreAgentActivityDay(yesterdayKey, allShifts, agentKeyToEmail);
+      const weekendOverrides = await loadWeekendOverrides();
+      const result = await computeAndStoreAgentActivityDay(yesterdayKey, shiftsForDate(allShifts, weekendOverrides, yesterdayKey, "livechat"), agentKeyToEmail);
       console.log(`[agent-activity-cron] finalized ${yesterdayKey} for ${Object.keys(result).length} employees`);
     }
   } catch (e) { console.error("[agent-activity-cron] failed:", e.message); }
@@ -3059,6 +3089,7 @@ app.post("/api/reports/agent-activity/backfill", authMiddleware, adminOnly, asyn
     const allShifts = visibleShifts(await loadShifts());
     if (!allShifts.length) return res.json({ started: true, days_total: 0 });
     const agentKeyToEmail = await buildAgentKeyToEmail();
+    const weekendOverrides = await loadWeekendOverrides();
 
     const days = [];
     for (let d = new Date(`${date_from}T00:00:00Z`); d <= new Date(`${date_to}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
@@ -3073,7 +3104,7 @@ app.post("/api/reports/agent-activity/backfill", authMiddleware, adminOnly, asyn
     // separate from the interactive pool so a big backfill can't starve normal
     // report searches / the Employees agent list while it runs.
     runLcBackground(() => Promise.all(days.map((day) =>
-      computeAndStoreAgentActivityDay(day, allShifts, agentKeyToEmail)
+      computeAndStoreAgentActivityDay(day, shiftsForDate(allShifts, weekendOverrides, day, "livechat"), agentKeyToEmail)
         .then((result) => {
           Object.keys(result).forEach((e) => job.employees.add(e));
           job.daysDone++;
@@ -3141,10 +3172,11 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
     const lcFrom = fromDate.toISOString().replace(/\.\d{3}Z$/, ".000000+00:00");
     const lcTo   = toDate.toISOString().replace(/\.\d{3}Z$/, ".999999+00:00");
 
-    const [reviews, allShifts, agentsRaw] = await Promise.all([
+    const [reviews, allShifts, agentsRaw, weekendOverrides] = await Promise.all([
       loadReviews(),
       loadShifts(),
       lcPost("list_agents", {}, LC_CONFIG_API),
+      loadWeekendOverrides(),
     ]);
     const shifts = visibleShifts(allShifts);
 
@@ -3226,7 +3258,12 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
           });
           if (!agentInChat) continue;
 
-          if (isShared) {
+          const dayKey = istDayKeyFromIso(chatTime);
+          const overrideEmp = findOverrideEmployee(weekendOverrides, "livechat", dayKey, istHour, uniqueEmpsForKey);
+
+          if (overrideEmp) {
+            emp[overrideEmp].total++;
+          } else if (isShared) {
             const matched = shiftList.find(s => istHour >= s.start && istHour < s.end);
             const empName = (matched || shiftList[0]).employee;
             emp[empName].total++;
@@ -3311,10 +3348,15 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
         const fst = low.split(" ")[0];
         const matchingShifts = shifts.filter(s => s.agentKey === low || s.agentKey === fst || s.agentKey.split(" ")[0] === fst);
         if (!matchingShifts.length) continue;
-        if (matchingShifts.length === 1) {
+        const chatHour = rv._chat_date ? getIstHour(rv._chat_date) : -1;
+        const chatDayKey = istDayKeyFromIso(rv._chat_date);
+        const matchingEmps = matchingShifts.map(s => s.employee);
+        const overrideEmp = chatHour >= 0 ? findOverrideEmployee(weekendOverrides, "livechat", chatDayKey, chatHour, matchingEmps) : null;
+        if (overrideEmp) {
+          empName = overrideEmp;
+        } else if (matchingShifts.length === 1) {
           empName = matchingShifts[0].employee;
         } else {
-          const chatHour = rv._chat_date ? getIstHour(rv._chat_date) : -1;
           const matched = chatHour >= 0 ? matchingShifts.find(s => chatHour >= s.start && chatHour < s.end) : null;
           empName = (matched || matchingShifts[0]).employee;
         }
@@ -3500,6 +3542,59 @@ app.post("/api/agent-shifts", authMiddleware, adminOnly, async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ── Weekend overrides ────────────────────────────────────────────────────────
+// Date-specific shift assignments that take priority over the recurring
+// agent_shifts hour windows. Needed because weekend duty rotates day-to-day
+// among employees, some of whom share a LiveChat login with someone else whose
+// weekday shift covers different hours — a static recurring hour rule can't
+// tell "Ardalan working late on this Saturday" apart from "Mahdi's usual
+// evening slot" without knowing the actual date.
+async function loadWeekendOverrides() {
+  if (!pool) return [];
+  try {
+    const r = await pool.query("SELECT shift_date, employee, platform, start_hour, end_hour FROM weekend_overrides");
+    return r.rows.map(row => ({ date: row.shift_date, employee: row.employee, platform: row.platform, start: row.start_hour, end: row.end_hour }));
+  } catch { return []; }
+}
+
+// Given a chat's platform/date/hour, returns the employee an explicit override
+// names for that exact slot, or null if no override applies (caller should
+// then fall back to the normal recurring-hours logic). candidateEmployees scopes
+// the lookup to whoever could plausibly own this chat's raw identity (e.g. the
+// same shared agentKey) — without it, an unrelated employee's override for the
+// same platform/date/hour under a DIFFERENT account would shadow the real match.
+function findOverrideEmployee(weekendOverrides, platform, dayKey, hour, candidateEmployees) {
+  const m = weekendOverrides.find(o => o.platform === platform && o.date === dayKey && hour >= o.start && hour < o.end && candidateEmployees.includes(o.employee));
+  return m ? m.employee : null;
+}
+
+// Builds a per-day shift list for computeAndStoreAgentActivityDay: for any
+// LiveChat agentKey touched by a weekend override on this date, replace ALL of
+// that key's static rows with only the override-named employee(s) at their
+// override hours — otherwise a shared key's other (off-duty) owner would still
+// get a static-hours row and double-count/steal part of the actual worker's hours.
+function shiftsForDate(staticShifts, weekendOverrides, dateKey, platform) {
+  const overridesToday = weekendOverrides.filter(o => o.date === dateKey && o.platform === platform);
+  if (!overridesToday.length) return staticShifts;
+  const overriddenKeys = new Set();
+  for (const o of overridesToday) {
+    const staticRow = staticShifts.find(s => s.employee === o.employee);
+    if (staticRow) overriddenKeys.add(staticRow.agentKey.toLowerCase().trim());
+  }
+  const result = staticShifts.filter(s => !overriddenKeys.has(s.agentKey.toLowerCase().trim()));
+  for (const o of overridesToday) {
+    const staticRow = staticShifts.find(s => s.employee === o.employee);
+    if (staticRow) result.push({ ...staticRow, start: o.start, end: o.end });
+  }
+  return result;
+}
+
+app.get("/api/weekend-overrides", authMiddleware, async (req, res) => {
+  try {
+    res.json(await loadWeekendOverrides());
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Discover Telegram group IDs (call after adding bot to groups)
@@ -3775,6 +3870,14 @@ app.post("/api/reports/generate", authMiddleware, adminOnly, async (req, res) =>
     const shifts = await loadShifts();
     const shift = shifts.find(s => s.employee === employee);
     if (!shift) return res.status(404).json({ error: "Employee not found in shifts" });
+    const weekendOverrides = await loadWeekendOverrides();
+    // Employees who share this shift's LiveChat/Chatwoot identity — an override
+    // naming one of them on a given date takes priority over ALL of their static
+    // hour windows, not just this report's own employee.
+    const sameKeyEmployees = shifts.filter(s => s.agentKey === shift.agentKey).map(s => s.employee);
+    const sameCwIdEmployees = shift.chatwootAgentId
+      ? shifts.filter(s => s.chatwootAgentId && s.chatwootAgentId.toLowerCase().trim() === shift.chatwootAgentId.toLowerCase().trim()).map(s => s.employee)
+      : [employee];
 
     // Date range
     const [year, mon] = month.split("-").map(Number);
@@ -3821,9 +3924,12 @@ app.post("/api/reports/generate", authMiddleware, adminOnly, async (req, res) =>
       const endedAt   = thread.ended_at   || null;
       if (!startedAt) continue;
 
-      // Filter by shift hours
+      // Filter by shift hours — an exact-date override (weekend rotation) takes
+      // priority over the recurring shift.start/end window.
       const h = getTehranHourFromIso(startedAt);
-      if (h < shift.start || h >= shift.end) continue;
+      const overrideEmpLc = findOverrideEmployee(weekendOverrides, "livechat", istDayKeyFromIso(startedAt), h, sameKeyEmployees);
+      const inShiftLc = overrideEmpLc ? overrideEmpLc === employee : (h >= shift.start && h < shift.end);
+      if (!inShiftLc) continue;
       chatsInShift++;
 
       // Chat duration
@@ -3921,9 +4027,11 @@ app.post("/api/reports/generate", authMiddleware, adminOnly, async (req, res) =>
 
         totalChats++;
 
-        // Shift hour filter
+        // Shift hour filter — exact-date override takes priority over the recurring window
         const h = getTehranHourFromIso(chatDate);
-        if (h < shift.start || h >= shift.end) continue;
+        const overrideEmpCw = findOverrideEmployee(weekendOverrides, "chatwoot", istDayKeyFromIso(chatDate), h, sameCwIdEmployees);
+        const inShiftCw = overrideEmpCw ? overrideEmpCw === employee : (h >= shift.start && h < shift.end);
+        if (!inShiftCw) continue;
         chatsInShift++;
 
         if (review.skipped) continue;
