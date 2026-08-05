@@ -2603,7 +2603,9 @@ function renderSupervisedChatsReport(content, dateFrom, dateTo, data) {
       <td class="px-4 py-2.5 text-slate-400 text-sm">${escHtml(c.agent_name || "—")}</td>
       <td class="px-4 py-2.5 text-slate-400 text-xs whitespace-nowrap">${escHtml(dateLabel)}</td>
       <td class="px-4 py-2.5 text-[#F5B800] text-sm">${escHtml(c.reviewed_by || "—")}</td>
-      <td class="px-4 py-2.5 text-slate-300 text-sm max-w-md">${escHtml(c.note || "—")}</td>
+      <td class="px-4 py-2.5 text-slate-300 text-sm max-w-md">
+        <div class="line-clamp-2" title="${escHtml(c.note || "")}">${escHtml(c.note || "—")}</div>
+      </td>
       <td class="px-4 py-2.5 text-center">
         <button onclick="openModal('${c.chat_id}','${c.thread_id || ''}','${c.platform}')" class="text-xs text-[#F5B800] hover:underline">View</button>
       </td>
