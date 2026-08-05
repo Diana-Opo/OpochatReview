@@ -2581,6 +2581,222 @@ app.get("/api/reports/chat-transfers", authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Individual chats where someone other than the assigned agent left a private note or
+// annotation — i.e. a supervisor had to step in and guide them. Unlike computeChatTotals()'s
+// aggregate `supervised` count, this returns per-chat detail (who reviewed, what the note
+// said) for the "Supervised Chats" page. Always live — this detail isn't in the
+// chat_totals_daily cache, only the count is.
+async function computeSupervisedChatsLive({ dateFrom, dateTo, employeeFilter }) {
+  const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
+  const fromDate = new Date(new Date(`${dateFrom}T00:00:00.000Z`).getTime() - ISTANBUL_OFFSET_MS);
+  const toDate   = new Date(new Date(`${dateTo}T23:59:59.999Z`).getTime() - ISTANBUL_OFFSET_MS);
+  const lcFrom = fromDate.toISOString().replace(/\.\d{3}Z$/, ".000000+00:00");
+  const lcTo   = toDate.toISOString().replace(/\.\d{3}Z$/, ".999999+00:00");
+
+  const [allShifts, agentsRaw, weekendOverrides] = await Promise.all([
+    loadShifts(),
+    lcPost("list_agents", {}, LC_CONFIG_API),
+    loadWeekendOverrides(),
+  ]);
+  const shifts = visibleShifts(allShifts);
+
+  const agentKeyShifts = {};
+  for (const s of shifts) {
+    if (employeeFilter && s.employee !== employeeFilter) continue;
+    const key = s.agentKey.toLowerCase().trim();
+    if (!agentKeyShifts[key]) agentKeyShifts[key] = [];
+    agentKeyShifts[key].push(s);
+  }
+
+  const rawAgentList = Array.isArray(agentsRaw) ? agentsRaw
+    : Array.isArray(agentsRaw?.agents) ? agentsRaw.agents
+    : Object.values(agentsRaw || {}).find(v => Array.isArray(v)) || [];
+
+  const agentKeyToEmail = {};
+  for (const a of rawAgentList) {
+    const low = a.name.toLowerCase().trim();
+    const fst = low.split(" ")[0];
+    for (const key of Object.keys(agentKeyShifts)) {
+      if ((low === key || fst === key) && !agentKeyToEmail[key]) {
+        agentKeyToEmail[key] = a.id;
+      }
+    }
+  }
+
+  function getIstHour(chatTime) {
+    if (!chatTime) return 0;
+    return ((new Date(chatTime).getTime() + ISTANBUL_OFFSET_MS) / 3600000) % 24;
+  }
+  function istDayKey(ms) {
+    return new Date(ms + ISTANBUL_OFFSET_MS).toISOString().slice(0, 10);
+  }
+
+  // First note left by someone other than the chat's own agent — same "someone else
+  // stepped in" rule as computeChatTotals()'s hasSupervisorNote.
+  function findSupervisorNote(events, users, key) {
+    const note = events.find(e => {
+      if (!e.text || !(e.visibility === "agents" || e.type === "annotation")) return false;
+      const author = users.find(u => u.id === e.author_id);
+      const authorName = (author?.name || "").toLowerCase().trim();
+      if (!authorName) return false;
+      return authorName !== key && authorName.split(" ")[0] !== key;
+    });
+    if (!note) return null;
+    const author = users.find(u => u.id === note.author_id);
+    return { author: author?.name || "Supervisor", text: note.text };
+  }
+
+  const results = [];
+
+  async function fetchAgentChats(key, shiftList) {
+    const agentEmail = agentKeyToEmail[key];
+    if (!agentEmail) return;
+
+    const uniqueEmpsForKey = [...new Set(shiftList.map(s => s.employee))];
+    const isShared = uniqueEmpsForKey.length > 1;
+
+    let pid = null;
+    do {
+      const body = pid
+        ? { page_id: pid }
+        : { filters: { from: lcFrom, to: lcTo, agents: { values: [agentEmail] } }, limit: 100 };
+      const data = await lcPost("list_archives", body);
+      pid = data.next_page_id || null;
+
+      for (const c of data.chats || []) {
+        const thread = c.thread || (c.threads?.[0]) || {};
+        const users = c.users || [];
+        const events = thread.events || [];
+        const chatTime = thread.created_at || null;
+        const istHour = getIstHour(chatTime);
+
+        const chatAgents = allAgentsInThread(events, users, shifts, chatTime);
+        const agentInChat = chatAgents.some(a => {
+          const n = (a.name || "").toLowerCase().trim();
+          return n === key || n.split(" ")[0] === key;
+        });
+        if (!agentInChat) continue;
+
+        const note = findSupervisorNote(events, users, key);
+        if (!note) continue;
+
+        const dayKey = istDayKey(new Date(chatTime).getTime());
+        const overrideEmp = findOverrideEmployee(weekendOverrides, "livechat", dayKey, istHour, uniqueEmpsForKey);
+
+        let empName = null;
+        if (overrideEmp) {
+          empName = overrideEmp;
+        } else if (isShared) {
+          const matched = shiftList.find(s => istHour >= s.start && istHour < s.end);
+          empName = (matched || shiftList[0]).employee;
+        } else {
+          const inShift = shiftList.some(s => istHour >= s.start && istHour < s.end);
+          if (!inShift) continue;
+          empName = uniqueEmpsForKey[0];
+        }
+
+        const agentInfo = chatAgents.find(a => {
+          const n = (a.name || "").toLowerCase().trim();
+          return n === key || n.split(" ")[0] === key;
+        });
+        results.push({
+          platform: "livechat",
+          chat_id: c.id,
+          thread_id: thread.id || null,
+          employee: empName,
+          agent_name: agentInfo?.name || key,
+          date: chatTime,
+          reviewed_by: note.author,
+          note: note.text,
+        });
+      }
+    } while (pid);
+  }
+
+  async function fetchChatwoot() {
+    if (!chatwootEnabled()) return;
+    try {
+      const cwFilter = [
+        { attribute_key: "status", filter_operator: "equal_to", values: ["resolved"], query_operator: "AND" },
+        { attribute_key: "created_at", filter_operator: "is_greater_than", values: [cwFilterDateFrom(lcFrom)], query_operator: "AND" },
+        { attribute_key: "created_at", filter_operator: "is_less_than", values: [cwFilterDateTo(lcTo)], query_operator: null },
+      ];
+      let cwPage = 1, cwAll = [], cwTotal = 0;
+      while (true) {
+        const d = await cwPost("/conversations/filter", { payload: cwFilter }, { page: cwPage });
+        const inner = d.data || d;
+        const convs = inner.payload || inner.conversations || [];
+        if (cwPage === 1) cwTotal = inner.meta?.all_count ?? inner.meta?.total_count ?? convs.length;
+        if (!convs.length) break;
+        cwAll = cwAll.concat(convs);
+        if (convs.length < 25 || cwAll.length >= cwTotal) break;
+        cwPage++;
+      }
+      const fromMs = new Date(lcFrom).getTime();
+      const toMs   = new Date(lcTo).getTime();
+      cwAll = cwAll.filter(c => {
+        const ms = (c.created_at || 0) * 1000;
+        return ms >= fromMs && ms <= toMs;
+      });
+
+      const matched = [];
+      for (const conv of cwAll) {
+        const assignee = conv.meta?.assignee || null;
+        if (!assignee) continue;
+        const aEmail = (assignee.email || "").toLowerCase().trim();
+        const aName  = (assignee.name  || "").toLowerCase().trim();
+        const ms = shifts.find(s => {
+          if (employeeFilter && s.employee !== employeeFilter) return false;
+          if (!s.chatwootAgentId) return false;
+          const cwId = s.chatwootAgentId.toLowerCase().trim();
+          return cwId === aEmail || cwId === aName || cwId.split("@")[0] === aName;
+        });
+        if (!ms) continue;
+        matched.push({ id: conv.id, employee: ms.employee, assigneeId: assignee.id, assigneeName: assignee.name, createdAt: conv.created_at });
+      }
+
+      await Promise.all(matched.map(async ({ id, employee, assigneeId, assigneeName, createdAt }) => {
+        try {
+          const release = await cwAcquire();
+          let msgData;
+          try { msgData = await cwGet(`/conversations/${id}/messages`); } finally { release(); }
+          const msgs = msgData.payload || msgData || [];
+          const note = Array.isArray(msgs) ? msgs.find(m => m.private === true && String(m.sender?.id) !== String(assigneeId)) : null;
+          if (note) {
+            results.push({
+              platform: "chatwoot",
+              chat_id: id,
+              thread_id: id,
+              employee,
+              agent_name: assigneeName,
+              date: createdAt ? new Date(createdAt * 1000).toISOString() : null,
+              reviewed_by: note.sender?.name || "Supervisor",
+              note: note.content || "",
+            });
+          }
+        } catch (e) { console.error(`[supervised-chats] cw private-note check failed for ${id}:`, e.message); }
+      }));
+    } catch (e) { console.error("[supervised-chats] Chatwoot error:", e.message); }
+  }
+
+  await Promise.all([
+    Promise.all(Object.entries(agentKeyShifts).map(([key, shiftList]) => fetchAgentChats(key, shiftList))),
+    fetchChatwoot(),
+  ]);
+
+  results.sort((a, b) => new Date(b.date) - new Date(a.date));
+  return { date_from: dateFrom, date_to: dateTo, chats: results };
+}
+
+app.get("/api/reports/supervised-chats", authMiddleware, async (req, res) => {
+  try {
+    const { date_from, date_to, employee } = req.query;
+    if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
+    const result = await computeSupervisedChatsLive({ dateFrom: date_from, dateTo: date_to, employeeFilter: employee || null });
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Saved report snapshots — lets Total Chats / Campaign Impact results be saved and
 // re-downloaded later without re-running the (slow) live LiveChat/Chatwoot fetch.
 app.post("/api/saved-reports", authMiddleware, async (req, res) => {

@@ -181,7 +181,7 @@ async function initApp() {
 
   // Navigate to correct page immediately — before any async calls so there's no flash
   const lastPage = localStorage.getItem("lastPage");
-  const validPages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "report-agent-activity", "report-chat-transfers", "employees", "config"];
+  const validPages = ["dashboard", "chats", "report-supervised-chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "report-agent-activity", "report-chat-transfers", "employees", "config"];
   const adminPages = ["employees", "config"];
   const startPage = validPages.includes(lastPage) && (!adminPages.includes(lastPage) || currentUser.role === "admin")
     ? lastPage : "chats";
@@ -203,7 +203,7 @@ async function initApp() {
 // ── Page navigation ───────────────────────────────────────────────────────────
 const REPORT_PAGES = ["reports", "report-monthly", "report-total-chats", "report-campaign", "report-agent-activity", "report-chat-transfers"];
 const PLATFORM_PAGES = ["report-platform-status", "report-platform-costs"];
-const REVIEW_PAGES = ["chats"];
+const REVIEW_PAGES = ["chats", "report-supervised-chats"];
 
 function toggleReviewsMenu() {
   const submenu = document.getElementById("reviews-submenu");
@@ -233,7 +233,7 @@ function togglePlatformMenu() {
 }
 
 function showPage(name) {
-  const pages = ["dashboard", "chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "report-agent-activity", "report-chat-transfers", "employees", "config"];
+  const pages = ["dashboard", "chats", "report-supervised-chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "report-agent-activity", "report-chat-transfers", "employees", "config"];
   pages.forEach(p => {
     document.getElementById(`page-${p}`)?.classList.add("hidden");
     const btn = document.getElementById(`nav-${p}`);
@@ -278,6 +278,7 @@ function showPage(name) {
   if (name === "report-platform-costs") openPlatformCostsPage();
   if (name === "report-agent-activity") openAgentActivityPage();
   if (name === "report-chat-transfers") openChatTransfersReport();
+  if (name === "report-supervised-chats") openSupervisedChatsReport();
   if (name === "employees") openSettings();
   if (name === "config") loadKnowledgeStatus();
   localStorage.setItem("lastPage", name);
@@ -1036,7 +1037,9 @@ async function reviewAllVisible() {
 }
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
-async function openModal(chatId, threadId) {
+// platformOverride lets callers outside the main Chat Review page (which don't populate
+// allChats) state the platform explicitly instead of relying on the allChats cache lookup.
+async function openModal(chatId, threadId, platformOverride) {
   const modal = document.getElementById("modal");
   const content = document.getElementById("modalContent");
   content.innerHTML = `<div class="p-10 text-center text-slate-500">Loading…</div>`;
@@ -1044,7 +1047,7 @@ async function openModal(chatId, threadId) {
 
   const rowKey = threadId || chatId;
   const cachedChat = allChats.find(c => (c.thread_id || c.id) === rowKey);
-  const isCW = cachedChat?.platform === "chatwoot";
+  const isCW = platformOverride ? platformOverride === "chatwoot" : cachedChat?.platform === "chatwoot";
 
   try {
     const res = isCW
@@ -2515,6 +2518,120 @@ ${opoLetterheadHtml()}
 <script>setTimeout(() => window.print(), 350)<\/script>
 </body></html>`);
   win.document.close();
+}
+
+// ── Supervised Chats Report ────────────────────────────────────────────────────
+let _activeSupervisedChatsReport = null;
+
+function populateSupervisedChatsAgentFilter() {
+  const sel = document.getElementById("supervisedAgent");
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">All Employees</option>';
+  const employees = (Array.isArray(agentShifts) ? [...agentShifts] : []).sort((a, b) => a.employee.localeCompare(b.employee));
+  const seen = new Set();
+  employees.forEach(s => {
+    if (seen.has(s.employee)) return;
+    seen.add(s.employee);
+    const opt = document.createElement("option");
+    opt.value = s.employee;
+    opt.textContent = s.employee;
+    sel.appendChild(opt);
+  });
+  if (prev) sel.value = prev;
+}
+
+function openSupervisedChatsReport() {
+  populateSupervisedChatsAgentFilter();
+  const fromEl = document.getElementById("supervisedFrom");
+  const toEl = document.getElementById("supervisedTo");
+  if (fromEl && toEl && !fromEl.value && !toEl.value) {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    const pad = (n) => String(n).padStart(2, "0");
+    fromEl.value = `${y}-${pad(m + 1)}-01`;
+    toEl.value = `${y}-${pad(m + 1)}-${pad(lastDay)}`;
+  }
+  const content = document.getElementById("supervisedContent");
+  if (content && !content.innerHTML.trim()) {
+    content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">Pick a date range and click Search.</div>`;
+  }
+}
+
+async function loadSupervisedChatsReport() {
+  const content = document.getElementById("supervisedContent");
+  if (!content) return;
+  const dateFrom = document.getElementById("supervisedFrom")?.value;
+  const dateTo = document.getElementById("supervisedTo")?.value;
+  const employee = document.getElementById("supervisedAgent")?.value || "";
+  if (!dateFrom || !dateTo) {
+    content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">Please pick a From and To date.</div>`;
+    return;
+  }
+  content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm"><span class="spinner"></span> This scans every chat in range for supervisor notes — can take a while for wide ranges.</div>`;
+  _activeSupervisedChatsReport = null;
+
+  try {
+    const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
+    if (employee) params.set("employee", employee);
+    const res = await authFetch(`/api/reports/supervised-chats?${params.toString()}`);
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Error: ${escHtml(data.error || res.status)}</div>`;
+      return;
+    }
+    _activeSupervisedChatsReport = { dateFrom, dateTo, employeeFilter: employee, data };
+    renderSupervisedChatsReport(content, dateFrom, dateTo, data);
+  } catch (e) {
+    content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderSupervisedChatsReport(content, dateFrom, dateTo, data) {
+  const chats = data.chats || [];
+  if (!chats.length) {
+    content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">No supervised chats found for this range.</div>`;
+    return;
+  }
+
+  const rows = chats.map(c => {
+    const dateLabel = c.date ? new Date(c.date).toLocaleString() : "—";
+    return `
+    <tr class="border-t border-[#1a2d4a] align-top">
+      <td class="px-4 py-2.5 text-white text-sm">${escHtml(c.employee || "—")}</td>
+      <td class="px-4 py-2.5 text-slate-400 text-sm">${escHtml(c.agent_name || "—")}</td>
+      <td class="px-4 py-2.5 text-slate-400 text-xs whitespace-nowrap">${escHtml(dateLabel)}</td>
+      <td class="px-4 py-2.5 text-[#F5B800] text-sm">${escHtml(c.reviewed_by || "—")}</td>
+      <td class="px-4 py-2.5 text-slate-300 text-sm max-w-md">${escHtml(c.note || "—")}</td>
+      <td class="px-4 py-2.5 text-center">
+        <button onclick="openModal('${c.chat_id}','${c.thread_id || ''}','${c.platform}')" class="text-xs text-[#F5B800] hover:underline">View</button>
+      </td>
+    </tr>`;
+  }).join("");
+
+  content.innerHTML = `
+    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
+      <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
+        <span class="font-semibold text-white text-sm">${escHtml(dateFrom)} → ${escHtml(dateTo)}</span>
+        <span class="text-xs text-slate-500">${chats.length} supervised chat${chats.length === 1 ? "" : "s"}</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead>
+            <tr class="text-left text-xs text-slate-500 uppercase">
+              <th class="px-4 py-2 font-medium">Employee</th>
+              <th class="px-4 py-2 font-medium">Agent</th>
+              <th class="px-4 py-2 font-medium">Date</th>
+              <th class="px-4 py-2 font-medium">Reviewed By</th>
+              <th class="px-4 py-2 font-medium">Note</th>
+              <th class="px-4 py-2 font-medium text-center">Action</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
 // ── Campaign Impact Report ────────────────────────────────────────────────────
