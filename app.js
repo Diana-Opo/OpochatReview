@@ -9,8 +9,7 @@ function togglePw(btn) {
 let chats = [];
 let agents = [];
 let nextPageId = null;
-let pageHistory = [null];
-let currentPage = 0;
+let currentPage = 0; // 0-indexed page into the currently-loaded/filtered chat list (CHATS_PAGE_SIZE per page)
 let agentChart = null;
 let totalChats = 0;
 let agentShifts = [];
@@ -573,7 +572,7 @@ async function loadChats(pageId) {
   const to = document.getElementById("dateTo").value;
   const agentId = resolveEmployeeFilter();
 
-  if (!pageId) setChatsLoading(true, "Loading chats...");
+  if (!pageId) { setChatsLoading(true, "Loading chats..."); currentPage = 0; }
 
   const params = new URLSearchParams();
   if (from) params.set("date_from", iranDayToUtc(from, false));
@@ -607,7 +606,6 @@ async function loadChats(pageId) {
     }
 
     renderTable();
-    updatePagination();
     document.getElementById("statusBar").classList.add("hidden");
 
     if (chats.length > 0 && currentUser?.role === "admin") {
@@ -709,8 +707,32 @@ function getPerAgentReview(review, agentName) {
 }
 
 // ── Render Table ─────────────────────────────────────────────────────────────
+const CHATS_PAGE_SIZE = 20;
+
+// Shared Prev/Next pager markup — gotoFnName is a global function called with the
+// target 0-indexed page number, e.g. "goToChatsPage" or "goToSupervisedChatsPage".
+function pagerHtml(page, totalPages, gotoFnName) {
+  if (totalPages <= 1) return "";
+  const prevDisabled = page <= 0;
+  const nextDisabled = page >= totalPages - 1;
+  return `
+    <div class="flex items-center justify-between px-4 py-3 border-t border-[#1a2d4a]">
+      <button onclick="${gotoFnName}(${page - 1})" ${prevDisabled ? "disabled" : ""}
+        class="text-xs px-3 py-1.5 rounded-lg bg-[#1a2d4a] text-slate-300 hover:bg-[#243d61] transition disabled:opacity-40 disabled:cursor-not-allowed">← Prev</button>
+      <span class="text-xs text-slate-500">Page ${page + 1} of ${totalPages}</span>
+      <button onclick="${gotoFnName}(${page + 1})" ${nextDisabled ? "disabled" : ""}
+        class="text-xs px-3 py-1.5 rounded-lg bg-[#1a2d4a] text-slate-300 hover:bg-[#243d61] transition disabled:opacity-40 disabled:cursor-not-allowed">Next →</button>
+    </div>`;
+}
+
+function goToChatsPage(page) {
+  currentPage = page;
+  renderTable();
+}
+
 function renderTable() {
   const tbody = document.getElementById("chatTableBody");
+  const pagerEl = document.getElementById("pagination");
   const platformFilter = document.getElementById("platformFilter")?.value || "";
   let displayChats = applyEmployeeHourFilter(allChats);
   if (platformFilter) displayChats = displayChats.filter(c => c.platform === platformFilter);
@@ -726,7 +748,8 @@ function renderTable() {
   }
 
   if (displayChats.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="11" class="text-center py-12 text-slate-500">No chats found for this period</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="text-center py-12 text-slate-500">No chats found for this period</td></tr>`;
+    if (pagerEl) { pagerEl.innerHTML = ""; pagerEl.classList.add("hidden"); }
     return;
   }
 
@@ -734,7 +757,18 @@ function renderTable() {
   const filteredAgentName = filteredAgent?.name || null;
 
   const sortedChats = [...displayChats].sort((a, b) => new Date(b.started_at) - new Date(a.started_at));
-  tbody.innerHTML = sortedChats.map(chat => {
+
+  const totalPages = Math.max(1, Math.ceil(sortedChats.length / CHATS_PAGE_SIZE));
+  if (currentPage >= totalPages) currentPage = totalPages - 1;
+  if (currentPage < 0) currentPage = 0;
+  const pageChats = sortedChats.slice(currentPage * CHATS_PAGE_SIZE, currentPage * CHATS_PAGE_SIZE + CHATS_PAGE_SIZE);
+
+  if (pagerEl) {
+    pagerEl.innerHTML = pagerHtml(currentPage, totalPages, "goToChatsPage");
+    pagerEl.classList.toggle("hidden", totalPages <= 1);
+  }
+
+  tbody.innerHTML = pageChats.map(chat => {
     const r = chat.review;
     const date = chat.started_at
       ? new Date(chat.started_at).toLocaleString("en-GB", { timeZone: "Europe/Istanbul", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })
@@ -765,7 +799,6 @@ function renderTable() {
         ? `<span class="text-xs px-2 py-0.5 rounded-full ${displayResolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${displayResolved ? "✓" : "✗"}</span>`
         : `<span class="text-slate-600 text-xs">—</span>`;
     const langBadge = r?.language_detected ? `<span class="text-xs bg-[#1a2d4a] text-slate-300 px-2 py-0.5 rounded">${r.language_detected.toUpperCase()}</span>` : "—";
-    const shiftBadge = shiftLabel(chat.started_at);
     const allAgents = chat.agents?.length > 0 ? chat.agents : (chat.agent ? [chat.agent] : []);
 
     // When employee filter active: show only that agent; otherwise show all
@@ -824,7 +857,6 @@ function renderTable() {
       <td class="px-4 py-3 text-slate-300">${chat.customer_name || "—"}</td>
       <td class="px-4 py-3 text-center">${deviceIcon}</td>
       <td class="px-4 py-3 text-slate-400 text-xs">${date}</td>
-      <td class="px-4 py-3">${shiftBadge}</td>
       <td class="px-4 py-3 text-sm font-medium text-white">${employeeNameHtml}</td>
       <td class="px-4 py-3">${langBadge}</td>
       <td class="px-4 py-3" id="score-${rowKey}">${scoreBadge}</td>
@@ -1460,10 +1492,6 @@ function updateChart() {
   });
 }
 
-function updatePagination() {
-  // Pagination hidden from UI — all pages load automatically in background
-}
-
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 async function loadDashboard() {
   // Destroy old chart immediately so background Chat Review fetch can't resurrect it
@@ -1615,14 +1643,6 @@ function getEmployee(agentName, dateStr) {
   if (!agentName || !dateStr) return `<span class="text-slate-600">—</span>`;
   const name = getEmployeeName(agentName, dateStr);
   return `<span class="font-medium text-white">${name}</span>`;
-}
-
-function shiftLabel(dateStr) {
-  if (!dateStr) return `<span class="text-slate-600 text-xs">—</span>`;
-  const h = getTehranHour(dateStr);
-  if (h >= 8 && h < 16)  return `<span class="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">☀ Day</span>`;
-  if (h >= 16 && h < 24) return `<span class="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium">🌙 Night</span>`;
-  return `<span class="text-xs px-2 py-0.5 rounded-full bg-[#1a2d4a] text-slate-400">Off</span>`;
 }
 
 function copyId(id) {
@@ -2522,6 +2542,14 @@ ${opoLetterheadHtml()}
 
 // ── Supervised Chats Report ────────────────────────────────────────────────────
 let _activeSupervisedChatsReport = null;
+let _supervisedChatsPage = 0;
+
+function goToSupervisedChatsPage(page) {
+  if (!_activeSupervisedChatsReport) return;
+  _supervisedChatsPage = page;
+  const { dateFrom, dateTo, data } = _activeSupervisedChatsReport;
+  renderSupervisedChatsReport(document.getElementById("supervisedContent"), dateFrom, dateTo, data);
+}
 
 function populateSupervisedChatsAgentFilter() {
   const sel = document.getElementById("supervisedAgent");
@@ -2575,6 +2603,7 @@ async function loadSupervisedChatsReport() {
   content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm"><span class="spinner"></span> This scans every chat in range for supervisor notes — can take a while for wide ranges.</div>`;
   if (countEl) countEl.textContent = "";
   _activeSupervisedChatsReport = null;
+  _supervisedChatsPage = 0;
 
   try {
     const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
@@ -2601,7 +2630,12 @@ function renderSupervisedChatsReport(content, dateFrom, dateTo, data) {
     return;
   }
 
-  const rows = chats.map(c => {
+  const totalPages = Math.max(1, Math.ceil(chats.length / CHATS_PAGE_SIZE));
+  if (_supervisedChatsPage >= totalPages) _supervisedChatsPage = totalPages - 1;
+  if (_supervisedChatsPage < 0) _supervisedChatsPage = 0;
+  const pageChats = chats.slice(_supervisedChatsPage * CHATS_PAGE_SIZE, _supervisedChatsPage * CHATS_PAGE_SIZE + CHATS_PAGE_SIZE);
+
+  const rows = pageChats.map(c => {
     const dateLabel = c.date ? new Date(c.date).toLocaleString() : "—";
     return `
     <tr class="border-t border-[#1a2d4a] align-top">
@@ -2638,6 +2672,7 @@ function renderSupervisedChatsReport(content, dateFrom, dateTo, data) {
           <tbody>${rows}</tbody>
         </table>
       </div>
+      ${pagerHtml(_supervisedChatsPage, totalPages, "goToSupervisedChatsPage")}
     </div>`;
 }
 
