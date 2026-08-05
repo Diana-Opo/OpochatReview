@@ -2557,11 +2557,14 @@ function openSupervisedChatsReport() {
   if (content && !content.innerHTML.trim()) {
     content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">Pick a date range and click Search.</div>`;
   }
+  const countEl = document.getElementById("supervisedCount");
+  if (countEl) countEl.textContent = "";
 }
 
 async function loadSupervisedChatsReport() {
   const content = document.getElementById("supervisedContent");
   if (!content) return;
+  const countEl = document.getElementById("supervisedCount");
   const dateFrom = document.getElementById("supervisedFrom")?.value;
   const dateTo = document.getElementById("supervisedTo")?.value;
   const employee = document.getElementById("supervisedAgent")?.value || "";
@@ -2570,6 +2573,7 @@ async function loadSupervisedChatsReport() {
     return;
   }
   content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm"><span class="spinner"></span> This scans every chat in range for supervisor notes — can take a while for wide ranges.</div>`;
+  if (countEl) countEl.textContent = "";
   _activeSupervisedChatsReport = null;
 
   try {
@@ -2590,6 +2594,8 @@ async function loadSupervisedChatsReport() {
 
 function renderSupervisedChatsReport(content, dateFrom, dateTo, data) {
   const chats = data.chats || [];
+  const countEl = document.getElementById("supervisedCount");
+  if (countEl) countEl.textContent = `${chats.length} supervised chat${chats.length === 1 ? "" : "s"}`;
   if (!chats.length) {
     content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">No supervised chats found for this range.</div>`;
     return;
@@ -2599,10 +2605,10 @@ function renderSupervisedChatsReport(content, dateFrom, dateTo, data) {
     const dateLabel = c.date ? new Date(c.date).toLocaleString() : "—";
     return `
     <tr class="border-t border-[#1a2d4a] align-top">
-      <td class="px-4 py-2.5 text-white text-sm">${escHtml(c.employee || "—")}</td>
-      <td class="px-4 py-2.5 text-slate-400 text-sm">${escHtml(c.agent_name || "—")}</td>
-      <td class="px-4 py-2.5 text-slate-400 text-xs whitespace-nowrap">${escHtml(dateLabel)}</td>
-      <td class="px-4 py-2.5 text-[#F5B800] text-sm">${escHtml(c.reviewed_by || "—")}</td>
+      <td class="px-4 py-2.5 text-white text-sm text-center">${escHtml(c.employee || "—")}</td>
+      <td class="px-4 py-2.5 text-slate-400 text-sm text-center">${escHtml(c.agent_name || "—")}</td>
+      <td class="px-4 py-2.5 text-slate-400 text-xs text-center whitespace-nowrap">${escHtml(dateLabel)}</td>
+      <td class="px-4 py-2.5 text-[#F5B800] text-sm text-center">${escHtml(c.reviewed_by || "—")}</td>
       <td class="px-4 py-2.5 text-slate-300 text-sm max-w-md">
         <div class="line-clamp-2" title="${escHtml(c.note || "")}">${escHtml(c.note || "—")}</div>
       </td>
@@ -2614,20 +2620,19 @@ function renderSupervisedChatsReport(content, dateFrom, dateTo, data) {
 
   content.innerHTML = `
     <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
-      <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
+      <div class="px-5 py-3 border-b border-[#1a2d4a]">
         <span class="font-semibold text-white text-sm">${escHtml(dateFrom)} → ${escHtml(dateTo)}</span>
-        <span class="text-xs text-slate-500">${chats.length} supervised chat${chats.length === 1 ? "" : "s"}</span>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full">
           <thead>
-            <tr class="text-left text-xs text-slate-500 uppercase">
+            <tr class="text-center text-xs text-slate-500 uppercase">
               <th class="px-4 py-2 font-medium">Employee</th>
               <th class="px-4 py-2 font-medium">Agent</th>
               <th class="px-4 py-2 font-medium">Date</th>
               <th class="px-4 py-2 font-medium">Reviewed By</th>
               <th class="px-4 py-2 font-medium">Note</th>
-              <th class="px-4 py-2 font-medium text-center">Action</th>
+              <th class="px-4 py-2 font-medium">Action</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
