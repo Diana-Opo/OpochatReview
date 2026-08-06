@@ -191,6 +191,17 @@ async function initApp() {
   try { const r = await authFetch("/api/agent-shifts"); agentShifts = await r.json(); } catch {}
   try { const r = await authFetch("/api/weekend-overrides"); weekendOverrides = await r.json(); } catch {}
   renderAgentFilter();
+  // showPage(startPage) above ran before agentShifts finished loading, so if it landed on a
+  // report page whose employee dropdown populates from agentShifts on open (e.g. after a
+  // session-timeout re-login straight back into that page), that dropdown rendered empty.
+  // Re-populate it now that agentShifts is actually loaded.
+  const employeeFilterRepopulate = {
+    "report-total-chats": populateTotalChatsAgentFilter,
+    "report-chat-transfers": populateChatTransfersAgentFilter,
+    "report-supervised-chats": populateSupervisedChatsAgentFilter,
+    "report-agent-activity": populateAgentActivityFilter,
+  };
+  employeeFilterRepopulate[startPage]?.();
   loadKnowledgeStatus();
   document.getElementById("btnLoad").addEventListener("click", () => loadChats(null));
   document.getElementById("btnReviewAll").addEventListener("click", reviewAllVisible);
