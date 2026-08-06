@@ -504,10 +504,7 @@
       <!-- ── REPORT: SUPERVISED CHATS ─────────────────────────────────────── -->
       <div id="page-report-supervised-chats" class="hidden h-full overflow-y-auto">
         <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a] sticky top-0 z-10">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-base font-bold text-white">Supervised Chats</h2>
-            <span id="supervisedCount" class="text-xs text-slate-500"></span>
-          </div>
+          <h2 class="text-base font-bold text-white mb-3">Supervised Chats</h2>
           <div class="flex flex-wrap items-end gap-3">
             <div>
               <label class="block text-xs text-slate-400 mb-1">From</label>
@@ -528,6 +525,7 @@
             </div>
             <button onclick="loadSupervisedChatsReport()"
               class="bg-[#F5B800] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#D4A000] transition">Search</button>
+            <span id="supervisedCount" class="text-xs text-slate-500"></span>
           </div>
           <p class="text-xs text-slate-500 mt-2">Chats where someone other than the assigned agent left a private note/annotation — i.e. a supervisor had to step in and guide them.</p>
         </div>
