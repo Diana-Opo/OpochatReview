@@ -580,11 +580,7 @@
       <div id="page-groups" class="hidden h-full overflow-y-auto">
         <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a] flex items-center justify-between">
           <h2 class="text-base font-bold text-white">Groups</h2>
-          <div class="flex items-center gap-2">
-            <input id="newGroupName" type="text" placeholder="New group name"
-              class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
-            <button onclick="addGroup()" class="bg-[#F5B800] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#D4A000] transition">+ Add Group</button>
-          </div>
+          <button onclick="openGroupDetailModal(null, 'create')" class="bg-[#F5B800] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#D4A000] transition">+ Add Group</button>
         </div>
         <div id="groupsContent" class="p-6 space-y-4"></div>
       </div>

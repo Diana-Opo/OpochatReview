@@ -599,9 +599,10 @@ app.post("/api/groups", authMiddleware, adminOnly, async (req, res) => {
   try {
     const name = (req.body?.name || "").trim();
     if (!name) return res.status(400).json({ error: "Name required" });
+    const permissions = req.body?.permissions && typeof req.body.permissions === "object" ? req.body.permissions : {};
     const r = await pool.query(
-      "INSERT INTO groups (name, is_super, permissions) VALUES ($1, false, '{}') RETURNING id, name, is_super, permissions",
-      [name]
+      "INSERT INTO groups (name, is_super, permissions) VALUES ($1, false, $2) RETURNING id, name, is_super, permissions",
+      [name, JSON.stringify(permissions)]
     );
     res.json(r.rows[0]);
   } catch (e) {

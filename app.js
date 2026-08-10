@@ -2014,12 +2014,14 @@ function renderGroupsPage() {
     </div>`;
 }
 
-// Detail view/edit for one group, shown in the shared modal. mode: 'view' (read-only,
-// just a Close button) or 'edit' (editable name + checkboxes, Save button).
+// Detail view/edit/create for a group, shown in the shared modal.
+// mode: 'view' (read-only, just Close), 'edit' (existing group, editable, Save),
+// or 'create' (id is null — blank name + all permissions off, Create button).
 function openGroupDetailModal(id, mode) {
-  const group = groupsList.find(g => g.id === id);
+  const isCreate = mode === "create";
+  const group = isCreate ? { id: null, name: "", is_super: false, permissions: {} } : groupsList.find(g => g.id === id);
   if (!group) return;
-  const isEdit = mode === "edit";
+  const isEdit = mode === "edit" || isCreate;
   const pageKeys = permissionCatalog.filter(p => p.kind === "page");
   const actionKeys = permissionCatalog.filter(p => p.kind === "action");
 
@@ -2031,11 +2033,11 @@ function openGroupDetailModal(id, mode) {
     </label>`).join("");
 
   document.getElementById("modalContent").innerHTML = `
-    <div class="p-6" data-group-id="${group.id}">
+    <div class="p-6" data-group-id="${group.id ?? ""}">
       <div class="flex items-center justify-between mb-5">
         <div class="flex items-center gap-2">
           ${isEdit
-            ? `<input class="gp-name text-lg font-bold bg-transparent border-b border-[#1a2d4a] focus:border-[#F5B800] text-white px-1 py-0.5 focus:outline-none" value="${escHtml(group.name)}" />`
+            ? `<input class="gp-name text-lg font-bold bg-transparent border-b border-[#1a2d4a] focus:border-[#F5B800] text-white px-1 py-0.5 focus:outline-none" placeholder="Group name" value="${escHtml(group.name)}" />`
             : `<h3 class="text-lg font-bold text-white">${escHtml(group.name)}</h3>`}
           ${group.is_super ? `<span class="text-xs px-2 py-0.5 rounded-full bg-[#F5B800]/20 text-[#F5B800] font-medium">Built-in — always full access</span>` : ""}
         </div>
@@ -2053,19 +2055,25 @@ function openGroupDetailModal(id, mode) {
       </div>
       <div class="flex justify-end gap-2">
         <button onclick="closeModal()" class="text-sm bg-[#1a2d4a] text-slate-300 font-semibold px-4 py-2 rounded-lg hover:bg-[#243d61] transition">Close</button>
-        ${isEdit ? `<button onclick="saveGroupPermissions(${group.id})" class="text-sm bg-[#F5B800] text-black font-semibold px-4 py-2 rounded-lg hover:bg-[#D4A000] transition">Save</button>` : ""}
+        ${isCreate
+          ? `<button onclick="createGroup()" class="text-sm bg-[#F5B800] text-black font-semibold px-4 py-2 rounded-lg hover:bg-[#D4A000] transition">Create</button>`
+          : isEdit ? `<button onclick="saveGroupPermissions(${group.id})" class="text-sm bg-[#F5B800] text-black font-semibold px-4 py-2 rounded-lg hover:bg-[#D4A000] transition">Save</button>` : ""}
       </div>
     </div>`;
   document.getElementById("modal").classList.remove("hidden");
 }
 
-async function saveGroupPermissions(id) {
-  const container = document.querySelector(`#modalContent [data-group-id="${id}"]`);
-  if (!container) return;
-  const name = container.querySelector(".gp-name")?.value.trim();
-  if (!name) { showStatus("Group name required", "error"); return; }
+function readGroupModalFields() {
+  const container = document.querySelector(`#modalContent [data-group-id]`);
+  const name = container?.querySelector(".gp-name")?.value.trim() || "";
   const permissions = {};
-  container.querySelectorAll(".gp-perm").forEach(cb => { permissions[cb.dataset.key] = cb.checked; });
+  container?.querySelectorAll(".gp-perm").forEach(cb => { permissions[cb.dataset.key] = cb.checked; });
+  return { name, permissions };
+}
+
+async function saveGroupPermissions(id) {
+  const { name, permissions } = readGroupModalFields();
+  if (!name) { showStatus("Group name required", "error"); return; }
   try {
     const res = await authFetch(`/api/groups/${id}`, { method: "PATCH", body: JSON.stringify({ name, permissions }) });
     const data = await res.json();
@@ -2078,16 +2086,15 @@ async function saveGroupPermissions(id) {
   }
 }
 
-async function addGroup() {
-  const input = document.getElementById("newGroupName");
-  const name = input?.value.trim();
-  if (!name) { showStatus("Enter a group name", "error"); return; }
+async function createGroup() {
+  const { name, permissions } = readGroupModalFields();
+  if (!name) { showStatus("Group name required", "error"); return; }
   try {
-    const res = await authFetch("/api/groups", { method: "POST", body: JSON.stringify({ name }) });
+    const res = await authFetch("/api/groups", { method: "POST", body: JSON.stringify({ name, permissions }) });
     const data = await res.json();
     if (!res.ok || data.error) { showStatus(data.error || "Failed to create group", "error"); return; }
-    input.value = "";
     showStatus("Group created", "success");
+    closeModal();
     await openGroupsPage();
   } catch (e) {
     showStatus("Failed: " + e.message, "error");
