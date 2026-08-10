@@ -21,6 +21,30 @@ let currentUser = null; // { username, role, employee_name }
 // ── Auth ──────────────────────────────────────────────────────────────────────
 function getToken() { return localStorage.getItem("auth_token") || ""; }
 
+// role==='admin' always bypasses (mirrors the backend's is_super-group bypass);
+// otherwise the logged-in user's group must explicitly carry this permission key.
+function hasPermission(key) {
+  return currentUser?.role === "admin" || currentUser?.permissions?.[key] === true;
+}
+
+// Maps each page name (as passed to showPage()) to the permission key that gates it.
+const PAGE_PERMISSION = {
+  dashboard: "page:dashboard",
+  chats: "page:chats",
+  "report-supervised-chats": "page:report-supervised-chats",
+  reports: "page:reports",
+  "report-monthly": "page:report-monthly",
+  "report-total-chats": "page:report-total-chats",
+  "report-campaign": "page:report-campaign",
+  "report-platform-status": "page:report-platform-status",
+  "report-platform-costs": "page:report-platform-costs",
+  "report-agent-activity": "page:report-agent-activity",
+  "report-chat-transfers": "page:report-chat-transfers",
+  employees: "page:employees",
+  config: "page:config",
+  groups: "page:groups",
+};
+
 async function authFetch(url, opts = {}) {
   const token = getToken();
   const res = await fetch(url, {
@@ -173,16 +197,15 @@ async function initApp() {
     document.getElementById("sidebarUsername").textContent = currentUser.username;
     document.getElementById("sidebarRole").textContent = currentUser.role;
   }
-  // Show admin-only items
-  if (currentUser.role === "admin") {
-    document.querySelectorAll(".admin-only").forEach(el => el.classList.remove("hidden"));
-  }
+  // Show/hide sidebar items and buttons whose access depends on the current user's
+  // group permissions (or the admin role bypass) — generalizes the old fixed admin-only list.
+  document.querySelectorAll("[data-permission]").forEach(el => {
+    if (hasPermission(el.dataset.permission)) el.classList.remove("hidden");
+  });
 
   // Navigate to correct page immediately — before any async calls so there's no flash
   const lastPage = localStorage.getItem("lastPage");
-  const validPages = ["dashboard", "chats", "report-supervised-chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "report-agent-activity", "report-chat-transfers", "employees", "config"];
-  const adminPages = ["employees", "config"];
-  const startPage = validPages.includes(lastPage) && (!adminPages.includes(lastPage) || currentUser.role === "admin")
+  const startPage = PAGE_PERMISSION[lastPage] && hasPermission(PAGE_PERMISSION[lastPage])
     ? lastPage : "chats";
   showPage(startPage);
 
@@ -243,7 +266,11 @@ function togglePlatformMenu() {
 }
 
 function showPage(name) {
-  const pages = ["dashboard", "chats", "report-supervised-chats", "reports", "report-monthly", "report-total-chats", "report-campaign", "report-platform-status", "report-platform-costs", "report-agent-activity", "report-chat-transfers", "employees", "config"];
+  // Defense in depth beyond just hiding the nav button — refuse to navigate to a page
+  // the current user's group doesn't grant, even if called directly (e.g. a stale
+  // localStorage lastPage, or a manual showPage() call).
+  if (PAGE_PERMISSION[name] && !hasPermission(PAGE_PERMISSION[name])) name = "chats";
+  const pages = Object.keys(PAGE_PERMISSION);
   pages.forEach(p => {
     document.getElementById(`page-${p}`)?.classList.add("hidden");
     const btn = document.getElementById(`nav-${p}`);
@@ -290,6 +317,7 @@ function showPage(name) {
   if (name === "report-chat-transfers") openChatTransfersReport();
   if (name === "report-supervised-chats") openSupervisedChatsReport();
   if (name === "employees") openSettings();
+  if (name === "groups") openGroupsPage();
   if (name === "config") loadKnowledgeStatus();
   localStorage.setItem("lastPage", name);
 }
@@ -619,7 +647,7 @@ async function loadChats(pageId) {
     renderTable();
     document.getElementById("statusBar").classList.add("hidden");
 
-    if (chats.length > 0 && currentUser?.role === "admin") {
+    if (chats.length > 0 && hasPermission("action:review_chats")) {
       document.getElementById("btnReviewAll").classList.remove("hidden");
     }
 
@@ -826,7 +854,7 @@ function renderTable() {
       employeeNameHtml = `<span class="font-medium text-white">${empNames}</span>`;
     }
 
-    const isAdmin = currentUser?.role === "admin";
+    const isAdmin = hasPermission("action:review_chats");
     const isCW = chat.platform === "chatwoot";
     const reReviewBtn = isAdmin ? `<button onclick="reviewChat('${chat.id}','${chat.thread_id||''}',this)" class="text-xs text-slate-500 hover:text-orange-500 px-1" title="Re-review">↺</button>` : "";
     const actionBtn = r
@@ -910,7 +938,7 @@ async function reviewChat(chatId, threadId, btn) {
       if (scoreEl) scoreEl.innerHTML = scorePill(review.overall_score);
       if (statusEl) statusEl.innerHTML =
         `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "✓" : "✗"}</span>`;
-      const reBtn = currentUser?.role === "admin" ? `<button onclick="reviewChat('${chatId}','${threadId||''}',this)" class="text-xs text-slate-500 hover:text-orange-500 px-1" title="Re-review">↺</button>` : "";
+      const reBtn = hasPermission("action:review_chats") ? `<button onclick="reviewChat('${chatId}','${threadId||''}',this)" class="text-xs text-slate-500 hover:text-orange-500 px-1" title="Re-review">↺</button>` : "";
       if (actionCell) actionCell.innerHTML = `<div class="flex items-center gap-1">
         <button onclick="openModal('${chatId}','${threadId||''}')" class="text-xs text-[#F5B800] hover:underline">View</button>
         ${reBtn}
@@ -920,7 +948,7 @@ async function reviewChat(chatId, threadId, btn) {
     updateStats();
     updateChart();
   } catch (e) {
-    const retryBtn = currentUser?.role === "admin" ? `<button onclick="reviewChat('${chatId}','${threadId||''}',this)" class="text-xs text-slate-500 hover:text-orange-500 px-1" title="Re-review">↺</button>` : "";
+    const retryBtn = hasPermission("action:review_chats") ? `<button onclick="reviewChat('${chatId}','${threadId||''}',this)" class="text-xs text-slate-500 hover:text-orange-500 px-1" title="Re-review">↺</button>` : "";
     actionCell.innerHTML = `<div class="flex items-center gap-1">
       <span class="text-xs text-red-500">Error</span>
       ${retryBtn}
@@ -1692,6 +1720,14 @@ function showStatus(msg, type) {
 // ── Settings Modal ────────────────────────────────────────────────────────────
 let settingsAgents = [];
 let cwAgents = [];
+let groupsList = []; // [{id, name, is_super, permissions}] — see /api/groups, also used by the Groups page
+
+function groupOptionsHtml(selectedGroupId) {
+  const sel = String(selectedGroupId ?? "");
+  return groupsList.map(g =>
+    `<option value="${g.id}" ${String(g.id) === sel ? "selected" : ""}>${escHtml(g.name)}</option>`
+  ).join("");
+}
 
 function cwAgentOptionsHtml(selectedEmail) {
   const sel = (selectedEmail || "").toLowerCase().trim();
@@ -1705,10 +1741,11 @@ function cwAgentOptionsHtml(selectedEmail) {
 
 async function openSettings() {
   if (agents.length > 0) settingsAgents = agents;
-  const [shiftsResult, usersResult, cwAgentsResult] = await Promise.allSettled([
+  const [shiftsResult, usersResult, cwAgentsResult, groupsResult] = await Promise.allSettled([
     authFetch("/api/agent-shifts").then(r => r.json()),
     authFetch("/api/app-users").then(r => r.json()),
     authFetch("/api/chatwoot-agents").then(r => r.json()),
+    authFetch("/api/groups").then(r => r.json()),
   ]);
 
   if (cwAgentsResult.status === "fulfilled" && Array.isArray(cwAgentsResult.value)) {
@@ -1717,16 +1754,23 @@ async function openSettings() {
     console.error("[openSettings] chatwoot-agents failed:", cwAgentsResult.reason || cwAgentsResult.value);
   }
 
+  if (groupsResult.status === "fulfilled" && Array.isArray(groupsResult.value)) {
+    groupsList = groupsResult.value;
+  } else {
+    console.error("[openSettings] groups failed:", groupsResult.reason || groupsResult.value);
+  }
+
   if (shiftsResult.status === "fulfilled" && Array.isArray(shiftsResult.value)) {
-    const userMap = {}, roleMap = {};
+    const userMap = {}, groupMap = {};
+    const defaultGroupId = groupsList.find(g => !g.is_super)?.id ?? groupsList[0]?.id ?? "";
     if (usersResult.status === "fulfilled" && Array.isArray(usersResult.value)) {
       usersResult.value.forEach(u => {
-        if (u.employee_name) { userMap[u.employee_name] = u.username; roleMap[u.employee_name] = u.role || "user"; }
+        if (u.employee_name) { userMap[u.employee_name] = u.username; groupMap[u.employee_name] = u.group_id ?? defaultGroupId; }
       });
     } else {
       console.error("[openSettings] app-users failed:", usersResult.reason || usersResult.value);
     }
-    agentShifts = shiftsResult.value.map(s => ({ ...s, username: userMap[s.employee] || "", userRole: roleMap[s.employee] || "user" }));
+    agentShifts = shiftsResult.value.map(s => ({ ...s, username: userMap[s.employee] || "", groupId: groupMap[s.employee] ?? defaultGroupId }));
   } else {
     console.error("[openSettings] agent-shifts failed:", shiftsResult.reason || shiftsResult.value);
   }
@@ -1817,9 +1861,8 @@ function shiftRowHtml(s) {
     <td class="py-2 pr-3"><input class="sr-username w-24 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm" value="${escHtml(s.username || "")}" placeholder="username" autocomplete="off" /></td>
     <td class="py-2 pr-3"><div class="relative w-24"><input class="sr-password w-full border border-[#1a2d4a] rounded-lg px-2 py-1.5 pr-7 text-sm" type="password" placeholder="••••••" autocomplete="new-password" /><button type="button" tabindex="-1" onclick="togglePw(this)" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs">👁</button></div></td>
     <td class="py-2 pr-3">
-      <select class="sr-role border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
-        <option value="user" ${(s.userRole || "user") !== "admin" ? "selected" : ""}>User</option>
-        <option value="admin" ${s.userRole === "admin" ? "selected" : ""}>Admin</option>
+      <select class="sr-access-group border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
+        ${groupOptionsHtml(s.groupId)}
       </select>
     </td>
     <td class="py-2 pr-3 text-center"><input type="checkbox" class="sr-show-chart w-4 h-4 accent-blue-600" ${s.showInChart !== false ? "checked" : ""} title="Show in dashboard chart" /></td>
@@ -1850,9 +1893,8 @@ function addShiftRow() {
     <td class="py-2 pr-3"><input class="sr-username w-24 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm" placeholder="username" autocomplete="off" /></td>
     <td class="py-2 pr-3"><div class="relative w-24"><input class="sr-password w-full border border-[#1a2d4a] rounded-lg px-2 py-1.5 pr-7 text-sm" type="password" placeholder="••••••" autocomplete="new-password" /><button type="button" tabindex="-1" onclick="togglePw(this)" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs">👁</button></div></td>
     <td class="py-2 pr-3">
-      <select class="sr-role border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
-        <option value="user" selected>User</option>
-        <option value="admin">Admin</option>
+      <select class="sr-access-group border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
+        ${groupOptionsHtml(groupsList.find(g => !g.is_super)?.id ?? "")}
       </select>
     </td>
     <td class="py-2 pr-3 text-center"><input type="checkbox" class="sr-show-chart w-4 h-4 accent-blue-600" checked title="Show in dashboard chart" /></td>
@@ -1865,7 +1907,7 @@ async function saveSettings() {
   const rows = document.querySelectorAll("#shiftsTableBody .shift-row");
   const newShifts = [];
   const userUpdates = [];
-  const roleUpdates = [];
+  const groupUpdates = [];
   rows.forEach(row => {
     const employee = row.querySelector(".sr-employee").value.trim();
     const agentKey = row.querySelector(".sr-agent").value.trim();
@@ -1876,12 +1918,12 @@ async function saveSettings() {
     const languages = [...row.querySelectorAll(".sr-lang:checked")].map(cb => cb.value);
     const username = row.querySelector(".sr-username")?.value.trim() || "";
     const password = row.querySelector(".sr-password")?.value || "";
-    const role = row.querySelector(".sr-role")?.value || "user";
+    const groupId = row.querySelector(".sr-access-group")?.value || "";
     const showInChart = row.querySelector(".sr-show-chart")?.checked !== false;
     if (!employee || !agentKey) return;
     newShifts.push({ employee, agentKey, chatwootAgentId, start, end, groups, languages, username, showInChart });
     if (username && password) userUpdates.push({ username, password, employee_name: employee });
-    if (username) roleUpdates.push({ username, role });
+    if (username && groupId) groupUpdates.push({ username, group_id: groupId });
   });
 
   try {
@@ -1895,12 +1937,14 @@ async function saveSettings() {
         authFetch("/api/app-users", { method: "POST", body: JSON.stringify(u) })
       ));
     }
-    if (roleUpdates.length > 0) {
-      await Promise.all(roleUpdates.map(u =>
-        authFetch(`/api/app-users/${encodeURIComponent(u.username)}/role`, {
-          method: "PATCH", body: JSON.stringify({ role: u.role })
-        })
+    if (groupUpdates.length > 0) {
+      const results = await Promise.all(groupUpdates.map(u =>
+        authFetch(`/api/app-users/${encodeURIComponent(u.username)}/group`, {
+          method: "PATCH", body: JSON.stringify({ group_id: u.group_id })
+        }).then(r => r.json()).then(d => ({ username: u.username, ...d }))
       ));
+      const failed = results.filter(r => r.error);
+      if (failed.length) showStatus(failed.map(f => `${f.username}: ${f.error}`).join("; "), "error");
     }
     if (data.ok) {
       agentShifts = newShifts;
@@ -1913,6 +1957,110 @@ async function saveSettings() {
     }
   } catch (e) {
     showStatus("Save failed: " + e.message, "error");
+  }
+}
+
+// ── Groups (access management) ─────────────────────────────────────────────────
+let permissionCatalog = []; // [{key, label, kind: 'page'|'action'}] — see /api/permissions/catalog
+
+async function openGroupsPage() {
+  const content = document.getElementById("groupsContent");
+  if (content) content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm"><span class="spinner"></span></div>`;
+  try {
+    const [groupsRes, catalogRes] = await Promise.all([
+      authFetch("/api/groups"),
+      authFetch("/api/permissions/catalog"),
+    ]);
+    groupsList = await groupsRes.json();
+    permissionCatalog = await catalogRes.json();
+    renderGroupsPage();
+  } catch (e) {
+    if (content) content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderGroupsPage() {
+  const content = document.getElementById("groupsContent");
+  if (!content) return;
+  const pageKeys = permissionCatalog.filter(p => p.kind === "page");
+  const actionKeys = permissionCatalog.filter(p => p.kind === "action");
+
+  const checkboxGrid = (group, keys) => keys.map(p => `
+    <label class="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+      <input type="checkbox" class="gp-perm w-3.5 h-3.5 accent-[#F5B800]" data-key="${escHtml(p.key)}"
+        ${group.permissions?.[p.key] ? "checked" : ""} ${group.is_super ? "disabled checked" : ""} />
+      ${escHtml(p.label)}
+    </label>`).join("");
+
+  content.innerHTML = groupsList.map(g => `
+    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5" data-group-id="${g.id}">
+      <div class="flex items-center justify-between mb-4 gap-3">
+        <div class="flex items-center gap-2 flex-1">
+          <input class="gp-name text-sm font-semibold bg-transparent border-b border-transparent hover:border-[#1a2d4a] focus:border-[#F5B800] text-white px-1 py-0.5 focus:outline-none" value="${escHtml(g.name)}" />
+          ${g.is_super ? `<span class="text-xs px-2 py-0.5 rounded-full bg-[#F5B800]/20 text-[#F5B800] font-medium">Built-in — always full access</span>` : ""}
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <button onclick="saveGroupPermissions(${g.id})" class="text-xs bg-[#1a2d4a] text-[#F5B800] font-semibold px-3 py-1.5 rounded-lg hover:bg-[#243d61] transition">Save</button>
+          ${!g.is_super ? `<button onclick="deleteGroup(${g.id})" class="text-xs text-red-400 hover:text-red-300 px-2 py-1.5">Delete</button>` : ""}
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-6">
+        <div>
+          <p class="text-xs font-semibold text-slate-500 uppercase mb-2">Pages</p>
+          <div class="grid grid-cols-2 gap-2">${checkboxGrid(g, pageKeys)}</div>
+        </div>
+        <div>
+          <p class="text-xs font-semibold text-slate-500 uppercase mb-2">Actions</p>
+          <div class="grid grid-cols-1 gap-2">${checkboxGrid(g, actionKeys)}</div>
+        </div>
+      </div>
+    </div>`).join("");
+}
+
+async function saveGroupPermissions(id) {
+  const card = document.querySelector(`[data-group-id="${id}"]`);
+  if (!card) return;
+  const name = card.querySelector(".gp-name")?.value.trim();
+  if (!name) { showStatus("Group name required", "error"); return; }
+  const permissions = {};
+  card.querySelectorAll(".gp-perm").forEach(cb => { permissions[cb.dataset.key] = cb.checked; });
+  try {
+    const res = await authFetch(`/api/groups/${id}`, { method: "PATCH", body: JSON.stringify({ name, permissions }) });
+    const data = await res.json();
+    if (!res.ok || data.error) { showStatus(data.error || "Save failed", "error"); return; }
+    showStatus("Saved", "success");
+    await openGroupsPage();
+  } catch (e) {
+    showStatus("Save failed: " + e.message, "error");
+  }
+}
+
+async function addGroup() {
+  const input = document.getElementById("newGroupName");
+  const name = input?.value.trim();
+  if (!name) { showStatus("Enter a group name", "error"); return; }
+  try {
+    const res = await authFetch("/api/groups", { method: "POST", body: JSON.stringify({ name }) });
+    const data = await res.json();
+    if (!res.ok || data.error) { showStatus(data.error || "Failed to create group", "error"); return; }
+    input.value = "";
+    showStatus("Group created", "success");
+    await openGroupsPage();
+  } catch (e) {
+    showStatus("Failed: " + e.message, "error");
+  }
+}
+
+async function deleteGroup(id) {
+  if (!confirm("Delete this group? Members must be reassigned first.")) return;
+  try {
+    const res = await authFetch(`/api/groups/${id}`, { method: "DELETE" });
+    const data = await res.json();
+    if (!res.ok || data.error) { showStatus(data.error || "Delete failed", "error"); return; }
+    showStatus("Group deleted", "success");
+    await openGroupsPage();
+  } catch (e) {
+    showStatus("Delete failed: " + e.message, "error");
   }
 }
 
@@ -3250,7 +3398,7 @@ async function refreshSavedReportsPanel(type, containerId) {
         </div>
         <div class="flex gap-2 shrink-0">
           <button onclick="loadSavedReport('${type}', ${r.id})" class="text-xs bg-[#1a2d4a] text-[#F5B800] hover:bg-[#243d61] px-2.5 py-1 rounded-lg transition">Load</button>
-          ${currentUser?.role === "admin" ? `<button onclick="deleteSavedReport('${type}', ${r.id}, '${containerId}')" class="text-xs text-red-400 hover:text-red-300 px-2 py-1">✕</button>` : ""}
+          ${hasPermission("action:manage_reports") ? `<button onclick="deleteSavedReport('${type}', ${r.id}, '${containerId}')" class="text-xs text-red-400 hover:text-red-300 px-2 py-1">✕</button>` : ""}
         </div>
       </div>`).join("");
   } catch (e) {
@@ -3865,7 +4013,7 @@ function renderReportView(r) {
 
     <div class="bg-blue-50 border border-blue-100 rounded-xl p-4">
       <p class="text-xs font-semibold text-[#F5B800] uppercase mb-2">Admin Notes</p>
-      ${currentUser?.role === "admin"
+      ${hasPermission("action:manage_reports")
         ? `<textarea id="reportNotes" class="w-full text-sm border border-[#1a2d4a] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-[#0f1d35]" rows="3" placeholder="Add notes...">${escHtml(r.admin_notes || "")}</textarea>
            <button onclick="saveReportNotes('${escHtml(r.employee)}','${escHtml(r.month)}')" class="mt-2 bg-blue-600 text-white px-3 py-1.5 text-xs rounded-lg hover:bg-blue-700">Save Notes</button>`
         : `<p class="text-sm text-blue-700">${r.admin_notes || "—"}</p>`}
@@ -4023,7 +4171,7 @@ async function viewSavedReport(employee, month) {
         <button onclick="downloadReportPdf()" class="flex items-center gap-1.5 bg-[#1a2d4a] hover:bg-[#243d61] text-white text-xs font-medium px-3 py-2 rounded-lg transition">
           ⬇ Download PDF
         </button>
-        ${currentUser?.role === "admin" ? `<button onclick="deleteThisReport('${escHtml(employee)}','${escHtml(month)}')" class="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-500 text-xs font-medium px-3 py-2 rounded-lg transition">
+        ${hasPermission("action:manage_reports") ? `<button onclick="deleteThisReport('${escHtml(employee)}','${escHtml(month)}')" class="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-500 text-xs font-medium px-3 py-2 rounded-lg transition">
           🗑 Delete
         </button>` : ""}
       </div>

@@ -13,6 +13,39 @@ const { Pool } = pg;
 // ── Auth helpers ──────────────────────────────────────────────────────────────
 const SESSION_IDLE_MINUTES = 30;
 
+// Single source of truth for what a group can be granted access to. "page:*" keys gate
+// nav/page visibility; "action:*" keys gate specific operations. Exposed as-is via
+// GET /api/permissions/catalog so the Groups UI never hardcodes labels separately from
+// enforcement (requirePermission() below reads the same keys directly from a group's
+// `permissions` JSONB).
+const PERMISSION_CATALOG = [
+  { key: "page:dashboard", label: "Dashboard", kind: "page" },
+  { key: "page:chats", label: "Chat Review", kind: "page" },
+  { key: "page:report-supervised-chats", label: "Supervised Chats", kind: "page" },
+  { key: "page:reports", label: "Employee Report", kind: "page" },
+  { key: "page:report-monthly", label: "Monthly Overview", kind: "page" },
+  { key: "page:report-total-chats", label: "Total Chats", kind: "page" },
+  { key: "page:report-campaign", label: "Campaign Impact", kind: "page" },
+  { key: "page:report-platform-status", label: "Platform Status", kind: "page" },
+  { key: "page:report-platform-costs", label: "Platform Costs", kind: "page" },
+  { key: "page:report-agent-activity", label: "Agent Activity", kind: "page" },
+  { key: "page:report-chat-transfers", label: "Chat Transfers", kind: "page" },
+  { key: "page:employees", label: "Employees", kind: "page" },
+  { key: "page:config", label: "Config", kind: "page" },
+  { key: "page:groups", label: "Groups", kind: "page" },
+  { key: "action:review_chats", label: "Review chats with AI", kind: "action" },
+  { key: "action:manage_users", label: "Manage user accounts", kind: "action" },
+  { key: "action:manage_shifts", label: "Manage employee shifts", kind: "action" },
+  { key: "action:manage_reports", label: "Generate / delete reports", kind: "action" },
+  { key: "action:backfill", label: "Run report backfills", kind: "action" },
+  { key: "action:debug_tools", label: "Debug tools", kind: "action" },
+];
+
+const DEFAULT_USER_PERMISSIONS = Object.fromEntries(
+  PERMISSION_CATALOG.map(p => [p.key, p.kind === "page" && !["page:employees", "page:config", "page:groups"].includes(p.key)])
+);
+const ALL_TRUE_PERMISSIONS = Object.fromEntries(PERMISSION_CATALOG.map(p => [p.key, true]));
+
 function hashPass(password, salt) {
   return crypto.pbkdf2Sync(password, salt, 10000, 64, "sha512").toString("hex");
 }
@@ -21,9 +54,9 @@ async function createSession(user) {
   const token = crypto.randomBytes(32).toString("hex");
   if (pool) {
     await pool.query(
-      `INSERT INTO sessions (token, username, role, employee_name, last_active)
-       VALUES ($1, $2, $3, $4, NOW())`,
-      [token, user.username, user.role, user.employee_name || null]
+      `INSERT INTO sessions (token, username, role, employee_name, group_id, permissions, last_active)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+      [token, user.username, user.role, user.employee_name || null, user.group_id || null, JSON.stringify(user.permissions || {})]
     );
   }
   return token;
@@ -33,7 +66,7 @@ async function getSession(token) {
   if (!token) return null;
   if (pool) {
     const r = await pool.query(
-      `SELECT username, role, employee_name FROM sessions
+      `SELECT username, role, employee_name, group_id, permissions FROM sessions
        WHERE token=$1 AND last_active > NOW() - INTERVAL '${SESSION_IDLE_MINUTES} minutes'`,
       [token]
     );
@@ -49,6 +82,16 @@ async function deleteSession(token) {
   if (pool && token) await pool.query("DELETE FROM sessions WHERE token=$1", [token]).catch(() => {});
 }
 
+// Force a user's (or a whole group's) active sessions to expire immediately, so a group
+// reassignment or a permissions edit takes effect on their very next request instead of
+// waiting for the session to naturally age out.
+async function invalidateSessionsForUser(username) {
+  if (pool) await pool.query("DELETE FROM sessions WHERE username=$1", [username]).catch(() => {});
+}
+async function invalidateSessionsForGroup(groupId) {
+  if (pool) await pool.query("DELETE FROM sessions WHERE group_id=$1", [groupId]).catch(() => {});
+}
+
 function authMiddleware(req, res, next) {
   const token = (req.headers.authorization || "").replace("Bearer ", "").trim();
   getSession(token).then(sess => {
@@ -61,6 +104,14 @@ function authMiddleware(req, res, next) {
 function adminOnly(req, res, next) {
   if (req.user?.role !== "admin") return res.status(403).json({ error: "Admin only" });
   next();
+}
+// role==='admin' always bypasses (the is_super group derives that role — see groups
+// table below); otherwise the caller's group must explicitly carry this permission key.
+function requirePermission(key) {
+  return (req, res, next) => {
+    if (req.user?.role === "admin" || req.user?.permissions?.[key] === true) return next();
+    return res.status(403).json({ error: "Forbidden" });
+  };
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -83,7 +134,11 @@ if (process.env.DATABASE_URL) {
     role TEXT NOT NULL,
     employee_name TEXT,
     last_active TIMESTAMP DEFAULT NOW()
-  )`).then(() => {
+  )`).then(async () => {
+    // Denormalized snapshot (no FK, same staleness model as role/employee_name above) —
+    // refreshed at login and force-cleared via invalidateSessionsFor{User,Group}().
+    await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS group_id INTEGER`);
+    await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{}'`);
     console.log("[db] sessions table ready");
     // Clean up expired sessions on startup
     pool.query(`DELETE FROM sessions WHERE last_active < NOW() - INTERVAL '${SESSION_IDLE_MINUTES} minutes'`).catch(() => {});
@@ -164,6 +219,32 @@ if (process.env.DATABASE_URL) {
         console.log("[db] admin user created");
       }
       console.log("[db] app_users table ready");
+
+      // ── groups table ─────────────────────────────────────────────────────
+      // Created here (not as its own top-level block) so it's guaranteed to exist and be
+      // seeded before the app_users.group_id backfill below runs — both are in this same
+      // sequential async function, unlike the other top-level `pool.query(...).then()` /
+      // `(async()=>{})()` blocks in this file which all run concurrently with each other.
+      await pool.query(`CREATE TABLE IF NOT EXISTS groups (
+        id SERIAL PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        is_super BOOLEAN NOT NULL DEFAULT false,
+        permissions JSONB NOT NULL DEFAULT '{}'
+      )`);
+      await pool.query(
+        `INSERT INTO groups (name, is_super, permissions) VALUES ($1, true, $2) ON CONFLICT (name) DO NOTHING`,
+        ["Admin", JSON.stringify(ALL_TRUE_PERMISSIONS)]
+      );
+      await pool.query(
+        `INSERT INTO groups (name, is_super, permissions) VALUES ($1, false, $2) ON CONFLICT (name) DO NOTHING`,
+        ["User", JSON.stringify(DEFAULT_USER_PERMISSIONS)]
+      );
+      await pool.query(`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS group_id INTEGER REFERENCES groups(id)`);
+      // Backfill: anyone without a group yet gets mapped from their existing role, so
+      // upgrading an existing deployment doesn't strand any account without a group.
+      await pool.query(`UPDATE app_users SET group_id = (SELECT id FROM groups WHERE name='Admin') WHERE group_id IS NULL AND role='admin'`);
+      await pool.query(`UPDATE app_users SET group_id = (SELECT id FROM groups WHERE name='User')  WHERE group_id IS NULL AND role='user'`);
+      console.log("[db] groups table ready");
     } catch (e) { console.error("[db] app_users init error:", e.message); }
   })();
 
@@ -413,12 +494,18 @@ app.post("/api/login", async (req, res) => {
     const { username, password } = req.body || {};
     if (!username || !password) return res.status(400).json({ error: "Missing credentials" });
     if (!pool) return res.status(503).json({ error: "DB not available" });
-    const r = await pool.query("SELECT * FROM app_users WHERE LOWER(username)=LOWER($1)", [username]);
+    const r = await pool.query(
+      `SELECT au.*, g.permissions AS group_permissions FROM app_users au
+       LEFT JOIN groups g ON g.id = au.group_id
+       WHERE LOWER(au.username)=LOWER($1)`,
+      [username]
+    );
     const user = r.rows[0];
     if (!user) return res.status(401).json({ error: "Invalid username or password" });
     const hash = hashPass(password, user.salt);
     if (hash !== user.password_hash) return res.status(401).json({ error: "Invalid username or password" });
-    const token = await createSession({ username: user.username, role: user.role, employee_name: user.employee_name });
+    const permissions = user.group_permissions || {};
+    const token = await createSession({ username: user.username, role: user.role, employee_name: user.employee_name, group_id: user.group_id, permissions });
     res.json({ token, role: user.role, username: user.username, must_change_password: !!user.must_change_password });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -433,26 +520,26 @@ app.get("/api/me", async (req, res) => {
   const token = (req.headers.authorization || "").replace("Bearer ", "").trim();
   const sess = await getSession(token);
   if (!sess) return res.status(401).json({ error: "Not authenticated" });
-  res.json({ username: sess.username, role: sess.role, employee_name: sess.employee_name });
+  res.json({ username: sess.username, role: sess.role, employee_name: sess.employee_name, permissions: sess.permissions || {} });
 });
 
-// ── App users (admin only) ───────────────────────────────────────────────────
-app.get("/api/app-users", authMiddleware, adminOnly, async (req, res) => {
+// ── App users ─────────────────────────────────────────────────────────────────
+app.get("/api/app-users", authMiddleware, requirePermission("action:manage_users"), async (req, res) => {
   try {
-    const r = await pool.query("SELECT username, role, employee_name FROM app_users ORDER BY id");
+    const r = await pool.query("SELECT username, role, employee_name, group_id FROM app_users ORDER BY id");
     res.json(r.rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post("/api/app-users", authMiddleware, adminOnly, async (req, res) => {
+app.post("/api/app-users", authMiddleware, requirePermission("action:manage_users"), async (req, res) => {
   try {
     const { username, password, employee_name } = req.body || {};
     if (!username || !password) return res.status(400).json({ error: "Username and password required" });
     const salt = crypto.randomBytes(16).toString("hex");
     const hash = hashPass(password, salt);
     await pool.query(
-      `INSERT INTO app_users (username, password_hash, salt, role, employee_name, must_change_password)
-       VALUES ($1,$2,$3,'user',$4,true)
+      `INSERT INTO app_users (username, password_hash, salt, role, employee_name, must_change_password, group_id)
+       VALUES ($1,$2,$3,'user',$4,true, (SELECT id FROM groups WHERE name='User'))
        ON CONFLICT (username) DO UPDATE SET password_hash=$2, salt=$3, employee_name=$4, must_change_password=true`,
       [username, hash, salt, employee_name || null]
     );
@@ -460,21 +547,99 @@ app.post("/api/app-users", authMiddleware, adminOnly, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.patch("/api/app-users/:username/role", authMiddleware, adminOnly, async (req, res) => {
+// Replaces the old role-only PATCH — assigning a group now drives role, since role is
+// derived from the target group's is_super flag (see groups table). Only a literal
+// role==='admin' caller (not merely someone delegated action:manage_users) may grant
+// membership in an is_super group, so a delegated user-manager can't self-escalate.
+app.patch("/api/app-users/:username/group", authMiddleware, requirePermission("action:manage_users"), async (req, res) => {
   try {
     const { username } = req.params;
-    const { role } = req.body || {};
-    if (!["admin", "user"].includes(role)) return res.status(400).json({ error: "Role must be admin or user" });
-    if (username === "admin" && role !== "admin") return res.status(400).json({ error: "Cannot demote the main admin account" });
-    await pool.query("UPDATE app_users SET role=$1 WHERE username=$2", [role, username]);
+    const { group_id } = req.body || {};
+    const g = await pool.query("SELECT id, is_super FROM groups WHERE id=$1", [group_id]);
+    if (!g.rows[0]) return res.status(400).json({ error: "Invalid group" });
+    if (g.rows[0].is_super && req.user.role !== "admin") {
+      return res.status(403).json({ error: "Only admins can grant admin-group membership" });
+    }
+    if (username === "admin" && !g.rows[0].is_super) {
+      return res.status(400).json({ error: "Cannot demote the main admin account" });
+    }
+    const newRole = g.rows[0].is_super ? "admin" : "user";
+    await pool.query("UPDATE app_users SET group_id=$1, role=$2 WHERE username=$3", [group_id, newRole, username]);
+    await invalidateSessionsForUser(username);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete("/api/app-users/:username", authMiddleware, adminOnly, async (req, res) => {
+app.delete("/api/app-users/:username", authMiddleware, requirePermission("action:manage_users"), async (req, res) => {
   try {
     if (req.params.username === "admin") return res.status(400).json({ error: "Cannot delete admin" });
     await pool.query("DELETE FROM app_users WHERE username=$1", [req.params.username]);
+    await invalidateSessionsForUser(req.params.username);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Groups (access management) ───────────────────────────────────────────────
+// Read is available to any authenticated user (the Employees page needs the list to
+// populate its Group dropdown); writes are hardcoded to literal role==='admin' — not
+// delegable via a permission, since a group that could edit its own permissions could
+// grant itself anything (same reasoning as why role='admin' itself can't be self-granted).
+app.get("/api/groups", authMiddleware, async (req, res) => {
+  try {
+    const r = await pool.query("SELECT id, name, is_super, permissions FROM groups ORDER BY is_super DESC, name ASC");
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/permissions/catalog", authMiddleware, (req, res) => {
+  res.json(PERMISSION_CATALOG);
+});
+
+app.post("/api/groups", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const name = (req.body?.name || "").trim();
+    if (!name) return res.status(400).json({ error: "Name required" });
+    const r = await pool.query(
+      "INSERT INTO groups (name, is_super, permissions) VALUES ($1, false, '{}') RETURNING id, name, is_super, permissions",
+      [name]
+    );
+    res.json(r.rows[0]);
+  } catch (e) {
+    if (e.code === "23505") return res.status(400).json({ error: "A group with that name already exists" });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.patch("/api/groups/:id", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Whitelisted on purpose — is_super is never accepted from the client, so a raw PATCH
+    // can't flip the seeded Admin group's bypass flag or desync it from role='admin'.
+    const { name, permissions } = req.body || {};
+    const existing = await pool.query("SELECT * FROM groups WHERE id=$1", [id]);
+    if (!existing.rows[0]) return res.status(404).json({ error: "Not found" });
+    const newName = name != null ? String(name).trim() : existing.rows[0].name;
+    const newPerms = permissions != null ? permissions : existing.rows[0].permissions;
+    if (!newName) return res.status(400).json({ error: "Name required" });
+    await pool.query("UPDATE groups SET name=$1, permissions=$2 WHERE id=$3", [newName, JSON.stringify(newPerms), id]);
+    await invalidateSessionsForGroup(id);
+    res.json({ ok: true });
+  } catch (e) {
+    if (e.code === "23505") return res.status(400).json({ error: "A group with that name already exists" });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/groups/:id", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const g = await pool.query("SELECT is_super FROM groups WHERE id=$1", [id]);
+    if (!g.rows[0]) return res.status(404).json({ error: "Not found" });
+    if (g.rows[0].is_super) return res.status(400).json({ error: "Cannot delete the built-in admin group" });
+    const members = await pool.query("SELECT COUNT(*) FROM app_users WHERE group_id=$1", [id]);
+    const count = parseInt(members.rows[0].count);
+    if (count > 0) return res.status(400).json({ error: `Reassign ${count} member(s) to another group before deleting this one` });
+    await pool.query("DELETE FROM groups WHERE id=$1", [id]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1436,7 +1601,7 @@ ${transcript}`;
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 
-app.get("/api/debug-cw-reviews", authMiddleware, adminOnly, async (req, res) => {
+app.get("/api/debug-cw-reviews", authMiddleware, requirePermission("action:debug_tools"), async (req, res) => {
   const reviews = await loadReviews();
   const cw = Object.entries(reviews)
     .filter(([k]) => k.startsWith("cw:"))
@@ -1453,7 +1618,7 @@ app.get("/api/debug-cw-reviews", authMiddleware, adminOnly, async (req, res) => 
   res.json({ total_cw_reviews: cw.length, reviews: cw });
 });
 
-app.get("/api/debug-chat/:chatId", authMiddleware, adminOnly, async (req, res) => {
+app.get("/api/debug-chat/:chatId", authMiddleware, requirePermission("action:debug_tools"), async (req, res) => {
   try {
     const { chatId } = req.params;
     const { thread_id } = req.query;
@@ -1814,7 +1979,7 @@ app.get("/api/chatwoot-chats/:convId", authMiddleware, async (req, res) => {
 });
 
 // Review a Chatwoot conversation with Claude AI
-app.post("/api/review/cw/:convId", authMiddleware, async (req, res) => {
+app.post("/api/review/cw/:convId", authMiddleware, requirePermission("action:review_chats"), async (req, res) => {
   if (!chatwootEnabled()) return res.status(404).json({ error: "Chatwoot not configured" });
   try {
     const { convId } = req.params;
@@ -1903,7 +2068,7 @@ app.post("/api/review/cw/:convId", authMiddleware, async (req, res) => {
 });
 
 // Review a chat with Claude AI
-app.post("/api/review/:chatId", authMiddleware, async (req, res) => {
+app.post("/api/review/:chatId", authMiddleware, requirePermission("action:review_chats"), async (req, res) => {
   try {
     const { chatId } = req.params;
     console.log(`[review] fetching chat ${chatId}`);
@@ -2832,7 +2997,7 @@ app.get("/api/saved-reports/:id", authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete("/api/saved-reports/:id", authMiddleware, adminOnly, async (req, res) => {
+app.delete("/api/saved-reports/:id", authMiddleware, requirePermission("action:manage_reports"), async (req, res) => {
   try {
     if (!pool) return res.status(503).json({ error: "No database configured" });
     await pool.query("DELETE FROM saved_reports WHERE id=$1", [req.params.id]);
@@ -3293,7 +3458,7 @@ const backfillJobs = { agentActivity: null, totalChats: null };
 // visible employee and upsert into agent_activity_daily. Use this to seed history
 // that predates the nightly cron — normal report reads never need this since past
 // days are cache-only.
-app.post("/api/reports/agent-activity/backfill", authMiddleware, adminOnly, async (req, res) => {
+app.post("/api/reports/agent-activity/backfill", authMiddleware, requirePermission("action:backfill"), async (req, res) => {
   try {
     if (!pool) return res.status(503).json({ error: "No database configured" });
     const { date_from, date_to } = req.body || {};
@@ -3331,7 +3496,7 @@ app.post("/api/reports/agent-activity/backfill", authMiddleware, adminOnly, asyn
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get("/api/reports/agent-activity/backfill/status", authMiddleware, adminOnly, (req, res) => {
+app.get("/api/reports/agent-activity/backfill/status", authMiddleware, requirePermission("action:backfill"), (req, res) => {
   const job = backfillJobs.agentActivity;
   if (!job) return res.json({ running: false });
   res.json({ running: job.running, days_total: job.daysTotal, days_done: job.daysDone, employees: job.employees.size });
@@ -3339,7 +3504,7 @@ app.get("/api/reports/agent-activity/backfill/status", authMiddleware, adminOnly
 
 // One-time (or occasional) backfill for chat_totals_daily — seeds history for
 // Total Chats / Campaign Impact that predates the nightly cron.
-app.post("/api/reports/total-chats/backfill", authMiddleware, adminOnly, async (req, res) => {
+app.post("/api/reports/total-chats/backfill", authMiddleware, requirePermission("action:backfill"), async (req, res) => {
   try {
     if (!pool) return res.status(503).json({ error: "No database configured" });
     const { date_from, date_to } = req.body || {};
@@ -3369,7 +3534,7 @@ app.post("/api/reports/total-chats/backfill", authMiddleware, adminOnly, async (
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get("/api/reports/total-chats/backfill/status", authMiddleware, adminOnly, (req, res) => {
+app.get("/api/reports/total-chats/backfill/status", authMiddleware, requirePermission("action:backfill"), (req, res) => {
   const job = backfillJobs.totalChats;
   if (!job) return res.json({ running: false });
   res.json({ running: job.running, days_total: job.daysTotal, days_done: job.daysDone, employees: job.employees.size });
@@ -3613,7 +3778,7 @@ app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
 });
 
 // Backfill _agent_name + _chat_date into existing reviews without calling Claude
-app.post("/api/backfill-agent-names", authMiddleware, adminOnly, async (req, res) => {
+app.post("/api/backfill-agent-names", authMiddleware, requirePermission("action:backfill"), async (req, res) => {
   try {
     // Load all reviews that are missing _agent_name
     let toFix = {};
@@ -3690,7 +3855,7 @@ app.post("/api/backfill-agent-names", authMiddleware, adminOnly, async (req, res
 });
 
 // Debug: show exact agent names from LiveChat
-app.get("/api/agent-names", authMiddleware, adminOnly, async (req, res) => {
+app.get("/api/agent-names", authMiddleware, requirePermission("action:backfill"), async (req, res) => {
   try {
     const data = await lcPost("list_agents", {}, LC_CONFIG_API);
     let list = Array.isArray(data) ? data : data?.agents || Object.values(data).find(v => Array.isArray(v)) || [];
@@ -3751,7 +3916,7 @@ app.get("/api/agent-shifts", authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post("/api/agent-shifts", authMiddleware, adminOnly, async (req, res) => {
+app.post("/api/agent-shifts", authMiddleware, requirePermission("action:manage_shifts"), async (req, res) => {
   try {
     await saveShifts(req.body);
     res.json({ ok: true });
@@ -3814,7 +3979,7 @@ app.get("/api/weekend-overrides", authMiddleware, async (req, res) => {
 });
 
 // Discover Telegram group IDs (call after adding bot to groups)
-app.get("/api/telegram-setup", authMiddleware, adminOnly, async (req, res) => {
+app.get("/api/telegram-setup", authMiddleware, requirePermission("action:debug_tools"), async (req, res) => {
   if (!TELEGRAM_BOT_TOKEN) return res.json({ error: "TELEGRAM_BOT_TOKEN not set in .env" });
   try {
     const r = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?limit=100`);
@@ -4023,14 +4188,14 @@ app.get("/api/reports/monthly-overview", authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete("/api/reports", authMiddleware, adminOnly, async (req, res) => {
+app.delete("/api/reports", authMiddleware, requirePermission("action:manage_reports"), async (req, res) => {
   try {
     await pool.query("DELETE FROM reports");
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete("/api/reports/:employee/:month", authMiddleware, adminOnly, async (req, res) => {
+app.delete("/api/reports/:employee/:month", authMiddleware, requirePermission("action:manage_reports"), async (req, res) => {
   try {
     await pool.query("DELETE FROM reports WHERE employee=$1 AND month=$2", [req.params.employee, req.params.month]);
     res.json({ ok: true });
@@ -4065,7 +4230,7 @@ app.get("/api/reports/:employee/:month", authMiddleware, async (req, res) => {
 });
 
 // Save admin notes on a report
-app.patch("/api/reports/:employee/:month", authMiddleware, adminOnly, async (req, res) => {
+app.patch("/api/reports/:employee/:month", authMiddleware, requirePermission("action:manage_reports"), async (req, res) => {
   try {
     const { employee, month } = req.params;
     const { admin_notes } = req.body;
@@ -4078,7 +4243,7 @@ app.patch("/api/reports/:employee/:month", authMiddleware, adminOnly, async (req
 });
 
 // Generate monthly report (admin only)
-app.post("/api/reports/generate", authMiddleware, adminOnly, async (req, res) => {
+app.post("/api/reports/generate", authMiddleware, requirePermission("action:manage_reports"), async (req, res) => {
   try {
     const { employee, month } = req.body; // month = "2026-07"
     if (!employee || !month) return res.status(400).json({ error: "employee and month required" });
