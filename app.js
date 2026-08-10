@@ -202,6 +202,13 @@ async function initApp() {
   document.querySelectorAll("[data-permission]").forEach(el => {
     if (hasPermission(el.dataset.permission)) el.classList.remove("hidden");
   });
+  // A submenu category header (e.g. "Settings") only makes sense to show if at least one
+  // of its sub-items ended up visible after the permission pass above.
+  document.querySelectorAll("[data-submenu-header]").forEach(header => {
+    const submenu = document.getElementById(header.dataset.submenuHeader);
+    const anyVisible = submenu && [...submenu.children].some(el => !el.classList.contains("hidden"));
+    if (anyVisible) header.classList.remove("hidden");
+  });
 
   // Navigate to correct page immediately — before any async calls so there's no flash
   const lastPage = localStorage.getItem("lastPage");
@@ -237,6 +244,16 @@ async function initApp() {
 const REPORT_PAGES = ["reports", "report-monthly", "report-total-chats", "report-campaign", "report-agent-activity", "report-chat-transfers"];
 const PLATFORM_PAGES = ["report-platform-status", "report-platform-costs"];
 const REVIEW_PAGES = ["chats", "report-supervised-chats"];
+const SETTINGS_PAGES = ["employees", "groups", "config"];
+
+function toggleSettingsMenu() {
+  const submenu = document.getElementById("settings-submenu");
+  const chevron = document.getElementById("settings-chevron");
+  if (!submenu) return;
+  const open = !submenu.classList.contains("hidden");
+  submenu.classList.toggle("hidden", open);
+  if (chevron) chevron.style.transform = open ? "rotate(-90deg)" : "";
+}
 
 function toggleReviewsMenu() {
   const submenu = document.getElementById("reviews-submenu");
@@ -276,7 +293,7 @@ function showPage(name) {
     const btn = document.getElementById(`nav-${p}`);
     if (btn) {
       btn.classList.remove("bg-slate-700", "text-white");
-      btn.classList.add((REPORT_PAGES.includes(p) || PLATFORM_PAGES.includes(p) || REVIEW_PAGES.includes(p)) ? "text-slate-400" : "text-slate-300");
+      btn.classList.add((REPORT_PAGES.includes(p) || PLATFORM_PAGES.includes(p) || REVIEW_PAGES.includes(p) || SETTINGS_PAGES.includes(p)) ? "text-slate-400" : "text-slate-300");
     }
   });
   document.getElementById(`page-${name}`)?.classList.remove("hidden");
@@ -303,6 +320,13 @@ function showPage(name) {
   if (REVIEW_PAGES.includes(name)) {
     const submenu = document.getElementById("reviews-submenu");
     const chevron = document.getElementById("reviews-chevron");
+    if (submenu) submenu.classList.remove("hidden");
+    if (chevron) chevron.style.transform = "";
+  }
+  // Keep settings submenu open when on any settings sub-page
+  if (SETTINGS_PAGES.includes(name)) {
+    const submenu = document.getElementById("settings-submenu");
+    const chevron = document.getElementById("settings-chevron");
     if (submenu) submenu.classList.remove("hidden");
     if (chevron) chevron.style.transform = "";
   }
@@ -1926,12 +1950,21 @@ async function saveSettings() {
     if (username && groupId) groupUpdates.push({ username, group_id: groupId });
   });
 
+  // Collected across all three phases below and shown as ONE final status message —
+  // showStatus() replaces a single shared banner, so calling it multiple times in a row
+  // (e.g. an error here followed by a plain "Saved" at the end) silently erases the error:
+  // the user only ever sees the last call, which used to always be the green "Saved",
+  // even when a specific user's group change had actually failed.
+  const errors = [];
+
   try {
     const res = await authFetch("/api/agent-shifts", {
       method: "POST",
       body: JSON.stringify(newShifts),
     });
     const data = await res.json();
+    if (!data.ok) errors.push("Shifts: " + (data.error || "unknown"));
+
     // allSettled, not all — one row's request failing (e.g. a stale/expired token, or a
     // permission error on just that user) must not hide whether the OTHER rows in the
     // same batch actually saved. Promise.all would reject entirely on the first thrown
@@ -1941,8 +1974,9 @@ async function saveSettings() {
       const results = await Promise.allSettled(userUpdates.map(u =>
         authFetch("/api/app-users", { method: "POST", body: JSON.stringify(u) })
       ));
-      const failed = results.map((r, i) => ({ r, u: userUpdates[i] })).filter(({ r }) => r.status === "rejected");
-      if (failed.length) showStatus(failed.map(({ u, r }) => `${u.username}: ${r.reason?.message || "failed"}`).join("; "), "error");
+      results.forEach((r, i) => {
+        if (r.status === "rejected") errors.push(`${userUpdates[i].username}: ${r.reason?.message || "failed"}`);
+      });
     }
     if (groupUpdates.length > 0) {
       const results = await Promise.allSettled(groupUpdates.map(u =>
@@ -1950,22 +1984,23 @@ async function saveSettings() {
           method: "PATCH", body: JSON.stringify({ group_id: u.group_id })
         }).then(r => r.json()).then(d => ({ username: u.username, ...d }))
       ));
-      const failed = results.map((r, i) => ({ r, username: groupUpdates[i].username })).filter(({ r }) => r.status === "rejected" || r.value?.error);
-      if (failed.length) {
-        showStatus(failed.map(({ r, username }) => `${username}: ${r.status === "rejected" ? (r.reason?.message || "failed") : r.value.error}`).join("; "), "error");
-      }
+      results.forEach((r, i) => {
+        const username = groupUpdates[i].username;
+        if (r.status === "rejected") errors.push(`${username}: ${r.reason?.message || "failed"}`);
+        else if (r.value?.error) errors.push(`${username}: ${r.value.error}`);
+      });
     }
+
     if (data.ok) {
       agentShifts = newShifts;
-      showStatus("Saved", "success");
       renderAgentFilter();
       renderTable();
       updateChart();
-    } else {
-      showStatus("Save failed: " + (data.error || "unknown"), "error");
     }
+    showStatus(errors.length ? errors.join("; ") : "Saved", errors.length ? "error" : "success");
   } catch (e) {
-    showStatus("Save failed: " + e.message, "error");
+    errors.push(e.message);
+    showStatus(errors.join("; "), "error");
   }
 }
 

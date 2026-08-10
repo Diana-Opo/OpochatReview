@@ -123,18 +123,29 @@
           </button>
         </div>
       </div>
-      <button onclick="showPage('employees')" id="nav-employees" data-permission="page:employees"
-        class="sidebar-nav w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
-        <span class="text-base w-5 text-center">👥</span> Employees
-      </button>
-      <button onclick="showPage('groups')" id="nav-groups" data-permission="page:groups"
-        class="sidebar-nav w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
-        <span class="text-base w-5 text-center">🛂</span> Groups
-      </button>
-      <button onclick="showPage('config')" id="nav-config" data-permission="page:config"
-        class="sidebar-nav w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
-        <span class="text-base w-5 text-center">⚙️</span> Config
-      </button>
+      <!-- Settings category -->
+      <div>
+        <button onclick="toggleSettingsMenu()" id="nav-settings-header" data-submenu-header="settings-submenu"
+          class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+          <span class="text-base w-5 text-center">⚙️</span>
+          <span class="flex-1">Settings</span>
+          <span id="settings-chevron" class="text-xs transition-transform duration-200">▼</span>
+        </button>
+        <div id="settings-submenu" class="ml-2 mt-0.5 space-y-0.5">
+          <button onclick="showPage('employees')" id="nav-employees" data-permission="page:employees"
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+            <span class="text-xs">👥</span> Employees
+          </button>
+          <button onclick="showPage('groups')" id="nav-groups" data-permission="page:groups"
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+            <span class="text-xs">🛂</span> Groups
+          </button>
+          <button onclick="showPage('config')" id="nav-config" data-permission="page:config"
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+            <span class="text-xs">⚙️</span> Config
+          </button>
+        </div>
+      </div>
     </nav>
 
     <!-- User + Logout -->
