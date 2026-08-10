@@ -1753,6 +1753,15 @@ function groupOptionsHtml(selectedGroupId) {
   ).join("");
 }
 
+// Prefer the group actually named "User" as the sane default for an employee with no
+// access group assigned yet — picking merely "the first non-super group" would silently
+// land on whatever sorts first alphabetically (e.g. a custom "Maintenance" group sorts
+// before "User"), defaulting new/unlinked rows into the wrong access group.
+function defaultAccessGroupId() {
+  return groupsList.find(g => !g.is_super && g.name.toLowerCase() === "user")?.id
+    ?? groupsList.find(g => !g.is_super)?.id ?? groupsList[0]?.id ?? "";
+}
+
 function cwAgentOptionsHtml(selectedEmail) {
   const sel = (selectedEmail || "").toLowerCase().trim();
   const opts = cwAgents.map(a => {
@@ -1786,7 +1795,7 @@ async function openSettings() {
 
   if (shiftsResult.status === "fulfilled" && Array.isArray(shiftsResult.value)) {
     const userMap = {}, groupMap = {};
-    const defaultGroupId = groupsList.find(g => !g.is_super)?.id ?? groupsList[0]?.id ?? "";
+    const defaultGroupId = defaultAccessGroupId();
     if (usersResult.status === "fulfilled" && Array.isArray(usersResult.value)) {
       usersResult.value.forEach(u => {
         if (u.employee_name) { userMap[u.employee_name] = u.username; groupMap[u.employee_name] = u.group_id ?? defaultGroupId; }
@@ -1918,7 +1927,7 @@ function addShiftRow() {
     <td class="py-2 pr-3"><div class="relative w-24"><input class="sr-password w-full border border-[#1a2d4a] rounded-lg px-2 py-1.5 pr-7 text-sm" type="password" placeholder="••••••" autocomplete="new-password" /><button type="button" tabindex="-1" onclick="togglePw(this)" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs">👁</button></div></td>
     <td class="py-2 pr-3">
       <select class="sr-access-group border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
-        ${groupOptionsHtml(groupsList.find(g => !g.is_super)?.id ?? "")}
+        ${groupOptionsHtml(defaultAccessGroupId())}
       </select>
     </td>
     <td class="py-2 pr-3 text-center"><input type="checkbox" class="sr-show-chart w-4 h-4 accent-blue-600" checked title="Show in dashboard chart" /></td>

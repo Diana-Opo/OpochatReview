@@ -577,7 +577,15 @@ app.patch("/api/app-users/:username/group", authMiddleware, requirePermission("a
       return res.status(400).json({ error: "Cannot demote the main admin account" });
     }
     const newRole = g.rows[0].is_super ? "admin" : "user";
-    await pool.query("UPDATE app_users SET group_id=$1, role=$2 WHERE username=$3", [group_id, newRole, username]);
+    // Case-insensitive, matching how /api/login looks users up — otherwise a stored
+    // username that differs only in case from what's sent here silently matches zero
+    // rows: the UPDATE affects nothing, no error is thrown, and this still returned
+    // {ok:true}, so the UI reported success even though nothing actually changed.
+    const result = await pool.query(
+      "UPDATE app_users SET group_id=$1, role=$2 WHERE LOWER(username)=LOWER($3)",
+      [group_id, newRole, username]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: `No user found with username "${username}"` });
     await invalidateSessionsForUser(username, req.sessionToken);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
