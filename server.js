@@ -84,12 +84,25 @@ async function deleteSession(token) {
 
 // Force a user's (or a whole group's) active sessions to expire immediately, so a group
 // reassignment or a permissions edit takes effect on their very next request instead of
-// waiting for the session to naturally age out.
-async function invalidateSessionsForUser(username) {
-  if (pool) await pool.query("DELETE FROM sessions WHERE username=$1", [username]).catch(() => {});
+// waiting for the session to naturally age out. exceptToken keeps the CALLER's own current
+// session alive — without this, an admin editing their own account's group (e.g. as one of
+// several rows saved together) invalidates the very token the rest of that in-flight batch
+// of requests is using, so any of those requests processed after this one 401s, which makes
+// authFetch() throw and the whole Promise.all in saveSettings() reject — the batch reports
+// as a total failure even though most of the underlying updates already committed.
+async function invalidateSessionsForUser(username, exceptToken) {
+  if (!pool) return;
+  const q = exceptToken
+    ? pool.query("DELETE FROM sessions WHERE username=$1 AND token != $2", [username, exceptToken])
+    : pool.query("DELETE FROM sessions WHERE username=$1", [username]);
+  await q.catch(() => {});
 }
-async function invalidateSessionsForGroup(groupId) {
-  if (pool) await pool.query("DELETE FROM sessions WHERE group_id=$1", [groupId]).catch(() => {});
+async function invalidateSessionsForGroup(groupId, exceptToken) {
+  if (!pool) return;
+  const q = exceptToken
+    ? pool.query("DELETE FROM sessions WHERE group_id=$1 AND token != $2", [groupId, exceptToken])
+    : pool.query("DELETE FROM sessions WHERE group_id=$1", [groupId]);
+  await q.catch(() => {});
 }
 
 function authMiddleware(req, res, next) {
@@ -565,7 +578,7 @@ app.patch("/api/app-users/:username/group", authMiddleware, requirePermission("a
     }
     const newRole = g.rows[0].is_super ? "admin" : "user";
     await pool.query("UPDATE app_users SET group_id=$1, role=$2 WHERE username=$3", [group_id, newRole, username]);
-    await invalidateSessionsForUser(username);
+    await invalidateSessionsForUser(username, req.sessionToken);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -623,7 +636,7 @@ app.patch("/api/groups/:id", authMiddleware, adminOnly, async (req, res) => {
     const newPerms = permissions != null ? permissions : existing.rows[0].permissions;
     if (!newName) return res.status(400).json({ error: "Name required" });
     await pool.query("UPDATE groups SET name=$1, permissions=$2 WHERE id=$3", [newName, JSON.stringify(newPerms), id]);
-    await invalidateSessionsForGroup(id);
+    await invalidateSessionsForGroup(id, req.sessionToken);
     res.json({ ok: true });
   } catch (e) {
     if (e.code === "23505") return res.status(400).json({ error: "A group with that name already exists" });

@@ -1932,19 +1932,28 @@ async function saveSettings() {
       body: JSON.stringify(newShifts),
     });
     const data = await res.json();
+    // allSettled, not all — one row's request failing (e.g. a stale/expired token, or a
+    // permission error on just that user) must not hide whether the OTHER rows in the
+    // same batch actually saved. Promise.all would reject entirely on the first thrown
+    // error (authFetch throws on 401) and jump straight to the catch block below, making
+    // the whole save look like a no-op even when most of it went through.
     if (userUpdates.length > 0) {
-      await Promise.all(userUpdates.map(u =>
+      const results = await Promise.allSettled(userUpdates.map(u =>
         authFetch("/api/app-users", { method: "POST", body: JSON.stringify(u) })
       ));
+      const failed = results.map((r, i) => ({ r, u: userUpdates[i] })).filter(({ r }) => r.status === "rejected");
+      if (failed.length) showStatus(failed.map(({ u, r }) => `${u.username}: ${r.reason?.message || "failed"}`).join("; "), "error");
     }
     if (groupUpdates.length > 0) {
-      const results = await Promise.all(groupUpdates.map(u =>
+      const results = await Promise.allSettled(groupUpdates.map(u =>
         authFetch(`/api/app-users/${encodeURIComponent(u.username)}/group`, {
           method: "PATCH", body: JSON.stringify({ group_id: u.group_id })
         }).then(r => r.json()).then(d => ({ username: u.username, ...d }))
       ));
-      const failed = results.filter(r => r.error);
-      if (failed.length) showStatus(failed.map(f => `${f.username}: ${f.error}`).join("; "), "error");
+      const failed = results.map((r, i) => ({ r, username: groupUpdates[i].username })).filter(({ r }) => r.status === "rejected" || r.value?.error);
+      if (failed.length) {
+        showStatus(failed.map(({ r, username }) => `${username}: ${r.status === "rejected" ? (r.reason?.message || "failed") : r.value.error}`).join("; "), "error");
+      }
     }
     if (data.ok) {
       agentShifts = newShifts;
