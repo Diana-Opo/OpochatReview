@@ -1979,56 +1979,99 @@ async function openGroupsPage() {
   }
 }
 
+// Main Groups page: just name + View/Edit/Delete per row. The permission grid itself
+// lives in a modal (openGroupDetailModal), reusing the app's shared #modal/#modalContent.
 function renderGroupsPage() {
   const content = document.getElementById("groupsContent");
   if (!content) return;
+
+  content.innerHTML = `
+    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
+      <table class="w-full">
+        <thead>
+          <tr class="text-left text-xs text-slate-500 uppercase">
+            <th class="px-5 py-3 font-medium">Name</th>
+            <th class="px-5 py-3 font-medium text-center">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${groupsList.map(g => `
+            <tr class="border-t border-[#1a2d4a]">
+              <td class="px-5 py-3 text-sm text-white font-medium">
+                ${escHtml(g.name)}
+                ${g.is_super ? `<span class="ml-2 text-xs px-2 py-0.5 rounded-full bg-[#F5B800]/20 text-[#F5B800] font-medium">Built-in — always full access</span>` : ""}
+              </td>
+              <td class="px-5 py-3 text-center">
+                <div class="flex items-center justify-center gap-3">
+                  <button onclick="openGroupDetailModal(${g.id}, 'view')" class="text-xs text-slate-400 hover:text-white hover:underline">View</button>
+                  <button onclick="openGroupDetailModal(${g.id}, 'edit')" class="text-xs text-[#F5B800] hover:underline">Edit</button>
+                  ${!g.is_super ? `<button onclick="deleteGroup(${g.id})" class="text-xs text-red-400 hover:text-red-300">Delete</button>` : ""}
+                </div>
+              </td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// Detail view/edit for one group, shown in the shared modal. mode: 'view' (read-only,
+// just a Close button) or 'edit' (editable name + checkboxes, Save button).
+function openGroupDetailModal(id, mode) {
+  const group = groupsList.find(g => g.id === id);
+  if (!group) return;
+  const isEdit = mode === "edit";
   const pageKeys = permissionCatalog.filter(p => p.kind === "page");
   const actionKeys = permissionCatalog.filter(p => p.kind === "action");
 
-  const checkboxGrid = (group, keys) => keys.map(p => `
-    <label class="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+  const checkboxGrid = (keys) => keys.map(p => `
+    <label class="flex items-center gap-1.5 text-xs text-slate-300 ${isEdit && !group.is_super ? "cursor-pointer" : ""}">
       <input type="checkbox" class="gp-perm w-3.5 h-3.5 accent-[#F5B800]" data-key="${escHtml(p.key)}"
-        ${group.permissions?.[p.key] ? "checked" : ""} ${group.is_super ? "disabled checked" : ""} />
+        ${group.permissions?.[p.key] ? "checked" : ""} ${(!isEdit || group.is_super) ? "disabled" : ""} ${group.is_super ? "checked" : ""} />
       ${escHtml(p.label)}
     </label>`).join("");
 
-  content.innerHTML = groupsList.map(g => `
-    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5" data-group-id="${g.id}">
-      <div class="flex items-center justify-between mb-4 gap-3">
-        <div class="flex items-center gap-2 flex-1">
-          <input class="gp-name text-sm font-semibold bg-transparent border-b border-transparent hover:border-[#1a2d4a] focus:border-[#F5B800] text-white px-1 py-0.5 focus:outline-none" value="${escHtml(g.name)}" />
-          ${g.is_super ? `<span class="text-xs px-2 py-0.5 rounded-full bg-[#F5B800]/20 text-[#F5B800] font-medium">Built-in — always full access</span>` : ""}
+  document.getElementById("modalContent").innerHTML = `
+    <div class="p-6" data-group-id="${group.id}">
+      <div class="flex items-center justify-between mb-5">
+        <div class="flex items-center gap-2">
+          ${isEdit
+            ? `<input class="gp-name text-lg font-bold bg-transparent border-b border-[#1a2d4a] focus:border-[#F5B800] text-white px-1 py-0.5 focus:outline-none" value="${escHtml(group.name)}" />`
+            : `<h3 class="text-lg font-bold text-white">${escHtml(group.name)}</h3>`}
+          ${group.is_super ? `<span class="text-xs px-2 py-0.5 rounded-full bg-[#F5B800]/20 text-[#F5B800] font-medium">Built-in — always full access</span>` : ""}
         </div>
-        <div class="flex items-center gap-2 shrink-0">
-          <button onclick="saveGroupPermissions(${g.id})" class="text-xs bg-[#1a2d4a] text-[#F5B800] font-semibold px-3 py-1.5 rounded-lg hover:bg-[#243d61] transition">Save</button>
-          ${!g.is_super ? `<button onclick="deleteGroup(${g.id})" class="text-xs text-red-400 hover:text-red-300 px-2 py-1.5">Delete</button>` : ""}
-        </div>
+        <button onclick="closeModal()" class="text-slate-500 hover:text-white text-xl leading-none">×</button>
       </div>
-      <div class="grid grid-cols-2 gap-6">
+      <div class="grid grid-cols-2 gap-6 mb-6">
         <div>
           <p class="text-xs font-semibold text-slate-500 uppercase mb-2">Pages</p>
-          <div class="grid grid-cols-2 gap-2">${checkboxGrid(g, pageKeys)}</div>
+          <div class="grid grid-cols-2 gap-2">${checkboxGrid(pageKeys)}</div>
         </div>
         <div>
           <p class="text-xs font-semibold text-slate-500 uppercase mb-2">Actions</p>
-          <div class="grid grid-cols-1 gap-2">${checkboxGrid(g, actionKeys)}</div>
+          <div class="grid grid-cols-1 gap-2">${checkboxGrid(actionKeys)}</div>
         </div>
       </div>
-    </div>`).join("");
+      <div class="flex justify-end gap-2">
+        <button onclick="closeModal()" class="text-sm bg-[#1a2d4a] text-slate-300 font-semibold px-4 py-2 rounded-lg hover:bg-[#243d61] transition">Close</button>
+        ${isEdit ? `<button onclick="saveGroupPermissions(${group.id})" class="text-sm bg-[#F5B800] text-black font-semibold px-4 py-2 rounded-lg hover:bg-[#D4A000] transition">Save</button>` : ""}
+      </div>
+    </div>`;
+  document.getElementById("modal").classList.remove("hidden");
 }
 
 async function saveGroupPermissions(id) {
-  const card = document.querySelector(`[data-group-id="${id}"]`);
-  if (!card) return;
-  const name = card.querySelector(".gp-name")?.value.trim();
+  const container = document.querySelector(`#modalContent [data-group-id="${id}"]`);
+  if (!container) return;
+  const name = container.querySelector(".gp-name")?.value.trim();
   if (!name) { showStatus("Group name required", "error"); return; }
   const permissions = {};
-  card.querySelectorAll(".gp-perm").forEach(cb => { permissions[cb.dataset.key] = cb.checked; });
+  container.querySelectorAll(".gp-perm").forEach(cb => { permissions[cb.dataset.key] = cb.checked; });
   try {
     const res = await authFetch(`/api/groups/${id}`, { method: "PATCH", body: JSON.stringify({ name, permissions }) });
     const data = await res.json();
     if (!res.ok || data.error) { showStatus(data.error || "Save failed", "error"); return; }
     showStatus("Saved", "success");
+    closeModal();
     await openGroupsPage();
   } catch (e) {
     showStatus("Save failed: " + e.message, "error");
