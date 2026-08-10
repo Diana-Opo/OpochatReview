@@ -1745,6 +1745,7 @@ function showStatus(msg, type) {
 let settingsAgents = [];
 let cwAgents = [];
 let groupsList = []; // [{id, name, is_super, permissions}] — see /api/groups, also used by the Groups page
+let _lastLoadedShiftEmployees = new Set(); // employees with a real shift as of the last openSettings() fetch
 
 function groupOptionsHtml(selectedGroupId) {
   const sel = String(selectedGroupId ?? "");
@@ -1816,6 +1817,9 @@ async function openSettings() {
         groups: [], languages: [], username: u.username, groupId: u.group_id ?? defaultGroupId, showInChart: false,
       }));
     agentShifts = agentShifts.concat(accessOnlyRows);
+    // Snapshot which employees have a real shift right now — saveSettings() warns before
+    // submitting if any of these would vanish (see the comment there for why that matters).
+    _lastLoadedShiftEmployees = new Set(shiftsResult.value.map(s => s.employee));
   } else {
     console.error("[openSettings] agent-shifts failed:", shiftsResult.reason || shiftsResult.value);
   }
@@ -1847,7 +1851,18 @@ function agentOptionsHtml(selectedKey) {
     const sel = key === selectedKey ? "selected" : "";
     return `<option value="${escHtml(key)}" ${sel}>${escHtml(a.name)}</option>`;
   });
-  return `<option value="">— No shift (access only) —</option>` + opts.join("");
+  // If this row's stored agentKey isn't in the currently-fetched LiveChat agent list (e.g.
+  // their seat was deactivated/renamed), the browser would otherwise silently fall back to
+  // selecting the FIRST option — the blank "No shift" one — even though a real shift is
+  // still stored underneath. Saving in that state would then submit an empty agentKey for
+  // this row, and since saving TRUNCATEs and rebuilds the whole shift table from what's on
+  // screen, that real shift entry would be permanently deleted. Keep the stored key visible
+  // and selected instead, so it's never silently dropped.
+  const knownKeys = new Set(settingsAgents.map(a => a.name.toLowerCase().trim()));
+  const staleOption = selectedKey && !knownKeys.has(selectedKey)
+    ? `<option value="${escHtml(selectedKey)}" selected>⚠ ${escHtml(selectedKey)} (not in current agent list)</option>`
+    : "";
+  return `<option value="">— No shift (access only) —</option>${staleOption}` + opts.join("");
 }
 
 function renderShiftsTable() {
@@ -1975,6 +1990,20 @@ async function saveSettings() {
     if (username && password) userUpdates.push({ username, password, employee_name: employee });
     if (username && groupId) groupUpdates.push({ username, group_id: groupId });
   });
+
+  // Saving TRUNCATEs and rebuilds the whole shift table from what's on screen — if a row
+  // that had a real shift when this page loaded (e.g. because its LiveChat-agent dropdown
+  // silently reset, see agentOptionsHtml()) now has no agentKey, saving would permanently
+  // delete that shift with no server-side way to recover it. Confirm before proceeding.
+  const stillPresent = new Set(newShifts.map(s => s.employee));
+  const missingEmployees = [..._lastLoadedShiftEmployees].filter(e => !stillPresent.has(e));
+  if (missingEmployees.length > 0) {
+    const proceed = confirm(
+      `This will remove the shift for: ${missingEmployees.join(", ")}.\n\n` +
+      `If you didn't mean to unassign their LiveChat agent, click Cancel and check those rows first.`
+    );
+    if (!proceed) return;
+  }
 
   // Collected across all three phases below and shown as ONE final status message —
   // showStatus() replaces a single shared banner, so calling it multiple times in a row
