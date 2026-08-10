@@ -1796,14 +1796,26 @@ async function openSettings() {
   if (shiftsResult.status === "fulfilled" && Array.isArray(shiftsResult.value)) {
     const userMap = {}, groupMap = {};
     const defaultGroupId = defaultAccessGroupId();
-    if (usersResult.status === "fulfilled" && Array.isArray(usersResult.value)) {
-      usersResult.value.forEach(u => {
-        if (u.employee_name) { userMap[u.employee_name] = u.username; groupMap[u.employee_name] = u.group_id ?? defaultGroupId; }
-      });
-    } else {
-      console.error("[openSettings] app-users failed:", usersResult.reason || usersResult.value);
-    }
+    const usersList = (usersResult.status === "fulfilled" && Array.isArray(usersResult.value)) ? usersResult.value : [];
+    if (usersResult.status !== "fulfilled") console.error("[openSettings] app-users failed:", usersResult.reason || usersResult.value);
+    usersList.forEach(u => {
+      if (u.employee_name) { userMap[u.employee_name] = u.username; groupMap[u.employee_name] = u.group_id ?? defaultGroupId; }
+    });
     agentShifts = shiftsResult.value.map(s => ({ ...s, username: userMap[s.employee] || "", groupId: groupMap[s.employee] ?? defaultGroupId }));
+
+    // Access-only accounts (e.g. a supervisor who only needs dashboard/report access, not
+    // chat handling) have an app_users login but no matching agent_shifts row, so the map
+    // above never surfaces them — they'd otherwise be completely invisible and unmanageable
+    // anywhere in the UI. Add them as extra rows with no shift fields filled in; saveSettings()
+    // knows not to create a shift entry for a row with no LiveChat agent selected.
+    const shiftEmployeeNames = new Set(shiftsResult.value.map(s => s.employee));
+    const accessOnlyRows = usersList
+      .filter(u => u.employee_name && !shiftEmployeeNames.has(u.employee_name) && u.username !== "admin")
+      .map(u => ({
+        employee: u.employee_name, agentKey: "", chatwootAgentId: "", start: 8, end: 16,
+        groups: [], languages: [], username: u.username, groupId: u.group_id ?? defaultGroupId, showInChart: false,
+      }));
+    agentShifts = agentShifts.concat(accessOnlyRows);
   } else {
     console.error("[openSettings] agent-shifts failed:", shiftsResult.reason || shiftsResult.value);
   }
@@ -1835,7 +1847,7 @@ function agentOptionsHtml(selectedKey) {
     const sel = key === selectedKey ? "selected" : "";
     return `<option value="${escHtml(key)}" ${sel}>${escHtml(a.name)}</option>`;
   });
-  return `<option value="">— Agent —</option>` + opts.join("");
+  return `<option value="">— No shift (access only) —</option>` + opts.join("");
 }
 
 function renderShiftsTable() {
@@ -1953,8 +1965,13 @@ async function saveSettings() {
     const password = row.querySelector(".sr-password")?.value || "";
     const groupId = row.querySelector(".sr-access-group")?.value || "";
     const showInChart = row.querySelector(".sr-show-chart")?.checked !== false;
-    if (!employee || !agentKey) return;
-    newShifts.push({ employee, agentKey, chatwootAgentId, start, end, groups, languages, username, showInChart });
+    if (!employee) return;
+    // A row with no LiveChat agent selected is an access-only account (dashboard/report
+    // access, no chat handling) — don't create a shift entry for it, but still save its
+    // username/password/access-group like any other row.
+    if (agentKey) {
+      newShifts.push({ employee, agentKey, chatwootAgentId, start, end, groups, languages, username, showInChart });
+    }
     if (username && password) userUpdates.push({ username, password, employee_name: employee });
     if (username && groupId) groupUpdates.push({ username, group_id: groupId });
   });
