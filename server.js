@@ -1700,7 +1700,7 @@ app.get("/api/agents", authMiddleware, async (req, res) => {
 });
 
 // Fetch archived chats from LiveChat
-app.get("/api/chats", authMiddleware, async (req, res) => {
+app.get("/api/chats", authMiddleware, requirePermission("page:chats"), async (req, res) => {
   try {
     const { date_from, date_to, agent_id, page_id } = req.query;
     const filters = {};
@@ -1764,7 +1764,7 @@ app.get("/api/chats", authMiddleware, async (req, res) => {
 });
 
 // Get single chat with full transcript
-app.get("/api/chats/:chatId", authMiddleware, async (req, res) => {
+app.get("/api/chats/:chatId", authMiddleware, requirePermission("page:chats"), async (req, res) => {
   try {
     const { thread_id } = req.query;
     const gcBody = { chat_id: req.params.chatId };
@@ -1865,7 +1865,7 @@ app.get("/api/chatwoot-agents", authMiddleware, async (req, res) => {
   }
 });
 
-app.get("/api/chatwoot-chats", authMiddleware, async (req, res) => {
+app.get("/api/chatwoot-chats", authMiddleware, requirePermission("page:chats"), async (req, res) => {
   if (!chatwootEnabled()) return res.json({ chats: [], total_chats: 0, enabled: false });
   try {
     const { date_from, date_to } = req.query;
@@ -1929,7 +1929,7 @@ app.get("/api/chatwoot-chats", authMiddleware, async (req, res) => {
 });
 
 // Single Chatwoot conversation with messages
-app.get("/api/chatwoot-chats/:convId", authMiddleware, async (req, res) => {
+app.get("/api/chatwoot-chats/:convId", authMiddleware, requirePermission("page:chats"), async (req, res) => {
   if (!chatwootEnabled()) return res.status(404).json({ error: "Chatwoot not configured" });
   try {
     const { convId } = req.params;
@@ -2741,7 +2741,7 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
 }
 
 // Total chats per employee over an arbitrary date range, optionally filtered to one employee
-app.get("/api/reports/total-chats", authMiddleware, async (req, res) => {
+app.get("/api/reports/total-chats", authMiddleware, requirePermission("page:report-total-chats"), async (req, res) => {
   try {
     const { date_from, date_to, employee } = req.query;
     if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
@@ -2755,7 +2755,7 @@ app.get("/api/reports/total-chats", authMiddleware, async (req, res) => {
 // in the thread) — shares the same cache/backfill/cron as Total Chats since it's
 // computed in the very same LiveChat pass. Chatwoot isn't included: this app has no
 // reliable way to detect a Chatwoot conversation being handed to another agent.
-app.get("/api/reports/chat-transfers", authMiddleware, async (req, res) => {
+app.get("/api/reports/chat-transfers", authMiddleware, requirePermission("page:report-chat-transfers"), async (req, res) => {
   try {
     const { date_from, date_to, employee } = req.query;
     if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
@@ -2975,7 +2975,7 @@ async function computeSupervisedChatsLive({ dateFrom, dateTo, employeeFilter }) 
   return { date_from: dateFrom, date_to: dateTo, chats: results };
 }
 
-app.get("/api/reports/supervised-chats", authMiddleware, async (req, res) => {
+app.get("/api/reports/supervised-chats", authMiddleware, requirePermission("page:report-supervised-chats"), async (req, res) => {
   try {
     const { date_from, date_to, employee } = req.query;
     if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
@@ -3029,7 +3029,7 @@ app.delete("/api/saved-reports/:id", authMiddleware, requirePermission("action:m
 
 // Compare a baseline period (e.g. previous month) against a current period, with a
 // campaign start/end window splitting the current period into pre/during/post buckets.
-app.get("/api/reports/campaign-impact", authMiddleware, async (req, res) => {
+app.get("/api/reports/campaign-impact", authMiddleware, requirePermission("page:report-campaign"), async (req, res) => {
   try {
     const { baseline_from, baseline_to, current_from, current_to, campaign_start, campaign_end } = req.query;
     if (!baseline_from || !baseline_to || !current_from || !current_to || !campaign_start || !campaign_end) {
@@ -3107,7 +3107,7 @@ app.get("/api/reports/campaign-impact", authMiddleware, async (req, res) => {
 // Live status + today/week/month/daily chat volume per platform (LiveChat, Chatwoot).
 // "Active" reflects whether the platform's API is actually reachable right now, not
 // just whether credentials are configured.
-app.get("/api/reports/platform-status", authMiddleware, async (req, res) => {
+app.get("/api/reports/platform-status", authMiddleware, requirePermission("page:report-platform-status"), async (req, res) => {
   try {
     const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
     const pad = (n) => String(n).padStart(2, "0");
@@ -3201,7 +3201,7 @@ app.get("/api/reports/platform-status", authMiddleware, async (req, res) => {
 // Claude API cost report (today/week/month/custom range) from real tracked usage.
 // Only reflects usage logged since claude_usage tracking was added — no historical
 // backfill, since actual token counts weren't recorded before that.
-app.get("/api/reports/platform-costs", authMiddleware, async (req, res) => {
+app.get("/api/reports/platform-costs", authMiddleware, requirePermission("page:report-platform-costs"), async (req, res) => {
   try {
     if (!pool) {
       return res.json({ tracking_since: null, today: null, week: null, month: null, custom: null, custom_range: null, daily: {}, by_purpose: {} });
@@ -3459,7 +3459,7 @@ cron.schedule("0 1 * * *", () => runLcBackground(async () => {
   } catch (e) { console.error("[chat-totals-cron] failed:", e.message); }
 }), { timezone: "Europe/Istanbul" });
 
-app.get("/api/reports/agent-activity", authMiddleware, async (req, res) => {
+app.get("/api/reports/agent-activity", authMiddleware, requirePermission("page:report-agent-activity"), async (req, res) => {
   try {
     const { date_from, date_to, employee } = req.query;
     if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
@@ -3563,7 +3563,7 @@ app.get("/api/reports/total-chats/backfill/status", authMiddleware, requirePermi
 });
 
 // Dashboard stats for current month — independent of Chat Review page
-app.get("/api/dashboard-stats", authMiddleware, async (req, res) => {
+app.get("/api/dashboard-stats", authMiddleware, requirePermission("page:dashboard"), async (req, res) => {
   try {
     const month = req.query.month || new Date().toISOString().slice(0, 7);
     const [y, m] = month.split("-").map(Number);
@@ -4162,7 +4162,7 @@ async function runNightlyReview() {
 // ── Reports ───────────────────────────────────────────────────────────────────
 
 // Delete all reports (admin only)
-app.get("/api/reports/monthly-overview", authMiddleware, async (req, res) => {
+app.get("/api/reports/monthly-overview", authMiddleware, requirePermission("page:report-monthly"), async (req, res) => {
   try {
     const year = (req.query.year || new Date().getFullYear()).toString();
     const [reviews, allShifts] = await Promise.all([loadReviews(), loadShifts()]);
@@ -4225,7 +4225,7 @@ app.delete("/api/reports/:employee/:month", authMiddleware, requirePermission("a
 });
 
 // List reports (admin: all; employee: own)
-app.get("/api/reports", authMiddleware, async (req, res) => {
+app.get("/api/reports", authMiddleware, requirePermission("page:reports"), async (req, res) => {
   try {
     if (!pool) return res.json([]);
     let rows;

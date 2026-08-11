@@ -46,79 +46,79 @@
 
     <!-- Nav -->
     <nav class="flex-1 p-3 space-y-0.5 overflow-y-auto">
-      <button onclick="showPage('dashboard')" id="nav-dashboard"
-        class="sidebar-nav w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all">
+      <button onclick="showPage('dashboard')" id="nav-dashboard" data-permission="page:dashboard"
+        class="sidebar-nav w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
         <span class="text-base w-5 text-center">📊</span> Dashboard
       </button>
       <!-- Reviews category -->
       <div>
-        <button onclick="toggleReviewsMenu()" id="nav-reviews-header"
-          class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all">
+        <button onclick="toggleReviewsMenu()" id="nav-reviews-header" data-submenu-header="reviews-submenu"
+          class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
           <span class="text-base w-5 text-center">💬</span>
           <span class="flex-1">Reviews</span>
           <span id="reviews-chevron" class="text-xs transition-transform duration-200">▼</span>
         </button>
         <div id="reviews-submenu" class="ml-2 mt-0.5 space-y-0.5">
-          <button onclick="showPage('chats')" id="nav-chats"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
+          <button onclick="showPage('chats')" id="nav-chats" data-permission="page:chats"
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
             <span class="text-xs">💬</span> Chat Review
           </button>
-          <button onclick="showPage('report-supervised-chats')" id="nav-report-supervised-chats"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
+          <button onclick="showPage('report-supervised-chats')" id="nav-report-supervised-chats" data-permission="page:report-supervised-chats"
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
             <span class="text-xs">🛡️</span> Supervised Chats
           </button>
         </div>
       </div>
       <!-- Reports category -->
       <div>
-        <button onclick="toggleReportsMenu()" id="nav-reports-header"
-          class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all">
+        <button onclick="toggleReportsMenu()" id="nav-reports-header" data-submenu-header="reports-submenu"
+          class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
           <span class="text-base w-5 text-center">📋</span>
           <span class="flex-1">Reports</span>
           <span id="reports-chevron" class="text-xs transition-transform duration-200">▼</span>
         </button>
         <div id="reports-submenu" class="ml-2 mt-0.5 space-y-0.5">
-          <button onclick="showPage('reports')" id="nav-reports"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
+          <button onclick="showPage('reports')" id="nav-reports" data-permission="page:reports"
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
             <span class="text-xs">👤</span> Employee Report
           </button>
-          <button onclick="showPage('report-monthly')" id="nav-report-monthly"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
+          <button onclick="showPage('report-monthly')" id="nav-report-monthly" data-permission="page:report-monthly"
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
             <span class="text-xs">📈</span> Monthly Overview
           </button>
-          <button onclick="showPage('report-total-chats')" id="nav-report-total-chats"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
+          <button onclick="showPage('report-total-chats')" id="nav-report-total-chats" data-permission="page:report-total-chats"
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
             <span class="text-xs">🔢</span> Total Chats
           </button>
-          <button onclick="showPage('report-campaign')" id="nav-report-campaign"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
+          <button onclick="showPage('report-campaign')" id="nav-report-campaign" data-permission="page:report-campaign"
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
             <span class="text-xs">🚀</span> Campaign Impact
           </button>
-          <button onclick="showPage('report-agent-activity')" id="nav-report-agent-activity"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
+          <button onclick="showPage('report-agent-activity')" id="nav-report-agent-activity" data-permission="page:report-agent-activity"
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
             <span class="text-xs">⏱️</span> Agent Activity
           </button>
-          <button onclick="showPage('report-chat-transfers')" id="nav-report-chat-transfers"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
+          <button onclick="showPage('report-chat-transfers')" id="nav-report-chat-transfers" data-permission="page:report-chat-transfers"
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
             <span class="text-xs">🔀</span> Chat Transfers
           </button>
         </div>
       </div>
       <!-- Platform category -->
       <div>
-        <button onclick="togglePlatformMenu()" id="nav-platform-header"
-          class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all">
+        <button onclick="togglePlatformMenu()" id="nav-platform-header" data-submenu-header="platform-submenu"
+          class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
           <span class="text-base w-5 text-center">🧩</span>
           <span class="flex-1">Platform</span>
           <span id="platform-chevron" class="text-xs transition-transform duration-200">▼</span>
         </button>
         <div id="platform-submenu" class="ml-2 mt-0.5 space-y-0.5">
-          <button onclick="showPage('report-platform-status')" id="nav-report-platform-status"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
+          <button onclick="showPage('report-platform-status')" id="nav-report-platform-status" data-permission="page:report-platform-status"
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
             <span class="text-xs">📡</span> Platform Status
           </button>
-          <button onclick="showPage('report-platform-costs')" id="nav-report-platform-costs"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all">
+          <button onclick="showPage('report-platform-costs')" id="nav-report-platform-costs" data-permission="page:report-platform-costs"
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
             <span class="text-xs">💰</span> Platform Costs
           </button>
         </div>
