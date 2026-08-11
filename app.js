@@ -2725,6 +2725,8 @@ function renderChatTransfersReport(content, dateFrom, dateTo, data) {
       <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${e.total}</td>
       <td class="px-4 py-2.5 text-center text-emerald-400 font-semibold text-sm">${e.answered}</td>
       <td class="px-4 py-2.5 text-center text-rose-400 font-semibold text-sm">${e.transferred}</td>
+      <td class="px-4 py-2.5 text-center text-amber-400 text-sm" title="Handed off to a different department (LiveChat logged an explicit transfer)">${e.transferredDept || 0}</td>
+      <td class="px-4 py-2.5 text-center text-orange-400 text-sm" title="Same department — original agent didn't respond in time, someone else picked it up">${e.transferredNoResponse || 0}</td>
       <td class="px-4 py-2.5 text-center text-rose-400 text-sm">${pctTransferred.toFixed(1)}%</td>
     </tr>`;
   }).join("");
@@ -2732,6 +2734,8 @@ function renderChatTransfersReport(content, dateFrom, dateTo, data) {
   const grandTotal = employees.reduce((s, e) => s + e.total, 0);
   const grandAnswered = employees.reduce((s, e) => s + e.answered, 0);
   const grandTransferred = employees.reduce((s, e) => s + e.transferred, 0);
+  const grandTransferredDept = employees.reduce((s, e) => s + (e.transferredDept || 0), 0);
+  const grandTransferredNoResponse = employees.reduce((s, e) => s + (e.transferredNoResponse || 0), 0);
   const statCard = (label, val, color) => `
     <div class="bg-[#0f1d35] rounded-xl border border-[#1a2d4a] p-4 text-center">
       <div class="text-xs text-slate-500 uppercase font-medium mb-1">${label}</div>
@@ -2739,10 +2743,12 @@ function renderChatTransfersReport(content, dateFrom, dateTo, data) {
     </div>`;
 
   content.innerHTML = `
-    <div class="grid grid-cols-3 gap-4 mb-5">
+    <div class="grid grid-cols-5 gap-4 mb-5">
       ${statCard("Total (LiveChat)", grandTotal, "#F5B800")}
       ${statCard("Answered Solo", grandAnswered, "#34d399")}
       ${statCard("Transferred", grandTransferred, "#fb7185")}
+      ${statCard("— Dept. Transfer", grandTransferredDept, "#fbbf24")}
+      ${statCard("— No Response", grandTransferredNoResponse, "#fb923c")}
     </div>
     <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
       <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
@@ -2757,6 +2763,8 @@ function renderChatTransfersReport(content, dateFrom, dateTo, data) {
               <th class="px-4 py-2 font-medium">Total</th>
               <th class="px-4 py-2 font-medium" title="Only this employee ever sent a message in the chat">Answered Solo</th>
               <th class="px-4 py-2 font-medium" title="More than one agent sent a message in the chat">Transferred</th>
+              <th class="px-4 py-2 font-medium" title="Handed off to a different department">Dept. Transfer</th>
+              <th class="px-4 py-2 font-medium" title="Same department — agent didn't respond in time">No Response</th>
               <th class="px-4 py-2 font-medium">% Transferred</th>
             </tr>
           </thead>
@@ -2773,6 +2781,8 @@ function downloadChatTransfersPdf() {
   const grandTotal = employees.reduce((s, e) => s + e.total, 0);
   const grandAnswered = employees.reduce((s, e) => s + e.answered, 0);
   const grandTransferred = employees.reduce((s, e) => s + e.transferred, 0);
+  const grandTransferredDept = employees.reduce((s, e) => s + (e.transferredDept || 0), 0);
+  const grandTransferredNoResponse = employees.reduce((s, e) => s + (e.transferredNoResponse || 0), 0);
 
   const win = window.open("", "_blank");
   if (!win) { showStatus("Allow popups to download PDF", "error"); return; }
@@ -2785,6 +2795,8 @@ function downloadChatTransfersPdf() {
       <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;font-weight:700;color:#ffffff;text-align:center">${e.total}</td>
       <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;font-weight:700;color:#34d399;text-align:center">${e.answered}</td>
       <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;font-weight:700;color:#fb7185;text-align:center">${e.transferred}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;color:#fbbf24;text-align:center">${e.transferredDept || 0}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;color:#fb923c;text-align:center">${e.transferredNoResponse || 0}</td>
       <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;color:#fb7185;text-align:center">${pctTransferred.toFixed(1)}%</td>
     </tr>`;
   }).join("");
@@ -2817,11 +2829,13 @@ ${opoLetterheadHtml()}
   </div>
 </div>
 
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px">
   ${[
     ["Total (LiveChat)", grandTotal, OPO_BRAND_BLUE],
     ["Answered Solo", grandAnswered, "#34d399"],
     ["Transferred", grandTransferred, "#fb7185"],
+    ["— Dept. Transfer", grandTransferredDept, "#fbbf24"],
+    ["— No Response", grandTransferredNoResponse, "#fb923c"],
   ].map(([l,v,c]) => `<div style="background:${PDF_CARD_BG};border:1px solid ${PDF_BORDER};border-radius:8px;padding:10px 6px;text-align:center">
     <div style="font-size:8px;color:${PDF_TEXT_DIM};text-transform:uppercase;font-weight:700;letter-spacing:.04em;margin-bottom:5px">${l}</div>
     <div style="font-size:18px;font-weight:900;color:${c}">${v}</div>
@@ -2835,6 +2849,8 @@ ${opoLetterheadHtml()}
       <th class="num">Total</th>
       <th class="num">Answered Solo</th>
       <th class="num">Transferred</th>
+      <th class="num">Dept. Transfer</th>
+      <th class="num">No Response</th>
       <th class="num">% Transferred</th>
     </tr>
   </thead>

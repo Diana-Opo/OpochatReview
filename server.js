@@ -326,6 +326,8 @@ if (process.env.DATABASE_URL) {
   )`).then(() => console.log("[db] chat_totals_daily table ready")).catch(e => console.error("[db] chat_totals_daily init:", e.message));
   pool.query(`ALTER TABLE chat_totals_daily ADD COLUMN IF NOT EXISTS answered INTEGER NOT NULL DEFAULT 0`).catch(e => console.error("[db] chat_totals_daily add answered:", e.message));
   pool.query(`ALTER TABLE chat_totals_daily ADD COLUMN IF NOT EXISTS transferred INTEGER NOT NULL DEFAULT 0`).catch(e => console.error("[db] chat_totals_daily add transferred:", e.message));
+  pool.query(`ALTER TABLE chat_totals_daily ADD COLUMN IF NOT EXISTS transferred_dept INTEGER NOT NULL DEFAULT 0`).catch(e => console.error("[db] chat_totals_daily add transferred_dept:", e.message));
+  pool.query(`ALTER TABLE chat_totals_daily ADD COLUMN IF NOT EXISTS transferred_no_response INTEGER NOT NULL DEFAULT 0`).catch(e => console.error("[db] chat_totals_daily add transferred_no_response:", e.message));
 
   pool.query(`CREATE TABLE IF NOT EXISTS chat_totals_cached_days (
     date TEXT PRIMARY KEY,
@@ -1266,6 +1268,14 @@ function buildAgentSegments(events, users, shifts, chatStartedAt) {
 function extractTransferGroup(text) {
   const m = text.match(/transferred\s+(?:the\s+chat\s+)?to\s+([A-Za-z][A-Za-z\s]*?)(?:\s*\(|$)/i);
   return m ? m[1].trim().toLowerCase() : null;
+}
+
+// A multi-agent chat is a "department transfer" if LiveChat itself logged an explicit
+// "transferred to X" system_message banner (a deliberate routing hand-off). Any other
+// multi-agent chat — no such banner — is treated as the original agent going unanswered
+// long enough that someone else in the same queue picked it up instead.
+function hasExplicitDeptTransfer(events) {
+  return events.some(e => e.type === "system_message" && e.text && extractTransferGroup(e.text));
 }
 
 // Find agents in users list who belong to a group and were on shift at chatStartedAt
@@ -2475,7 +2485,7 @@ async function computeChatTotalsLive({ dateFrom, dateTo, employeeFilter, include
     if (!agentEmail) return;
 
     const uniqueEmpsForKey = [...new Set(shiftList.map(s => s.employee))];
-    uniqueEmpsForKey.forEach(n => { if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0, supervised: 0, mobile: 0, answered: 0, transferred: 0 }; });
+    uniqueEmpsForKey.forEach(n => { if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0, supervised: 0, mobile: 0, answered: 0, transferred: 0, transferredDept: 0, transferredNoResponse: 0 }; });
     const isShared = uniqueEmpsForKey.length > 1;
 
     let pid = null;
@@ -2519,7 +2529,16 @@ async function computeChatTotalsLive({ dateFrom, dateTo, employeeFilter, include
         if (detectAgentDeviceFromLC(events, users) === "mobile") emp[empName].mobile++;
         // More than one distinct agent sent a public message in this thread → the chat
         // moved between agents (transferred) at some point, from this employee's side.
-        if (chatAgents.length > 1) emp[empName].transferred++; else emp[empName].answered++;
+        // Split by reason: an explicit "transferred to X" banner means a deliberate
+        // department hand-off; otherwise the original agent went unanswered and someone
+        // else in the same queue stepped in.
+        if (chatAgents.length > 1) {
+          emp[empName].transferred++;
+          if (hasExplicitDeptTransfer(events)) emp[empName].transferredDept++;
+          else emp[empName].transferredNoResponse++;
+        } else {
+          emp[empName].answered++;
+        }
         bumpDaily(empName, dayKey, "livechat");
       }
     } while (pid);
@@ -2600,7 +2619,11 @@ async function computeChatTotalsLive({ dateFrom, dateTo, employeeFilter, include
   if (!employeeFilter && totalChats != null) totalChats += cwCount;
 
   const employees = Object.entries(emp)
-    .map(([name, d]) => ({ name, livechat: d.livechat, chatwoot: d.chatwoot, total: d.livechat + d.chatwoot, supervised: d.supervised || 0, mobile: d.mobile || 0, answered: d.answered || 0, transferred: d.transferred || 0 }))
+    .map(([name, d]) => ({
+      name, livechat: d.livechat, chatwoot: d.chatwoot, total: d.livechat + d.chatwoot,
+      supervised: d.supervised || 0, mobile: d.mobile || 0, answered: d.answered || 0, transferred: d.transferred || 0,
+      transferredDept: d.transferredDept || 0, transferredNoResponse: d.transferredNoResponse || 0,
+    }))
     .sort((a, b) => b.total - a.total);
 
   const grandTotal = employees.reduce((s, e) => s + e.total, 0);
@@ -2617,14 +2640,14 @@ function istTodayKeyChats() {
   return new Date(Date.now() + ISTANBUL_OFFSET_MS).toISOString().slice(0, 10);
 }
 
-async function upsertChatTotalsDay(employee, date, livechat, chatwoot, supervised, mobile, answered, transferred) {
+async function upsertChatTotalsDay(employee, date, livechat, chatwoot, supervised, mobile, answered, transferred, transferredDept, transferredNoResponse) {
   if (!pool) return;
   try {
     await pool.query(
-      `INSERT INTO chat_totals_daily (employee, date, livechat, chatwoot, supervised, mobile, answered, transferred, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
-       ON CONFLICT (employee, date) DO UPDATE SET livechat=$3, chatwoot=$4, supervised=$5, mobile=$6, answered=$7, transferred=$8, updated_at=NOW()`,
-      [employee, date, livechat, chatwoot, supervised, mobile, answered, transferred]
+      `INSERT INTO chat_totals_daily (employee, date, livechat, chatwoot, supervised, mobile, answered, transferred, transferred_dept, transferred_no_response, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+       ON CONFLICT (employee, date) DO UPDATE SET livechat=$3, chatwoot=$4, supervised=$5, mobile=$6, answered=$7, transferred=$8, transferred_dept=$9, transferred_no_response=$10, updated_at=NOW()`,
+      [employee, date, livechat, chatwoot, supervised, mobile, answered, transferred, transferredDept, transferredNoResponse]
     );
   } catch (e) { console.error(`[chat_totals_daily] upsert failed for ${employee} ${date}:`, e.message); }
 }
@@ -2633,15 +2656,16 @@ async function loadChatTotalsRangeFromDB(dateFrom, dateTo, employeeFilter) {
   if (!pool) return {};
   try {
     const params = [dateFrom, dateTo];
-    let q = "SELECT employee, date, livechat, chatwoot, supervised, mobile, answered, transferred FROM chat_totals_daily WHERE date >= $1 AND date <= $2";
+    let q = "SELECT employee, date, livechat, chatwoot, supervised, mobile, answered, transferred, transferred_dept, transferred_no_response FROM chat_totals_daily WHERE date >= $1 AND date <= $2";
     if (employeeFilter) { params.push(employeeFilter); q += " AND employee = $3"; }
     const r = await pool.query(q, params);
-    const out = {}; // employee -> date -> {livechat, chatwoot, supervised, mobile, answered, transferred}
+    const out = {}; // employee -> date -> {livechat, chatwoot, supervised, mobile, answered, transferred, transferredDept, transferredNoResponse}
     for (const row of r.rows) {
       if (!out[row.employee]) out[row.employee] = {};
       out[row.employee][row.date] = {
         livechat: row.livechat, chatwoot: row.chatwoot, supervised: row.supervised, mobile: row.mobile,
         answered: row.answered, transferred: row.transferred,
+        transferredDept: row.transferred_dept, transferredNoResponse: row.transferred_no_response,
       };
     }
     return out;
@@ -2672,7 +2696,7 @@ async function getChatTotalsCachedDays(dateFrom, dateTo) {
 async function computeAndStoreChatTotalsDay(dateKey) {
   const result = await computeChatTotalsLive({ dateFrom: dateKey, dateTo: dateKey, employeeFilter: null, includeSupervised: true });
   await Promise.all(result.employees.map((e) =>
-    upsertChatTotalsDay(e.name, dateKey, e.livechat, e.chatwoot, e.supervised, e.mobile, e.answered, e.transferred)
+    upsertChatTotalsDay(e.name, dateKey, e.livechat, e.chatwoot, e.supervised, e.mobile, e.answered, e.transferred, e.transferredDept, e.transferredNoResponse)
   ));
   await markChatTotalsDayCached(dateKey);
   return result;
@@ -2722,18 +2746,24 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
       if (!daily[date]) daily[date] = { livechat: 0, chatwoot: 0 };
       daily[date].livechat += d.livechat;
       daily[date].chatwoot += d.chatwoot;
-      if (!empTotals[employee]) empTotals[employee] = { livechat: 0, chatwoot: 0, supervised: 0, mobile: 0, answered: 0, transferred: 0 };
+      if (!empTotals[employee]) empTotals[employee] = { livechat: 0, chatwoot: 0, supervised: 0, mobile: 0, answered: 0, transferred: 0, transferredDept: 0, transferredNoResponse: 0 };
       empTotals[employee].livechat += d.livechat;
       empTotals[employee].chatwoot += d.chatwoot;
       empTotals[employee].supervised += d.supervised;
       empTotals[employee].mobile += d.mobile;
       empTotals[employee].answered += d.answered || 0;
       empTotals[employee].transferred += d.transferred || 0;
+      empTotals[employee].transferredDept += d.transferredDept || 0;
+      empTotals[employee].transferredNoResponse += d.transferredNoResponse || 0;
     }
   }
 
   const employees = Object.entries(empTotals)
-    .map(([name, d]) => ({ name, livechat: d.livechat, chatwoot: d.chatwoot, total: d.livechat + d.chatwoot, supervised: d.supervised, mobile: d.mobile, answered: d.answered, transferred: d.transferred }))
+    .map(([name, d]) => ({
+      name, livechat: d.livechat, chatwoot: d.chatwoot, total: d.livechat + d.chatwoot,
+      supervised: d.supervised, mobile: d.mobile, answered: d.answered, transferred: d.transferred,
+      transferredDept: d.transferredDept, transferredNoResponse: d.transferredNoResponse,
+    }))
     .sort((a, b) => b.total - a.total);
 
   const totalChats = employees.reduce((s, e) => s + e.total, 0);
@@ -2761,7 +2791,10 @@ app.get("/api/reports/chat-transfers", authMiddleware, requirePermission("page:r
     if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
     const result = await computeChatTotals({ dateFrom: date_from, dateTo: date_to, employeeFilter: employee || null });
     const employees = result.employees
-      .map((e) => ({ name: e.name, total: e.answered + e.transferred, answered: e.answered, transferred: e.transferred }))
+      .map((e) => ({
+        name: e.name, total: e.answered + e.transferred, answered: e.answered, transferred: e.transferred,
+        transferredDept: e.transferredDept || 0, transferredNoResponse: e.transferredNoResponse || 0,
+      }))
       .filter((e) => e.total > 0)
       .sort((a, b) => b.transferred - a.transferred);
     res.json({ date_from: result.date_from, date_to: result.date_to, employees });
