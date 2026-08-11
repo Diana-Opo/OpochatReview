@@ -1270,12 +1270,28 @@ function extractTransferGroup(text) {
   return m ? m[1].trim().toLowerCase() : null;
 }
 
-// A multi-agent chat is a "department transfer" if LiveChat itself logged an explicit
-// "transferred to X" system_message banner (a deliberate routing hand-off). Any other
-// multi-agent chat — no such banner — is treated as the original agent going unanswered
-// long enough that someone else in the same queue picked it up instead.
+// LiveChat logs an explicit system_message for a no-reply hand-off, e.g.
+// "Transferred - to Leo Zirak due to no reply from Stark for 5 min" — note this ALSO
+// matches extractTransferGroup's "transferred...to X" shape (X being the receiving
+// AGENT's name here, not a department), so this check must run first and take priority:
+// a message can't be both a no-reply hand-off and a deliberate department transfer.
+function isNoReplyTransferMessage(text) {
+  return /no\s+repl(y|ies)|no\s+response/i.test(text);
+}
+
+// A multi-agent chat is a "department transfer" only if some system_message names an
+// explicit hand-off target (extractTransferGroup) AND isn't actually a no-reply message
+// naming the receiving AGENT instead of a department (see isNoReplyTransferMessage).
+// Anything else is treated as the original agent going unanswered long enough that
+// someone else in the same queue picked it up instead.
 function hasExplicitDeptTransfer(events) {
-  return events.some(e => e.type === "system_message" && e.text && extractTransferGroup(e.text));
+  return events.some(e =>
+    e.type === "system_message" && e.text && !isNoReplyTransferMessage(e.text) && extractTransferGroup(e.text)
+  );
+}
+
+function hasExplicitNoReplyTransfer(events) {
+  return events.some(e => e.type === "system_message" && e.text && isNoReplyTransferMessage(e.text));
 }
 
 // Find agents in users list who belong to a group and were on shift at chatStartedAt
@@ -2534,7 +2550,11 @@ async function computeChatTotalsLive({ dateFrom, dateTo, employeeFilter, include
         // else in the same queue stepped in.
         if (chatAgents.length > 1) {
           emp[empName].transferred++;
-          if (hasExplicitDeptTransfer(events)) emp[empName].transferredDept++;
+          // Check no-reply first — it's the more specific, more reliable signal, and its
+          // message text can otherwise look like a department-transfer banner (see
+          // isNoReplyTransferMessage's comment).
+          if (hasExplicitNoReplyTransfer(events)) emp[empName].transferredNoResponse++;
+          else if (hasExplicitDeptTransfer(events)) emp[empName].transferredDept++;
           else emp[empName].transferredNoResponse++;
         } else {
           emp[empName].answered++;
