@@ -3568,7 +3568,7 @@ app.get("/api/reports/agent-activity", authMiddleware, requirePermission("page:r
 // ("upstream error", not valid JSON) before Express ever responds. So the route
 // now responds immediately once the job is kicked off, and the frontend polls
 // the matching /status endpoint instead of awaiting one giant request.
-const backfillJobs = { agentActivity: null, totalChats: null };
+const backfillJobs = { agentActivity: null, totalChats: null, groupTotals: null };
 
 // One-time (or occasional) backfill: live-fetch every day in the range for every
 // visible employee and upsert into agent_activity_daily. Use this to seed history
@@ -4709,6 +4709,42 @@ app.get("/api/reports/monthly-summary/debug-unassigned", authMiddleware, require
     const result = await computeGroupChatTotalsLive({ dateFrom: date_from, dateTo: date_to });
     res.json({ grand_total: result.grandTotal, groups: result.groups, unassigned_breakdown: result.unassignedBreakdown, known_agent_keys: result.knownAgentKeys });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// One-time (or occasional) backfill: force-recompute every day in the range,
+// bypassing department_totals_cached_days — needed after a logic fix, so
+// already-cached days pick up the corrected attribution instead of serving
+// stale numbers until "today" naturally rolls over them.
+app.post("/api/reports/monthly-summary/backfill", authMiddleware, requirePermission("action:backfill"), async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: "No database configured" });
+    const { date_from, date_to } = req.body || {};
+    if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
+    if (backfillJobs.groupTotals?.running) {
+      return res.json({ started: false, already_running: true });
+    }
+
+    const days = [];
+    for (let d = new Date(`${date_from}T00:00:00Z`); d <= new Date(`${date_to}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
+      days.push(d.toISOString().slice(0, 10));
+    }
+
+    const job = { running: true, daysTotal: days.length, daysDone: 0 };
+    backfillJobs.groupTotals = job;
+    res.json({ started: true, days_total: days.length });
+
+    runLcBackground(() => Promise.all(days.map((day) =>
+      computeAndStoreGroupTotalsDay(day)
+        .then(() => { job.daysDone++; console.log(`[group-totals-backfill] ${day} done [${job.daysDone}/${job.daysTotal}]`); })
+        .catch((e) => { job.daysDone++; console.error(`[group-totals-backfill] ${day} failed:`, e.message); })
+    ))).then(() => { job.running = false; console.log(`[group-totals-backfill] finished: ${job.daysTotal} days`); });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/reports/monthly-summary/backfill/status", authMiddleware, requirePermission("action:backfill"), (req, res) => {
+  const job = backfillJobs.groupTotals;
+  if (!job) return res.json({ running: false });
+  res.json({ running: job.running, days_total: job.daysTotal, days_done: job.daysDone });
 });
 
 // Nightly auto-review disabled — enable by uncommenting below

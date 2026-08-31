@@ -3175,6 +3175,52 @@ async function debugUnassignedMonthlySummary() {
   }
 }
 
+async function backfillMonthlySummary() {
+  const dateFrom = document.getElementById("monthlySummaryFrom")?.value;
+  const dateTo = document.getElementById("monthlySummaryTo")?.value;
+  if (!dateFrom || !dateTo) { showStatus("Pick a From and To date first", "error"); return; }
+
+  const btn = document.getElementById("btnBackfillMonthlySummary");
+  const icon = document.getElementById("backfillMonthlySummaryIcon");
+  btn.disabled = true;
+  if (icon) icon.textContent = "…";
+
+  try {
+    const res = await authFetch("/api/reports/monthly-summary/backfill", {
+      method: "POST",
+      body: JSON.stringify({ date_from: dateFrom, date_to: dateTo }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || res.status);
+
+    if (data.already_running) {
+      showStatus("A backfill is already running in the background...", "success");
+    } else {
+      showStatus(`Backfill started for ${data.days_total} day(s) — running in the background, this can take a while`, "success");
+    }
+
+    const poll = setInterval(async () => {
+      try {
+        const sres = await authFetch("/api/reports/monthly-summary/backfill/status");
+        const sdata = await sres.json();
+        if (!sdata.running) {
+          clearInterval(poll);
+          showStatus(`Backfill done — ${sdata.days_total} day(s)`, "success");
+          btn.disabled = false;
+          if (icon) icon.textContent = "⏬";
+          loadMonthlySummaryReport();
+        } else {
+          showStatus(`Backfilling... ${sdata.days_done}/${sdata.days_total} day(s) done`, "success");
+        }
+      } catch (e) { /* transient poll error, keep trying */ }
+    }, 4000);
+  } catch (e) {
+    showStatus("Backfill failed: " + e.message, "error");
+    btn.disabled = false;
+    if (icon) icon.textContent = "⏬";
+  }
+}
+
 // ── Supervised Chats Report ────────────────────────────────────────────────────
 let _activeSupervisedChatsReport = null;
 let _supervisedChatsPage = 0;
