@@ -3121,25 +3121,31 @@ ${opoLetterheadHtml()}
 </table>
 
 <div style="margin-top:20px;page-break-inside:avoid">
-  <div style="font-size:13px;font-weight:900;color:${PDF_TEXT};border-bottom:2px solid ${OPO_BRAND_BLUE};padding-bottom:6px;margin-bottom:10px">How to Read This Report</div>
+  <div style="font-size:13px;font-weight:900;color:${PDF_TEXT};border-bottom:2px solid ${OPO_BRAND_BLUE};padding-bottom:6px;margin-bottom:10px">Performance Summary</div>
 
-  <div style="font-size:9.5px;font-weight:800;color:#F5B800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Department Cards (Grand Total / General / Social Trade / KYC / Unassigned)</div>
+  <div style="font-size:9.5px;font-weight:800;color:#F5B800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Where the demand went</div>
   <div style="font-size:9px;line-height:1.6;color:${PDF_TEXT_BODY};margin-bottom:10px">
-    <b style="color:${PDF_TEXT}">What it is:</b> the total number of individual customer chats (LiveChat + Chatwoot combined) opened in this date range, split by department.<br/>
-    <b style="color:${PDF_TEXT}">Where it comes from:</b> each chat counts toward exactly one department — for LiveChat, whichever routing group the chat actually ended in (its own group, or the group it was transferred to mid-conversation); for Chatwoot, the department assigned to whoever is currently the conversation's agent.<br/>
-    <b style="color:${PDF_TEXT}">What it tells you:</b> how chat volume was actually distributed across departments this period. "Unassigned" means a chat couldn't be matched to General/Social Trade/KYC (e.g. it landed in an unrelated queue, or no agent could be identified) — use "Debug Unassigned" on the report page to see exactly which chats and why.
+    The department totals above show how customer demand was actually split across General, Social Trade, and KYC this period. This is the real workload each team carried — useful for judging whether staffing in each department matches the volume it's actually handling, and for spotting a department that's quietly overloaded or under-used.
   </div>
 
-  <div style="font-size:9.5px;font-weight:800;color:#F5B800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Employee Table</div>
-  <div style="font-size:9px;line-height:1.7;color:${PDF_TEXT_BODY}">
-    <b style="color:${PDF_TEXT}">Employee</b> — the agent's name.<br/>
-    <b style="color:${PDF_TEXT}">Department(s)</b> — which department(s) this person is assigned to in Employee settings.<br/>
-    <b style="color:${PDF_TEXT}">Total Chats</b> — every chat this employee participated in during the period, counting a chat even if it was later transferred to someone else. This is a separate, usually larger number than the department cards above (one chat can be "touched" by more than one employee, but is only counted once toward a department) — the two totals are not expected to match.<br/>
-    <b style="color:${PDF_TEXT}">% Share</b> — this employee's Total Chats as a percentage of the period's grand total chat volume.<br/>
-    <b style="color:${PDF_TEXT}">Chat Hours</b> — total time this employee spent actively in chats: the sum, across all their chats, of the time between each chat's first and last message (capped at 3 hours per chat to exclude stale/abandoned sessions from skewing the total).<br/>
-    <b style="color:${PDF_TEXT}">Availability</b> — hours this employee was online and accepting chats during their scheduled shift, from LiveChat's agent-availability data.<br/>
-    <b style="color:${PDF_TEXT}">% Availability</b> — Availability as a percentage of their full scheduled shift time (Availability + time their queue showed closed).<br/>
-    <b style="color:${PDF_TEXT}">Leave (days)</b> — number of days this employee was marked "Leave" in the Leave sheet (configured under Config) during the period.
+  <div style="font-size:9.5px;font-weight:800;color:#F5B800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">How the workload was carried across the team</div>
+  <div style="font-size:9px;line-height:1.6;color:${PDF_TEXT_BODY};margin-bottom:10px">
+    Total Chats and % Share show how much of the team's total workload each person actually carried. A wide spread here — a few people far above the rest, others well below — is worth a closer look, whether that means rebalancing chats or recognizing strong performers.
+  </div>
+
+  <div style="font-size:9.5px;font-weight:800;color:#F5B800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Effort behind the numbers</div>
+  <div style="font-size:9px;line-height:1.6;color:${PDF_TEXT_BODY};margin-bottom:10px">
+    Chat Hours reflects the actual time each person spent engaged with customers, not just how many chats passed through them — two employees with the same chat count can represent very different amounts of real work, and this is where that difference shows up.
+  </div>
+
+  <div style="font-size:9.5px;font-weight:800;color:#F5B800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Reliability during scheduled shifts</div>
+  <div style="font-size:9px;line-height:1.6;color:${PDF_TEXT_BODY};margin-bottom:10px">
+    Availability and % Availability show how consistently each person was actually online and ready to help during the hours they were scheduled — independent of how busy the queue happened to be. Low availability against a full shift is a reliability signal worth following up on directly.
+  </div>
+
+  <div style="font-size:9.5px;font-weight:800;color:#F5B800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Reading the numbers in context</div>
+  <div style="font-size:9px;line-height:1.6;color:${PDF_TEXT_BODY}">
+    Leave (days) is there so the numbers above aren't misread — someone on leave for part of the month will naturally show lower chats, hours, and availability, and that's attendance, not a performance drop.
   </div>
 </div>
 
