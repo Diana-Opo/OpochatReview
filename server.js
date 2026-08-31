@@ -2552,8 +2552,11 @@ async function computeChatTotalsLive({ dateFrom, dateTo, employeeFilter, include
         emp[empName].livechat++;
         if (hasSupervisorNote(events, users, key)) emp[empName].supervised++;
         if (detectAgentDeviceFromLC(events, users) === "mobile") emp[empName].mobile++;
-        if (thread.ended_at) {
-          const dur = (new Date(thread.ended_at) - new Date(chatTime)) / 1000;
+        // LiveChat's list_archives response has no "ended_at" field on the thread —
+        // use the last event's timestamp as the chat's actual end time instead.
+        const lastEventAt = events.length ? events[events.length - 1].created_at : null;
+        if (lastEventAt) {
+          const dur = (new Date(lastEventAt) - new Date(chatTime)) / 1000;
           if (dur > 0 && dur < 10800) emp[empName].durationSec += dur;
         }
         // More than one distinct agent sent a public message in this thread → the chat
@@ -2619,20 +2622,19 @@ async function computeChatTotalsLive({ dateFrom, dateTo, employeeFilter, include
         const n = ms.employee;
         if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0, supervised: 0, mobile: 0, answered: 0, transferred: 0, durationSec: 0 };
         emp[n].chatwoot++;
-        if (conv.resolved_at) {
-          const dur = (new Date(cwTimestamp(conv.resolved_at)) - new Date(cwTimestamp(conv.created_at))) / 1000;
-          if (dur > 0 && dur < 10800) emp[n].durationSec += dur;
-        }
         bumpDaily(n, istDayKey((conv.created_at || 0) * 1000), "chatwoot");
-        matched.push({ id: conv.id, employee: n, assigneeId: assignee.id });
+        matched.push({ id: conv.id, employee: n, assigneeId: assignee.id, createdAt: conv.created_at || 0 });
       }
 
       // Check each matched conversation for a private/internal note left by a DIFFERENT
       // agent than the one assigned — excludes an agent's own self-notes. Bounded
       // concurrency — this is one extra request per conversation, so skip entirely
       // when the caller doesn't need it (e.g. a baseline period used only for totals).
+      // The conversation list has no "resolved_at"/duration field, so this same
+      // per-conversation messages fetch also doubles as the only way to get a real
+      // chat duration — the gap between the conversation's start and its last message.
       if (includeSupervised) {
-        await Promise.all(matched.map(async ({ id, employee, assigneeId }) => {
+        await Promise.all(matched.map(async ({ id, employee, assigneeId, createdAt }) => {
           try {
             const release = await cwAcquire();
             let msgData;
@@ -2640,6 +2642,11 @@ async function computeChatTotalsLive({ dateFrom, dateTo, employeeFilter, include
             const msgs = msgData.payload || msgData || [];
             const hasNote = Array.isArray(msgs) && msgs.some(m => m.private === true && String(m.sender?.id) !== String(assigneeId));
             if (hasNote) emp[employee].supervised++;
+            if (Array.isArray(msgs) && msgs.length && createdAt) {
+              const lastMsgAt = Math.max(...msgs.map(m => m.created_at || 0));
+              const dur = lastMsgAt - createdAt;
+              if (dur > 0 && dur < 10800) emp[employee].durationSec += dur;
+            }
           } catch (e) { console.error(`[total-chats] cw private-note check failed for ${id}:`, e.message); }
         }));
       }
