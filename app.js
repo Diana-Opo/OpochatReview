@@ -40,6 +40,7 @@ const PAGE_PERMISSION = {
   "report-platform-costs": "page:report-platform-costs",
   "report-agent-activity": "page:report-agent-activity",
   "report-chat-transfers": "page:report-chat-transfers",
+  "report-monthly-summary": "page:report-monthly-summary",
   employees: "page:employees",
   config: "page:config",
   groups: "page:groups",
@@ -339,10 +340,11 @@ function showPage(name) {
   if (name === "report-platform-costs") openPlatformCostsPage();
   if (name === "report-agent-activity") openAgentActivityPage();
   if (name === "report-chat-transfers") openChatTransfersReport();
+  if (name === "report-monthly-summary") openMonthlySummaryReport();
   if (name === "report-supervised-chats") openSupervisedChatsReport();
   if (name === "employees") openSettings();
   if (name === "groups") openGroupsPage();
-  if (name === "config") loadKnowledgeStatus();
+  if (name === "config") { loadKnowledgeStatus(); loadLeaveSheetSetting(); }
   localStorage.setItem("lastPage", name);
 }
 
@@ -492,6 +494,66 @@ async function syncCwAgents() {
   } catch (e) {
     if (status) status.textContent = "Sync failed: " + e.message;
     showStatus("Chatwoot agent sync failed: " + e.message, "error");
+  }
+  btn.disabled = false;
+  if (icon) icon.textContent = "⟳";
+}
+
+// ── Leave Sheet setting ──────────────────────────────────────────────────────
+async function loadLeaveSheetSetting() {
+  const input = document.getElementById("leaveSheetUrl");
+  const status = document.getElementById("cfg-leave-sheet-status");
+  if (!input) return;
+  try {
+    const res = await authFetch("/api/settings/leave-sheet-url");
+    const data = await res.json();
+    input.value = data.url || "";
+    if (status) status.textContent = data.url ? "Configured" : "Not configured yet";
+  } catch (e) {
+    if (status) status.textContent = "Failed to load: " + e.message;
+  }
+}
+
+async function saveLeaveSheetUrl() {
+  const input = document.getElementById("leaveSheetUrl");
+  const status = document.getElementById("cfg-leave-sheet-status");
+  const url = input?.value.trim() || "";
+  try {
+    const res = await authFetch("/api/settings/leave-sheet-url", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || res.status);
+    if (status) status.textContent = url ? "Configured" : "Not configured yet";
+    showStatus("Leave sheet URL saved", "success");
+  } catch (e) {
+    showStatus("Failed to save: " + e.message, "error");
+  }
+}
+
+async function testLeaveSheetUrl() {
+  const btn = document.getElementById("btnTestLeaveSheet");
+  const icon = document.getElementById("testLeaveSheetIcon");
+  const status = document.getElementById("cfg-leave-sheet-status");
+  await saveLeaveSheetUrl();
+  btn.disabled = true;
+  if (icon) icon.textContent = "…";
+  try {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    const pad = (n) => String(n).padStart(2, "0");
+    const dateFrom = `${y}-${pad(m + 1)}-01`;
+    const dateTo = `${y}-${pad(m + 1)}-${pad(new Date(y, m + 1, 0).getDate())}`;
+    const res = await authFetch(`/api/reports/monthly-summary?date_from=${dateFrom}&date_to=${dateTo}`);
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || res.status);
+    const leaveTotal = (data.employees || []).reduce((s, e) => s + (e.leaveDays || 0), 0);
+    if (status) status.textContent = `Sync OK — ${leaveTotal} leave day(s) found this month`;
+    showStatus("Leave sheet synced successfully", "success");
+  } catch (e) {
+    if (status) status.textContent = "Sync failed: " + e.message;
+    showStatus("Leave sheet sync failed: " + e.message, "error");
   }
   btn.disabled = false;
   if (icon) icon.textContent = "⟳";
@@ -2858,6 +2920,207 @@ ${opoLetterheadHtml()}
 </table>
 
 <div class="footer">Chat Review Dashboard — Chat Transfers Report · ${escHtml(dateFrom)} → ${escHtml(dateTo)}</div>
+
+<script>setTimeout(() => window.print(), 350)<\/script>
+</body></html>`);
+  win.document.close();
+}
+
+// ── Monthly Summary Report ──────────────────────────────────────────────────────
+let _activeMonthlySummaryReport = null;
+
+function openMonthlySummaryReport() {
+  const fromEl = document.getElementById("monthlySummaryFrom");
+  const toEl = document.getElementById("monthlySummaryTo");
+  if (fromEl && toEl && !fromEl.value && !toEl.value) {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    const pad = (n) => String(n).padStart(2, "0");
+    fromEl.value = `${y}-${pad(m + 1)}-01`;
+    toEl.value = `${y}-${pad(m + 1)}-${pad(lastDay)}`;
+  }
+  const content = document.getElementById("monthlySummaryContent");
+  if (content && !content.innerHTML.trim()) {
+    content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">Pick a date range and click Search.</div>`;
+  }
+}
+
+function availabilityPct(e) {
+  const total = (e.onlineHours || 0) + (e.closedHours || 0);
+  return total ? (e.onlineHours / total) * 100 : 0;
+}
+
+async function loadMonthlySummaryReport() {
+  const content = document.getElementById("monthlySummaryContent");
+  if (!content) return;
+  const dateFrom = document.getElementById("monthlySummaryFrom")?.value;
+  const dateTo = document.getElementById("monthlySummaryTo")?.value;
+  if (!dateFrom || !dateTo) {
+    content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">Please pick a From and To date.</div>`;
+    return;
+  }
+  content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm"><span class="spinner"></span></div>`;
+  _activeMonthlySummaryReport = null;
+
+  try {
+    const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
+    const res = await authFetch(`/api/reports/monthly-summary?${params.toString()}`);
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Error: ${escHtml(data.error || res.status)}</div>`;
+      return;
+    }
+    const employees = data.employees || [];
+    if (!employees.length) {
+      content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">No data found for this range.</div>`;
+      return;
+    }
+    _activeMonthlySummaryReport = { dateFrom, dateTo, data };
+    renderMonthlySummaryReport(content, dateFrom, dateTo, data);
+  } catch (e) {
+    content.innerHTML = `<div class="text-center py-16 text-red-400 text-sm">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderMonthlySummaryReport(content, dateFrom, dateTo, data) {
+  const employees = data.employees || [];
+  const groups = data.groups || [];
+  const grandTotal = data.grand_total || 0;
+
+  const rows = employees.map(e => {
+    const pctShare = grandTotal ? (e.totalChats / grandTotal) * 100 : 0;
+    const pctAvail = availabilityPct(e);
+    return `
+    <tr class="border-t border-[#1a2d4a]">
+      <td class="px-4 py-2.5 text-white text-sm text-center">${escHtml(e.name)}</td>
+      <td class="px-4 py-2.5 text-center text-slate-400 text-xs">${(e.groups || []).map(escHtml).join(", ") || "—"}</td>
+      <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${e.totalChats}</td>
+      <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${pctShare.toFixed(1)}%</td>
+      <td class="px-4 py-2.5 text-center text-sky-400 font-semibold text-sm">${e.chatHours.toFixed(1)}h</td>
+      <td class="px-4 py-2.5 text-center text-emerald-400 font-semibold text-sm">${e.onlineHours.toFixed(1)}h</td>
+      <td class="px-4 py-2.5 text-center text-emerald-400 text-sm">${pctAvail.toFixed(1)}%</td>
+      <td class="px-4 py-2.5 text-center text-rose-400 font-semibold text-sm">${e.leaveDays || 0}</td>
+    </tr>`;
+  }).join("");
+
+  const statCard = (label, val, color) => `
+    <div class="bg-[#0f1d35] rounded-xl border border-[#1a2d4a] p-4 text-center">
+      <div class="text-xs text-slate-500 uppercase font-medium mb-1">${label}</div>
+      <div class="text-xl font-bold" style="color:${color}">${val}</div>
+    </div>`;
+  const groupCards = groups.map(g => statCard(escHtml(g.name), g.totalChats, "#F5B800")).join("");
+
+  content.innerHTML = `
+    <div class="grid gap-4 mb-5" style="grid-template-columns:repeat(${groups.length + 1},1fr)">
+      ${statCard("Grand Total", grandTotal, "#94a3b8")}
+      ${groupCards}
+    </div>
+    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
+      <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
+        <span class="font-semibold text-white text-sm">${escHtml(dateFrom)} → ${escHtml(dateTo)}</span>
+        <span class="text-xs text-slate-500">${grandTotal} total chats</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead>
+            <tr class="text-center text-xs text-slate-500 uppercase">
+              <th class="px-4 py-2 font-medium">Employee</th>
+              <th class="px-4 py-2 font-medium">Department(s)</th>
+              <th class="px-4 py-2 font-medium">Total Chats</th>
+              <th class="px-4 py-2 font-medium">% Share</th>
+              <th class="px-4 py-2 font-medium">Chat Hours</th>
+              <th class="px-4 py-2 font-medium">Availability</th>
+              <th class="px-4 py-2 font-medium">% Availability</th>
+              <th class="px-4 py-2 font-medium">Leave (days)</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function downloadMonthlySummaryPdf() {
+  if (!_activeMonthlySummaryReport) { showStatus("Run a search first", "error"); return; }
+  const { dateFrom, dateTo, data } = _activeMonthlySummaryReport;
+  const employees = data.employees || [];
+  const groups = data.groups || [];
+  const grandTotal = data.grand_total || 0;
+
+  const win = window.open("", "_blank");
+  if (!win) { showStatus("Allow popups to download PDF", "error"); return; }
+
+  const rows = employees.map((e, i) => {
+    const pctShare = grandTotal ? (e.totalChats / grandTotal) * 100 : 0;
+    const pctAvail = availabilityPct(e);
+    return `
+    <tr style="background:${i % 2 ? PDF_CARD_BG : PDF_BG}">
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;color:${PDF_TEXT};text-align:center">${escHtml(e.name)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:9px;color:${PDF_TEXT_DIM};text-align:center">${(e.groups || []).map(escHtml).join(", ") || "—"}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;font-weight:700;color:#ffffff;text-align:center">${e.totalChats}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;color:${PDF_TEXT_DIM};text-align:center">${pctShare.toFixed(1)}%</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;font-weight:700;color:#38bdf8;text-align:center">${e.chatHours.toFixed(1)}h</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;font-weight:700;color:#34d399;text-align:center">${e.onlineHours.toFixed(1)}h</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;color:#34d399;text-align:center">${pctAvail.toFixed(1)}%</td>
+      <td style="padding:7px 10px;border-bottom:1px solid ${PDF_BORDER};font-size:10.5px;font-weight:700;color:#fb7185;text-align:center">${e.leaveDays || 0}</td>
+    </tr>`;
+  }).join("");
+
+  const statBlocks = [["Grand Total", grandTotal, OPO_BRAND_BLUE], ...groups.map(g => [g.name, g.totalChats, "#F5B800"])];
+
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Monthly Summary — ${escHtml(dateFrom)} to ${escHtml(dateTo)}</title>
+<style>
+  @page { size: A4 portrait; margin: 1.5cm 16mm; background: ${PDF_BG}; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  ${PDF_FORCE_PRINT_COLORS_CSS}
+  html { background: ${PDF_BG}; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+       color: ${PDF_TEXT_DIM}; text-align: center; padding: 8px 10px; border-bottom: 2px solid ${OPO_BRAND_BLUE}; }
+  th.num { text-align: center; }
+  .footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid ${PDF_BORDER};
+            font-size: 8px; color: ${PDF_TEXT_DIM}; text-align: center; }
+</style>
+</head><body>
+${opoLetterheadHtml()}
+<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid ${OPO_BRAND_BLUE};padding-bottom:10px;margin-bottom:14px">
+  <div>
+    <div style="font-size:20px;font-weight:900;color:${PDF_TEXT};line-height:1.1">Monthly Summary Report</div>
+    <div style="font-size:11px;color:${PDF_TEXT_DIM};margin-top:4px">${escHtml(dateFrom)} → ${escHtml(dateTo)}</div>
+  </div>
+  <div style="background:#132a4d;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
+              letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
+    Generated ${new Date().toLocaleDateString()}
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(${statBlocks.length},1fr);gap:8px;margin-bottom:16px">
+  ${statBlocks.map(([l,v,c]) => `<div style="background:${PDF_CARD_BG};border:1px solid ${PDF_BORDER};border-radius:8px;padding:10px 6px;text-align:center">
+    <div style="font-size:8px;color:${PDF_TEXT_DIM};text-transform:uppercase;font-weight:700;letter-spacing:.04em;margin-bottom:5px">${escHtml(String(l))}</div>
+    <div style="font-size:18px;font-weight:900;color:${c}">${v}</div>
+  </div>`).join("")}
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Employee</th>
+      <th>Department(s)</th>
+      <th class="num">Total Chats</th>
+      <th class="num">% Share</th>
+      <th class="num">Chat Hours</th>
+      <th class="num">Availability</th>
+      <th class="num">% Availability</th>
+      <th class="num">Leave (days)</th>
+    </tr>
+  </thead>
+  <tbody>${rows}</tbody>
+</table>
+
+<div class="footer">Chat Review Dashboard — Monthly Summary Report · ${escHtml(dateFrom)} → ${escHtml(dateTo)}</div>
 
 <script>setTimeout(() => window.print(), 350)<\/script>
 </body></html>`);

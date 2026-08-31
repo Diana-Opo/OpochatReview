@@ -30,6 +30,7 @@ const PERMISSION_CATALOG = [
   { key: "page:report-platform-costs", label: "Platform Costs", kind: "page" },
   { key: "page:report-agent-activity", label: "Agent Activity", kind: "page" },
   { key: "page:report-chat-transfers", label: "Chat Transfers", kind: "page" },
+  { key: "page:report-monthly-summary", label: "Monthly Summary", kind: "page" },
   { key: "page:employees", label: "Employees", kind: "page" },
   { key: "page:config", label: "Config", kind: "page" },
   { key: "page:groups", label: "Groups", kind: "page" },
@@ -328,6 +329,7 @@ if (process.env.DATABASE_URL) {
   pool.query(`ALTER TABLE chat_totals_daily ADD COLUMN IF NOT EXISTS transferred INTEGER NOT NULL DEFAULT 0`).catch(e => console.error("[db] chat_totals_daily add transferred:", e.message));
   pool.query(`ALTER TABLE chat_totals_daily ADD COLUMN IF NOT EXISTS transferred_dept INTEGER NOT NULL DEFAULT 0`).catch(e => console.error("[db] chat_totals_daily add transferred_dept:", e.message));
   pool.query(`ALTER TABLE chat_totals_daily ADD COLUMN IF NOT EXISTS transferred_no_response INTEGER NOT NULL DEFAULT 0`).catch(e => console.error("[db] chat_totals_daily add transferred_no_response:", e.message));
+  pool.query(`ALTER TABLE chat_totals_daily ADD COLUMN IF NOT EXISTS duration_sec REAL NOT NULL DEFAULT 0`).catch(e => console.error("[db] chat_totals_daily add duration_sec:", e.message));
 
   pool.query(`CREATE TABLE IF NOT EXISTS chat_totals_cached_days (
     date TEXT PRIMARY KEY,
@@ -347,6 +349,13 @@ if (process.env.DATABASE_URL) {
     end_hour INTEGER NOT NULL
   )`).then(() => console.log("[db] weekend_overrides table ready")).catch(e => console.error("[db] weekend_overrides init:", e.message));
   pool.query(`CREATE INDEX IF NOT EXISTS weekend_overrides_date_platform_idx ON weekend_overrides (shift_date, platform)`).catch(() => {});
+
+  // ── app_settings table (simple key/value store, e.g. the Leave sheet URL) ──
+  pool.query(`CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )`).then(() => console.log("[db] app_settings table ready")).catch(e => console.error("[db] app_settings init:", e.message));
 }
 const LC_API = "https://api.livechatinc.com/v3.6/agent/action";
 const LC_CONFIG_API = "https://api.livechatinc.com/v3.6/configuration/action";
@@ -2501,7 +2510,7 @@ async function computeChatTotalsLive({ dateFrom, dateTo, employeeFilter, include
     if (!agentEmail) return;
 
     const uniqueEmpsForKey = [...new Set(shiftList.map(s => s.employee))];
-    uniqueEmpsForKey.forEach(n => { if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0, supervised: 0, mobile: 0, answered: 0, transferred: 0, transferredDept: 0, transferredNoResponse: 0 }; });
+    uniqueEmpsForKey.forEach(n => { if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0, supervised: 0, mobile: 0, answered: 0, transferred: 0, transferredDept: 0, transferredNoResponse: 0, durationSec: 0 }; });
     const isShared = uniqueEmpsForKey.length > 1;
 
     let pid = null;
@@ -2543,6 +2552,10 @@ async function computeChatTotalsLive({ dateFrom, dateTo, employeeFilter, include
         emp[empName].livechat++;
         if (hasSupervisorNote(events, users, key)) emp[empName].supervised++;
         if (detectAgentDeviceFromLC(events, users) === "mobile") emp[empName].mobile++;
+        if (thread.ended_at) {
+          const dur = (new Date(thread.ended_at) - new Date(chatTime)) / 1000;
+          if (dur > 0 && dur < 10800) emp[empName].durationSec += dur;
+        }
         // More than one distinct agent sent a public message in this thread → the chat
         // moved between agents (transferred) at some point, from this employee's side.
         // Split by reason: an explicit "transferred to X" banner means a deliberate
@@ -2604,8 +2617,12 @@ async function computeChatTotalsLive({ dateFrom, dateTo, employeeFilter, include
         });
         if (!ms) continue;
         const n = ms.employee;
-        if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0, supervised: 0, mobile: 0, answered: 0, transferred: 0 };
+        if (!emp[n]) emp[n] = { livechat: 0, chatwoot: 0, supervised: 0, mobile: 0, answered: 0, transferred: 0, durationSec: 0 };
         emp[n].chatwoot++;
+        if (conv.resolved_at) {
+          const dur = (new Date(cwTimestamp(conv.resolved_at)) - new Date(cwTimestamp(conv.created_at))) / 1000;
+          if (dur > 0 && dur < 10800) emp[n].durationSec += dur;
+        }
         bumpDaily(n, istDayKey((conv.created_at || 0) * 1000), "chatwoot");
         matched.push({ id: conv.id, employee: n, assigneeId: assignee.id });
       }
@@ -2643,6 +2660,7 @@ async function computeChatTotalsLive({ dateFrom, dateTo, employeeFilter, include
       name, livechat: d.livechat, chatwoot: d.chatwoot, total: d.livechat + d.chatwoot,
       supervised: d.supervised || 0, mobile: d.mobile || 0, answered: d.answered || 0, transferred: d.transferred || 0,
       transferredDept: d.transferredDept || 0, transferredNoResponse: d.transferredNoResponse || 0,
+      durationSec: d.durationSec || 0,
     }))
     .sort((a, b) => b.total - a.total);
 
@@ -2660,14 +2678,14 @@ function istTodayKeyChats() {
   return new Date(Date.now() + ISTANBUL_OFFSET_MS).toISOString().slice(0, 10);
 }
 
-async function upsertChatTotalsDay(employee, date, livechat, chatwoot, supervised, mobile, answered, transferred, transferredDept, transferredNoResponse) {
+async function upsertChatTotalsDay(employee, date, livechat, chatwoot, supervised, mobile, answered, transferred, transferredDept, transferredNoResponse, durationSec) {
   if (!pool) return;
   try {
     await pool.query(
-      `INSERT INTO chat_totals_daily (employee, date, livechat, chatwoot, supervised, mobile, answered, transferred, transferred_dept, transferred_no_response, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
-       ON CONFLICT (employee, date) DO UPDATE SET livechat=$3, chatwoot=$4, supervised=$5, mobile=$6, answered=$7, transferred=$8, transferred_dept=$9, transferred_no_response=$10, updated_at=NOW()`,
-      [employee, date, livechat, chatwoot, supervised, mobile, answered, transferred, transferredDept, transferredNoResponse]
+      `INSERT INTO chat_totals_daily (employee, date, livechat, chatwoot, supervised, mobile, answered, transferred, transferred_dept, transferred_no_response, duration_sec, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())
+       ON CONFLICT (employee, date) DO UPDATE SET livechat=$3, chatwoot=$4, supervised=$5, mobile=$6, answered=$7, transferred=$8, transferred_dept=$9, transferred_no_response=$10, duration_sec=$11, updated_at=NOW()`,
+      [employee, date, livechat, chatwoot, supervised, mobile, answered, transferred, transferredDept, transferredNoResponse, durationSec || 0]
     );
   } catch (e) { console.error(`[chat_totals_daily] upsert failed for ${employee} ${date}:`, e.message); }
 }
@@ -2676,16 +2694,17 @@ async function loadChatTotalsRangeFromDB(dateFrom, dateTo, employeeFilter) {
   if (!pool) return {};
   try {
     const params = [dateFrom, dateTo];
-    let q = "SELECT employee, date, livechat, chatwoot, supervised, mobile, answered, transferred, transferred_dept, transferred_no_response FROM chat_totals_daily WHERE date >= $1 AND date <= $2";
+    let q = "SELECT employee, date, livechat, chatwoot, supervised, mobile, answered, transferred, transferred_dept, transferred_no_response, duration_sec FROM chat_totals_daily WHERE date >= $1 AND date <= $2";
     if (employeeFilter) { params.push(employeeFilter); q += " AND employee = $3"; }
     const r = await pool.query(q, params);
-    const out = {}; // employee -> date -> {livechat, chatwoot, supervised, mobile, answered, transferred, transferredDept, transferredNoResponse}
+    const out = {}; // employee -> date -> {livechat, chatwoot, supervised, mobile, answered, transferred, transferredDept, transferredNoResponse, durationSec}
     for (const row of r.rows) {
       if (!out[row.employee]) out[row.employee] = {};
       out[row.employee][row.date] = {
         livechat: row.livechat, chatwoot: row.chatwoot, supervised: row.supervised, mobile: row.mobile,
         answered: row.answered, transferred: row.transferred,
         transferredDept: row.transferred_dept, transferredNoResponse: row.transferred_no_response,
+        durationSec: row.duration_sec || 0,
       };
     }
     return out;
@@ -2716,7 +2735,7 @@ async function getChatTotalsCachedDays(dateFrom, dateTo) {
 async function computeAndStoreChatTotalsDay(dateKey) {
   const result = await computeChatTotalsLive({ dateFrom: dateKey, dateTo: dateKey, employeeFilter: null, includeSupervised: true });
   await Promise.all(result.employees.map((e) =>
-    upsertChatTotalsDay(e.name, dateKey, e.livechat, e.chatwoot, e.supervised, e.mobile, e.answered, e.transferred, e.transferredDept, e.transferredNoResponse)
+    upsertChatTotalsDay(e.name, dateKey, e.livechat, e.chatwoot, e.supervised, e.mobile, e.answered, e.transferred, e.transferredDept, e.transferredNoResponse, e.durationSec)
   ));
   await markChatTotalsDayCached(dateKey);
   return result;
@@ -2766,7 +2785,7 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
       if (!daily[date]) daily[date] = { livechat: 0, chatwoot: 0 };
       daily[date].livechat += d.livechat;
       daily[date].chatwoot += d.chatwoot;
-      if (!empTotals[employee]) empTotals[employee] = { livechat: 0, chatwoot: 0, supervised: 0, mobile: 0, answered: 0, transferred: 0, transferredDept: 0, transferredNoResponse: 0 };
+      if (!empTotals[employee]) empTotals[employee] = { livechat: 0, chatwoot: 0, supervised: 0, mobile: 0, answered: 0, transferred: 0, transferredDept: 0, transferredNoResponse: 0, durationSec: 0 };
       empTotals[employee].livechat += d.livechat;
       empTotals[employee].chatwoot += d.chatwoot;
       empTotals[employee].supervised += d.supervised;
@@ -2775,6 +2794,7 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
       empTotals[employee].transferred += d.transferred || 0;
       empTotals[employee].transferredDept += d.transferredDept || 0;
       empTotals[employee].transferredNoResponse += d.transferredNoResponse || 0;
+      empTotals[employee].durationSec += d.durationSec || 0;
     }
   }
 
@@ -2783,6 +2803,7 @@ async function computeChatTotals({ dateFrom, dateTo, employeeFilter }) {
       name, livechat: d.livechat, chatwoot: d.chatwoot, total: d.livechat + d.chatwoot,
       supervised: d.supervised, mobile: d.mobile, answered: d.answered, transferred: d.transferred,
       transferredDept: d.transferredDept, transferredNoResponse: d.transferredNoResponse,
+      durationSec: d.durationSec,
     }))
     .sort((a, b) => b.total - a.total);
 
@@ -4210,6 +4231,201 @@ async function runNightlyReview() {
     console.error("[nightly] Fatal error:", e.message);
   }
 }
+
+// ── App settings (simple key/value store) ───────────────────────────────────
+async function getAppSetting(key) {
+  if (!pool) return null;
+  try {
+    const r = await pool.query("SELECT value FROM app_settings WHERE key=$1", [key]);
+    return r.rows[0]?.value ?? null;
+  } catch (e) { console.error("[app_settings] get failed:", e.message); return null; }
+}
+
+async function setAppSetting(key, value) {
+  if (!pool) return;
+  await pool.query(
+    `INSERT INTO app_settings (key, value, updated_at) VALUES ($1,$2,NOW())
+     ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=NOW()`,
+    [key, value]
+  );
+}
+
+app.get("/api/settings/leave-sheet-url", authMiddleware, requirePermission("page:config"), async (req, res) => {
+  try {
+    const url = await getAppSetting("leave_sheet_url");
+    res.json({ url: url || "" });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/settings/leave-sheet-url", authMiddleware, requirePermission("page:config"), async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: "No database configured" });
+    const { url } = req.body || {};
+    await setAppSetting("leave_sheet_url", (url || "").trim());
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Leave sheet (Google Sheets roster — cells marked "Leave") ──────────────────
+// No live Google API integration — the sheet just needs to be link-shareable
+// ("Anyone with the link can view"), and we read it via Sheets' built-in CSV
+// export endpoint, which works unauthenticated for link-shared sheets.
+
+// A minimal RFC-4180 CSV parser — needed because roster cells can contain
+// embedded commas (e.g. "Chatwoot - Shift 10 to 18, Livechat - Shift 10 to 18"),
+// which a naive comma-split would break.
+function parseCsv(text) {
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ",") {
+      row.push(field); field = "";
+    } else if (c === "\r") {
+      // skip
+    } else if (c === "\n") {
+      row.push(field); rows.push(row); row = []; field = "";
+    } else {
+      field += c;
+    }
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+function googleSheetIdFromUrl(url) {
+  const m = (url || "").match(/\/d\/([a-zA-Z0-9-_]+)/);
+  return m ? m[1] : null;
+}
+
+async function fetchLeaveSheetRows() {
+  const url = await getAppSetting("leave_sheet_url");
+  if (!url) return null;
+  const sheetId = googleSheetIdFromUrl(url);
+  if (!sheetId) throw new Error("Leave sheet URL doesn't look like a Google Sheets link");
+  const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
+  const res = await fetch(exportUrl);
+  if (!res.ok) throw new Error(`Leave sheet fetch failed: ${res.status}`);
+  const text = await res.text();
+  return parseCsv(text);
+}
+
+// Sheet dates are formatted M/D/YYYY (e.g. "8/31/2026") — convert to YYYY-MM-DD
+// so they compare correctly against the report's date range.
+function parseSheetDate(str) {
+  const m = (str || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  const [, mm, dd, yyyy] = m;
+  return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
+}
+
+// Returns { sheetEmployeeName: leaveDayCount } for cells exactly equal to "Leave"
+// (case-insensitive) within [dateFrom, dateTo] inclusive. Row layout: col 0 =
+// weekday, col 1 = Date, col 2+ = one column per employee (header = their name).
+async function getLeaveCounts(dateFrom, dateTo) {
+  const rows = await fetchLeaveSheetRows();
+  if (!rows || !rows.length) return {};
+  const header = rows[0];
+  const employeeCols = header
+    .map((name, idx) => ({ name: (name || "").trim(), col: idx }))
+    .filter((c) => c.name && c.col >= 2);
+  const counts = {};
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    const dateKey = parseSheetDate(row[1]);
+    if (!dateKey || dateKey < dateFrom || dateKey > dateTo) continue;
+    for (const { name, col } of employeeCols) {
+      const cell = (row[col] || "").trim().toLowerCase();
+      if (cell === "leave") counts[name] = (counts[name] || 0) + 1;
+    }
+  }
+  return counts;
+}
+
+// Matches a sheet column header (often a first name) against an app employee
+// name (which may be a fuller name) — same exact-or-first-word heuristic used
+// elsewhere in this file (e.g. agentKey matching) to bridge two naming schemes.
+function matchLeaveCount(leaveCounts, employeeFullName) {
+  const empLow = employeeFullName.toLowerCase().trim();
+  const empFirst = empLow.split(" ")[0];
+  for (const [sheetName, count] of Object.entries(leaveCounts)) {
+    const sLow = sheetName.toLowerCase().trim();
+    const sFirst = sLow.split(" ")[0];
+    if (sLow === empLow || sFirst === empFirst) return count;
+  }
+  return 0;
+}
+
+// ── Monthly Summary Report (chats by group, per-employee share, chat hours,
+// availability, leave) ──────────────────────────────────────────────────────
+async function computeMonthlySummary({ dateFrom, dateTo }) {
+  const [chatTotals, agentActivity, allShifts, leaveCounts] = await Promise.all([
+    computeChatTotals({ dateFrom, dateTo, employeeFilter: null }),
+    computeAgentActivity({ dateFrom, dateTo, employeeFilter: null }),
+    loadShifts(),
+    getLeaveCounts(dateFrom, dateTo).catch((e) => { console.error("[monthly-summary] leave sheet error:", e.message); return {}; }),
+  ]);
+  const shifts = visibleShifts(allShifts);
+
+  // An employee's department(s) is the union of "groups" across all of their
+  // shift rows (an employee can have more than one shift row, e.g. different
+  // hours on different platforms).
+  const employeeGroups = {};
+  for (const s of shifts) {
+    if (!employeeGroups[s.employee]) employeeGroups[s.employee] = new Set();
+    (s.groups || []).forEach((g) => employeeGroups[s.employee].add(g));
+  }
+
+  const activityByName = Object.fromEntries(agentActivity.employees.map((e) => [e.name, e]));
+  const chatByName = Object.fromEntries(chatTotals.employees.map((e) => [e.name, e]));
+
+  const employeeNames = new Set([...Object.keys(chatByName), ...Object.keys(employeeGroups)]);
+
+  const employees = [...employeeNames].map((name) => {
+    const chat = chatByName[name] || { total: 0, durationSec: 0 };
+    const activity = activityByName[name] || { totalOnline: 0, totalClosed: 0 };
+    const groups = [...(employeeGroups[name] || [])];
+    return {
+      name,
+      groups,
+      totalChats: chat.total || 0,
+      chatHours: +((chat.durationSec || 0) / 3600).toFixed(2),
+      onlineHours: activity.totalOnline || 0,
+      closedHours: activity.totalClosed || 0,
+      leaveDays: matchLeaveCount(leaveCounts, name),
+    };
+  }).sort((a, b) => b.totalChats - a.totalChats);
+
+  const grandTotal = employees.reduce((s, e) => s + e.totalChats, 0);
+
+  // Group totals — an employee belonging to more than one group (e.g. General
+  // AND Social Trade) has their chats counted fully in each group, per how
+  // the business wants shared/cross-trained agents represented here.
+  const groupSet = new Set(["General", "Social Trade"]);
+  employees.forEach((e) => e.groups.forEach((g) => groupSet.add(g)));
+  const groups = [...groupSet].sort().map((g) => ({
+    name: g,
+    totalChats: employees.filter((e) => e.groups.includes(g)).reduce((s, e) => s + e.totalChats, 0),
+  }));
+
+  return { date_from: dateFrom, date_to: dateTo, grand_total: grandTotal, groups, employees };
+}
+
+app.get("/api/reports/monthly-summary", authMiddleware, requirePermission("page:report-monthly-summary"), async (req, res) => {
+  try {
+    const { date_from, date_to } = req.query;
+    if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
+    const result = await computeMonthlySummary({ dateFrom: date_from, dateTo: date_to });
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // Nightly auto-review disabled — enable by uncommenting below
 // ── Reports ───────────────────────────────────────────────────────────────────
