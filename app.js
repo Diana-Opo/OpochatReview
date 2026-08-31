@@ -3160,6 +3160,7 @@ async function debugUnassignedMonthlySummary() {
           <th class="px-4 py-2">Matched employee</th>
           <th class="px-4 py-2">Reason</th>
           <th class="px-4 py-2 text-center">Count</th>
+          <th class="px-4 py-2">Sample chat ID(s)</th>
         </tr></thead>
         <tbody>
           ${rows.map(r => `<tr class="border-t border-[#1a2d4a]">
@@ -3167,6 +3168,7 @@ async function debugUnassignedMonthlySummary() {
             <td class="px-4 py-2 text-slate-400">${r.employee ? escHtml(r.employee) : "—"}</td>
             <td class="px-4 py-2 text-slate-400">${escHtml(r.reason)}</td>
             <td class="px-4 py-2 text-center text-rose-400 font-semibold">${r.count}</td>
+            <td class="px-4 py-2 text-slate-400 font-mono">${(r.sampleChatIds || []).map(escHtml).join(", ") || "—"}</td>
           </tr>`).join("")}
         </tbody>
       </table>` + knownKeysHtml;

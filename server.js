@@ -4433,7 +4433,7 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
   const lcGroupNameById = Object.fromEntries(lcGroupList.map((g) => [g.id, g.name]));
 
   const groupCounts = {};
-  const unassignedBreakdown = {}; // raw name -> { name, employee, reason, count }
+  const unassignedBreakdown = {}; // raw name -> { name, employee, reason, count, sampleChatIds }
   function bump(groups, meta) {
     if (groups.length) {
       groups.forEach((g) => { groupCounts[g] = (groupCounts[g] || 0) + 1; });
@@ -4442,9 +4442,12 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
     groupCounts.Unassigned = (groupCounts.Unassigned || 0) + 1;
     const label = meta?.name || "(unknown)";
     if (!unassignedBreakdown[label]) {
-      unassignedBreakdown[label] = { name: label, employee: meta?.employee || null, reason: meta?.reason || "unmatched", count: 0 };
+      unassignedBreakdown[label] = { name: label, employee: meta?.employee || null, reason: meta?.reason || "unmatched", count: 0, sampleChatIds: [] };
     }
     unassignedBreakdown[label].count++;
+    if (meta?.chatId && unassignedBreakdown[label].sampleChatIds.length < 3 && !unassignedBreakdown[label].sampleChatIds.includes(meta.chatId)) {
+      unassignedBreakdown[label].sampleChatIds.push(meta.chatId);
+    }
   }
 
   // A chat transferred between groups should count once, for whichever group it
@@ -4475,7 +4478,7 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
       lcTotal++;
       const finalGroupName = finalLcGroupName(thread);
       const dept = finalGroupName ? deptFromLcGroupName(finalGroupName) : null;
-      bump(dept ? [dept] : [], { name: finalGroupName || "(no group)", employee: null, reason: finalGroupName ? "chat's final LiveChat group isn't General/Social Trade/KYC" : "chat has no LiveChat routing group" });
+      bump(dept ? [dept] : [], { name: finalGroupName || "(no group)", employee: null, reason: finalGroupName ? "chat's final LiveChat group isn't General/Social Trade/KYC" : "chat has no LiveChat routing group", chatId: c.id });
     }
   } while (pid);
 
@@ -4517,7 +4520,7 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
         // so an employee tagged with 2+ departments can't be disambiguated per-chat —
         // take just their first department, consistent with "no double counting".
         const employeeDept = employee ? [...(employeeGroups[employee] || [])][0] : null;
-        bump(employeeDept ? [employeeDept] : [], { name: assignee.name || assignee.email, employee, reason: employee ? "employee has no department groups set" : "assignee didn't match any employee's Chatwoot agent id" });
+        bump(employeeDept ? [employeeDept] : [], { name: assignee.name || assignee.email, employee, reason: employee ? "employee has no department groups set" : "assignee didn't match any employee's Chatwoot agent id", chatId: `cw:${conv.id}` });
       }
     } catch (e) { console.error("[group-totals] Chatwoot error:", e.message); }
   }
