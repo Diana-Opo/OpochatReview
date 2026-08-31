@@ -4431,7 +4431,6 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
   }
   const lcGroupList = Array.isArray(lcGroupsRaw) ? lcGroupsRaw : (lcGroupsRaw?.groups || []);
   const lcGroupNameById = Object.fromEntries(lcGroupList.map((g) => [g.id, g.name]));
-  const lcGroupDeptById = Object.fromEntries(lcGroupList.map((g) => [g.id, deptFromLcGroupName(g.name)]));
 
   const groupCounts = {};
   const unassignedBreakdown = {}; // raw name -> { name, employee, reason, count }
@@ -4448,6 +4447,21 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
     unassignedBreakdown[label].count++;
   }
 
+  // A chat transferred between groups should count once, for whichever group it
+  // ACTUALLY ended with — not once per group it ever passed through. LiveChat
+  // logs every transfer as a structured "chat_transferred" system message
+  // (text_vars.targets = the destination group's exact name), so the last such
+  // event in the thread tells us precisely where the chat ended up. No transfer
+  // at all just means it stayed in whichever group(s) it started in.
+  function finalLcGroupName(thread) {
+    const transfers = (thread.events || [])
+      .filter((e) => e.system_message_type === "chat_transferred" && e.text_vars?.targets)
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    if (transfers.length) return transfers[transfers.length - 1].text_vars.targets;
+    const groupIds = thread.access?.group_ids || [];
+    return groupIds.length ? lcGroupNameById[groupIds[0]] : null;
+  }
+
   let lcTotal = 0;
   let pid = null;
   do {
@@ -4459,10 +4473,9 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
       const chatTime = thread.created_at || null;
       if (!chatTime) continue;
       lcTotal++;
-      const groupIds = thread.access?.group_ids || [];
-      const depts = [...new Set(groupIds.map((id) => lcGroupDeptById[id]).filter(Boolean))];
-      const rawGroupNames = groupIds.map((id) => lcGroupNameById[id] || `#${id}`).join(", ") || "(no group)";
-      bump(depts, { name: rawGroupNames, employee: null, reason: groupIds.length ? "chat's LiveChat group isn't General/Social Trade/KYC" : "chat has no LiveChat routing group" });
+      const finalGroupName = finalLcGroupName(thread);
+      const dept = finalGroupName ? deptFromLcGroupName(finalGroupName) : null;
+      bump(dept ? [dept] : [], { name: finalGroupName || "(no group)", employee: null, reason: finalGroupName ? "chat's final LiveChat group isn't General/Social Trade/KYC" : "chat has no LiveChat routing group" });
     }
   } while (pid);
 
@@ -4500,8 +4513,11 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
           return cwId === aEmail || cwId === aName || cwId.split("@")[0] === aName;
         });
         const employee = matchedShift ? matchedShift.employee : null;
-        const groups = employee ? [...(employeeGroups[employee] || [])] : [];
-        bump(groups, { name: assignee.name || assignee.email, employee, reason: employee ? "employee has no department groups set" : "assignee didn't match any employee's Chatwoot agent id" });
+        // Chatwoot has no per-chat department signal like LiveChat's routing group,
+        // so an employee tagged with 2+ departments can't be disambiguated per-chat —
+        // take just their first department, consistent with "no double counting".
+        const employeeDept = employee ? [...(employeeGroups[employee] || [])][0] : null;
+        bump(employeeDept ? [employeeDept] : [], { name: assignee.name || assignee.email, employee, reason: employee ? "employee has no department groups set" : "assignee didn't match any employee's Chatwoot agent id" });
       }
     } catch (e) { console.error("[group-totals] Chatwoot error:", e.message); }
   }
