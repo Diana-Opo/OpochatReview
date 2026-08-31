@@ -3142,8 +3142,14 @@ async function debugUnassignedMonthlySummary() {
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || res.status);
     const rows = (data.unassigned_breakdown || []);
+    const knownKeys = (data.known_agent_keys || []);
+    const knownKeysHtml = `
+      <div class="px-4 py-2 border-t border-[#1a2d4a] text-xs text-slate-400">Exact agentKey strings currently in Employees (compare character-by-character against the raw names above):</div>
+      <div class="px-4 py-2 flex flex-wrap gap-1.5">
+        ${knownKeys.map(k => `<span class="text-xs bg-[#0a1628] border border-[#1a2d4a] rounded px-2 py-1 text-slate-300" title="${escHtml(k.employees.join(', '))}">${escHtml(k.agentKey)}</span>`).join("") || '<span class="text-xs text-slate-500">(none found)</span>'}
+      </div>`;
     if (!rows.length) {
-      panel.innerHTML = `<div class="p-4 text-center text-emerald-400 text-sm">No unassigned chats in this range — every chat resolved to a department.</div>`;
+      panel.innerHTML = `<div class="p-4 text-center text-emerald-400 text-sm">No unassigned chats in this range — every chat resolved to a department.</div>` + knownKeysHtml;
       return;
     }
     panel.innerHTML = `
@@ -3163,7 +3169,7 @@ async function debugUnassignedMonthlySummary() {
             <td class="px-4 py-2 text-center text-rose-400 font-semibold">${r.count}</td>
           </tr>`).join("")}
         </tbody>
-      </table>`;
+      </table>` + knownKeysHtml;
   } catch (e) {
     panel.innerHTML = `<div class="p-4 text-center text-red-400 text-sm">Error: ${escHtml(e.message)}</div>`;
   }

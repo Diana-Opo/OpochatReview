@@ -4415,10 +4415,11 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
   const lcFrom = fromDate.toISOString().replace(/\.\d{3}Z$/, ".000000+00:00");
   const lcTo   = toDate.toISOString().replace(/\.\d{3}Z$/, ".999999+00:00");
 
-  const [allShifts, weekendOverrides] = await Promise.all([
-    visibleShifts(await loadShifts()),
+  const [allShiftsRaw, weekendOverrides] = await Promise.all([
+    loadShifts(),
     loadWeekendOverrides(),
   ]);
+  const allShifts = visibleShifts(allShiftsRaw);
 
   const employeeGroups = {};
   const agentKeyShifts = {};
@@ -4535,7 +4536,14 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
   if (groupCounts.Unassigned) groups.push({ name: "Unassigned", totalChats: groupCounts.Unassigned });
 
   const unassignedBreakdownList = Object.values(unassignedBreakdown).sort((a, b) => b.count - a.count);
-  return { grandTotal: lcTotal + cwTotal, groups, unassignedBreakdown: unassignedBreakdownList };
+  // Exposed for debugging only — lets an admin visually diff a raw LiveChat/Chatwoot
+  // name against the exact agentKey strings actually stored in agent_shifts, to catch
+  // things a human eye skims past (typos, stray whitespace, lookalike characters).
+  const knownAgentKeys = Object.entries(agentKeyShifts).map(([key, list]) => ({
+    agentKey: key,
+    employees: [...new Set(list.map((s) => s.employee))],
+  }));
+  return { grandTotal: lcTotal + cwTotal, groups, unassignedBreakdown: unassignedBreakdownList, knownAgentKeys };
 }
 
 // ── Department totals cache (department_totals_daily) — same cache-past-days,
@@ -4695,7 +4703,7 @@ app.get("/api/reports/monthly-summary/debug-unassigned", authMiddleware, require
     const { date_from, date_to } = req.query;
     if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
     const result = await computeGroupChatTotalsLive({ dateFrom: date_from, dateTo: date_to });
-    res.json({ grand_total: result.grandTotal, groups: result.groups, unassigned_breakdown: result.unassignedBreakdown });
+    res.json({ grand_total: result.grandTotal, groups: result.groups, unassigned_breakdown: result.unassignedBreakdown, known_agent_keys: result.knownAgentKeys });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
