@@ -4417,12 +4417,15 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
   // agent happened to reply, so use it directly instead. Group names look like
   // "KYC (English)" / "Social-Trade (Farsi)" / "General" — the department is
   // whatever's before " (" (hyphens normalized to spaces to match this app's
-  // "Social Trade" spelling). Non-department queues (ForFx/Instagram/Telegram/
-  // Pay & Change/etc.) intentionally map to null — they're a different routing
-  // concern, not a fourth department, and chats landing only in one of those
-  // fall through to "Unassigned" with the raw group name shown for context.
+  // "Social Trade" spelling). A few queues don't follow that naming convention
+  // but are still explicitly wanted under a department (LC_GROUP_NAME_OVERRIDES);
+  // anything else (ForFx/Instagram/Pay & Change/etc.) intentionally maps to null
+  // — a different routing concern, not a fourth department — and chats landing
+  // only in one of those fall through to "Unassigned" with the raw name shown.
   const KNOWN_DEPARTMENTS = ["General", "Social Trade", "KYC"];
+  const LC_GROUP_NAME_OVERRIDES = { "Telegram": "General" };
   function deptFromLcGroupName(name) {
+    if (LC_GROUP_NAME_OVERRIDES[name]) return LC_GROUP_NAME_OVERRIDES[name];
     const base = ((name || "").includes(" (") ? name.split(" (")[0] : name).replace(/-/g, " ").trim();
     return KNOWN_DEPARTMENTS.find((d) => d.toLowerCase() === base.toLowerCase()) || null;
   }
