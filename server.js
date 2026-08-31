@@ -4383,25 +4383,6 @@ function matchLeaveCount(leaveCounts, employeeFullName) {
   return 0;
 }
 
-// Among all PUBLIC agent messages in a thread, returns the one with the latest
-// timestamp — i.e. whichever agent actually closed out the conversation. Used
-// to attribute a chat to exactly one department: if it started with a General
-// agent and got handed to Social Trade, it should only count once, for
-// whoever it ended with — not once per department it passed through.
-function finalAgentInThread(events, users) {
-  let last = null;
-  for (const e of events) {
-    const isPrivate = e.visibility === "agents" || e.type === "annotation";
-    if (isPrivate || e.type !== "message") continue;
-    const user = users.find((u) => u.id === e.author_id);
-    if (user?.type !== "agent") continue;
-    if (!last || new Date(e.created_at) > new Date(last.created_at)) {
-      last = { id: user.id, name: user.name, created_at: e.created_at };
-    }
-  }
-  return last;
-}
-
 // Dedicated, uncached, single-pass count of unique chats by department — deliberately
 // separate from computeChatTotals()/chat_totals_daily, which counts a chat once per
 // employee who ever touched it (the right thing for "how many chats did X handle",
@@ -4420,44 +4401,34 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
   // employee-performance breakdowns". Department attribution is a different
   // concern: a chat this employee closed still really happened and really
   // belongs to their department, chart-hidden or not.
-  const [allShifts, weekendOverrides] = await Promise.all([
+  const [allShifts, lcGroupsRaw] = await Promise.all([
     loadShifts(),
-    loadWeekendOverrides(),
+    lcPost("list_groups", {}, LC_CONFIG_API),
   ]);
 
   const employeeGroups = {};
-  const agentKeyShifts = {};
   for (const s of allShifts) {
     if (!employeeGroups[s.employee]) employeeGroups[s.employee] = new Set();
     (s.groups || []).forEach((g) => employeeGroups[s.employee].add(g));
-    const key = s.agentKey.toLowerCase().trim();
-    if (!agentKeyShifts[key]) agentKeyShifts[key] = [];
-    agentKeyShifts[key].push(s);
   }
 
-  function getIstHour(chatTime) {
-    return ((new Date(chatTime).getTime() + ISTANBUL_OFFSET_MS) / 3600000) % 24;
+  // LiveChat chats carry their own routing "Group" (thread.access.group_ids) —
+  // a far more reliable department signal than inferring it from whichever
+  // agent happened to reply, so use it directly instead. Group names look like
+  // "KYC (English)" / "Social-Trade (Farsi)" / "General" — the department is
+  // whatever's before " (" (hyphens normalized to spaces to match this app's
+  // "Social Trade" spelling). Non-department queues (ForFx/Instagram/Telegram/
+  // Pay & Change/etc.) intentionally map to null — they're a different routing
+  // concern, not a fourth department, and chats landing only in one of those
+  // fall through to "Unassigned" with the raw group name shown for context.
+  const KNOWN_DEPARTMENTS = ["General", "Social Trade", "KYC"];
+  function deptFromLcGroupName(name) {
+    const base = ((name || "").includes(" (") ? name.split(" (")[0] : name).replace(/-/g, " ").trim();
+    return KNOWN_DEPARTMENTS.find((d) => d.toLowerCase() === base.toLowerCase()) || null;
   }
-  function istDayKey(ms) {
-    return new Date(ms + ISTANBUL_OFFSET_MS).toISOString().slice(0, 10);
-  }
-
-  // Same shared-login-by-shift-hour resolution used everywhere else in this file,
-  // just entered from a raw agent NAME instead of an already-known agentKey.
-  function resolveEmployeeForLcAgent(agentName, chatTimeIso) {
-    const low = (agentName || "").toLowerCase().trim();
-    const key = Object.keys(agentKeyShifts).find((k) => k === low || k === low.split(" ")[0]);
-    if (!key) return null;
-    const shiftList = agentKeyShifts[key];
-    const uniqueEmps = [...new Set(shiftList.map((s) => s.employee))];
-    if (uniqueEmps.length === 1) return uniqueEmps[0];
-    const dayKey = istDayKey(new Date(chatTimeIso).getTime());
-    const hour = getIstHour(chatTimeIso);
-    const overrideEmp = findOverrideEmployee(weekendOverrides, "livechat", dayKey, hour, uniqueEmps);
-    if (overrideEmp) return overrideEmp;
-    const matched = shiftList.find((s) => hour >= s.start && hour < s.end);
-    return (matched || shiftList[0]).employee;
-  }
+  const lcGroupList = Array.isArray(lcGroupsRaw) ? lcGroupsRaw : (lcGroupsRaw?.groups || []);
+  const lcGroupNameById = Object.fromEntries(lcGroupList.map((g) => [g.id, g.name]));
+  const lcGroupDeptById = Object.fromEntries(lcGroupList.map((g) => [g.id, deptFromLcGroupName(g.name)]));
 
   const groupCounts = {};
   const unassignedBreakdown = {}; // raw name -> { name, employee, reason, count }
@@ -4482,16 +4453,13 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
     pid = data.next_page_id || null;
     for (const c of data.chats || []) {
       const thread = c.thread || (c.threads?.[0]) || {};
-      const users = c.users || [];
-      const events = thread.events || [];
       const chatTime = thread.created_at || null;
       if (!chatTime) continue;
-      const finalAgent = finalAgentInThread(events, users);
-      if (!finalAgent) continue; // no agent ever replied — nothing to attribute
       lcTotal++;
-      const employee = resolveEmployeeForLcAgent(finalAgent.name, chatTime);
-      const groups = employee ? [...(employeeGroups[employee] || [])] : [];
-      bump(groups, { name: finalAgent.name, employee, reason: employee ? "employee has no department groups set" : "agent name didn't match any employee's agentKey" });
+      const groupIds = thread.access?.group_ids || [];
+      const depts = [...new Set(groupIds.map((id) => lcGroupDeptById[id]).filter(Boolean))];
+      const rawGroupNames = groupIds.map((id) => lcGroupNameById[id] || `#${id}`).join(", ") || "(no group)";
+      bump(depts, { name: rawGroupNames, employee: null, reason: groupIds.length ? "chat's LiveChat group isn't General/Social Trade/KYC" : "chat has no LiveChat routing group" });
     }
   } while (pid);
 
@@ -4540,12 +4508,13 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
   if (groupCounts.Unassigned) groups.push({ name: "Unassigned", totalChats: groupCounts.Unassigned });
 
   const unassignedBreakdownList = Object.values(unassignedBreakdown).sort((a, b) => b.count - a.count);
-  // Exposed for debugging only — lets an admin visually diff a raw LiveChat/Chatwoot
-  // name against the exact agentKey strings actually stored in agent_shifts, to catch
-  // things a human eye skims past (typos, stray whitespace, lookalike characters).
-  const knownAgentKeys = Object.entries(agentKeyShifts).map(([key, list]) => ({
-    agentKey: key,
-    employees: [...new Set(list.map((s) => s.employee))],
+  // Exposed for debugging only — LiveChat department attribution no longer does any
+  // string matching (it reads the chat's own routing group directly), so the only
+  // remaining raw-string match is Chatwoot's assignee -> chatwootAgentId. Lets an
+  // admin visually diff a raw Chatwoot assignee name/email against what's configured.
+  const knownAgentKeys = allShifts.filter((s) => s.chatwootAgentId).map((s) => ({
+    agentKey: s.chatwootAgentId,
+    employees: [s.employee],
   }));
   return { grandTotal: lcTotal + cwTotal, groups, unassignedBreakdown: unassignedBreakdownList, knownAgentKeys };
 }

@@ -3144,7 +3144,7 @@ async function debugUnassignedMonthlySummary() {
     const rows = (data.unassigned_breakdown || []);
     const knownKeys = (data.known_agent_keys || []);
     const knownKeysHtml = `
-      <div class="px-4 py-2 border-t border-[#1a2d4a] text-xs text-slate-400">Exact agentKey strings currently in Employees (compare character-by-character against the raw names above):</div>
+      <div class="px-4 py-2 border-t border-[#1a2d4a] text-xs text-slate-400">Configured Chatwoot agent IDs (LiveChat now uses the chat's own routing group directly, not agent matching — this list is only relevant to Chatwoot mismatches):</div>
       <div class="px-4 py-2 flex flex-wrap gap-1.5">
         ${knownKeys.map(k => `<span class="text-xs bg-[#0a1628] border border-[#1a2d4a] rounded px-2 py-1 text-slate-300" title="${escHtml(k.employees.join(', '))}">${escHtml(k.agentKey)}</span>`).join("") || '<span class="text-xs text-slate-500">(none found)</span>'}
       </div>`;
