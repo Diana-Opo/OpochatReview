@@ -4415,11 +4415,15 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
   const lcFrom = fromDate.toISOString().replace(/\.\d{3}Z$/, ".000000+00:00");
   const lcTo   = toDate.toISOString().replace(/\.\d{3}Z$/, ".999999+00:00");
 
-  const [allShiftsRaw, weekendOverrides] = await Promise.all([
+  // Deliberately NOT filtered through visibleShifts() — the "Chart" checkbox in
+  // Employees only means "leave this person out of the Dashboard chart / other
+  // employee-performance breakdowns". Department attribution is a different
+  // concern: a chat this employee closed still really happened and really
+  // belongs to their department, chart-hidden or not.
+  const [allShifts, weekendOverrides] = await Promise.all([
     loadShifts(),
     loadWeekendOverrides(),
   ]);
-  const allShifts = visibleShifts(allShiftsRaw);
 
   const employeeGroups = {};
   const agentKeyShifts = {};
