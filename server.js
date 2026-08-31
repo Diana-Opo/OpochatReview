@@ -4452,13 +4452,17 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
 
   // A chat transferred between groups should count once, for whichever group it
   // ACTUALLY ended with — not once per group it ever passed through. LiveChat
-  // logs every transfer as a structured "chat_transferred" system message
-  // (text_vars.targets = the destination group's exact name), so the last such
-  // event in the thread tells us precisely where the chat ended up. No transfer
-  // at all just means it stayed in whichever group(s) it started in.
+  // logs every transfer as a structured "chat_transferred" system message, but
+  // text_vars.targets can be EITHER a destination group's name ("KYC (Farsi)")
+  // OR a specific colleague's name ("Eleanor") when an agent hands the chat to
+  // another agent within the same group — only the former is a real department
+  // change, so filter to targets that are actually a known LiveChat group name.
+  // No group-transfer at all (or only agent-to-agent handoffs) just means the
+  // chat stayed in whichever group(s) it started in.
+  const lcGroupNameSet = new Set(lcGroupList.map((g) => g.name));
   function finalLcGroupName(thread) {
     const transfers = (thread.events || [])
-      .filter((e) => e.system_message_type === "chat_transferred" && e.text_vars?.targets)
+      .filter((e) => e.system_message_type === "chat_transferred" && lcGroupNameSet.has(e.text_vars?.targets))
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     if (transfers.length) return transfers[transfers.length - 1].text_vars.targets;
     const groupIds = thread.access?.group_ids || [];
