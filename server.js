@@ -356,6 +356,19 @@ if (process.env.DATABASE_URL) {
     value TEXT,
     updated_at TIMESTAMPTZ DEFAULT NOW()
   )`).then(() => console.log("[db] app_settings table ready")).catch(e => console.error("[db] app_settings init:", e.message));
+
+  // ── department_totals_daily table (cached per-day dedup'd chat count by
+  // department — see computeGroupChatTotals()) ───────────────────────────────
+  pool.query(`CREATE TABLE IF NOT EXISTS department_totals_daily (
+    date TEXT PRIMARY KEY,
+    grand_total INTEGER NOT NULL DEFAULT 0,
+    departments JSONB NOT NULL DEFAULT '{}',
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )`).then(() => console.log("[db] department_totals_daily table ready")).catch(e => console.error("[db] department_totals_daily init:", e.message));
+  pool.query(`CREATE TABLE IF NOT EXISTS department_totals_cached_days (
+    date TEXT PRIMARY KEY,
+    computed_at TIMESTAMPTZ DEFAULT NOW()
+  )`).then(() => console.log("[db] department_totals_cached_days table ready")).catch(e => console.error("[db] department_totals_cached_days init:", e.message));
 }
 const LC_API = "https://api.livechatinc.com/v3.6/agent/action";
 const LC_CONFIG_API = "https://api.livechatinc.com/v3.6/configuration/action";
@@ -4395,7 +4408,7 @@ function finalAgentInThread(events, users) {
 // but wrong for a department total: it would double-count a chat transferred across
 // departments). Each chat here is attributed to exactly one department: whichever
 // employee it ended with (final LiveChat agent, or Chatwoot's current assignee).
-async function computeGroupChatTotals({ dateFrom, dateTo }) {
+async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
   const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
   const fromDate = new Date(new Date(`${dateFrom}T00:00:00.000Z`).getTime() - ISTANBUL_OFFSET_MS);
   const toDate   = new Date(new Date(`${dateTo}T23:59:59.999Z`).getTime() - ISTANBUL_OFFSET_MS);
@@ -4510,6 +4523,98 @@ async function computeGroupChatTotals({ dateFrom, dateTo }) {
   if (groupCounts.Unassigned) groups.push({ name: "Unassigned", totalChats: groupCounts.Unassigned });
 
   return { grandTotal: lcTotal + cwTotal, groups };
+}
+
+// ── Department totals cache (department_totals_daily) — same cache-past-days,
+// always-refetch-today strategy as chat_totals_daily / agent_activity_daily, so
+// repeat views of the same range are instant instead of re-running the full
+// live LiveChat/Chatwoot pass computeGroupChatTotalsLive() does above. ────────
+
+function istTodayKeyGroups() {
+  const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
+  return new Date(Date.now() + ISTANBUL_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+async function upsertDepartmentTotalsDay(dateKey, grandTotal, departmentsObj) {
+  if (!pool) return;
+  try {
+    await pool.query(
+      `INSERT INTO department_totals_daily (date, grand_total, departments, updated_at)
+       VALUES ($1,$2,$3::jsonb,NOW())
+       ON CONFLICT (date) DO UPDATE SET grand_total=$2, departments=$3::jsonb, updated_at=NOW()`,
+      [dateKey, grandTotal, JSON.stringify(departmentsObj)]
+    );
+  } catch (e) { console.error(`[department_totals_daily] upsert failed for ${dateKey}:`, e.message); }
+}
+
+async function loadDepartmentTotalsRangeFromDB(dateFrom, dateTo) {
+  if (!pool) return {};
+  try {
+    const r = await pool.query("SELECT date, grand_total, departments FROM department_totals_daily WHERE date >= $1 AND date <= $2", [dateFrom, dateTo]);
+    const out = {};
+    for (const row of r.rows) out[row.date] = { grandTotal: row.grand_total, departments: row.departments || {} };
+    return out;
+  } catch (e) { console.error("[department_totals_daily] load failed:", e.message); return {}; }
+}
+
+async function markGroupTotalsDayCached(dateKey) {
+  if (!pool) return;
+  try {
+    await pool.query(
+      `INSERT INTO department_totals_cached_days (date, computed_at) VALUES ($1, NOW())
+       ON CONFLICT (date) DO UPDATE SET computed_at = NOW()`,
+      [dateKey]
+    );
+  } catch (e) { console.error(`[department_totals_cached_days] mark failed for ${dateKey}:`, e.message); }
+}
+
+async function getGroupTotalsCachedDays(dateFrom, dateTo) {
+  if (!pool) return new Set();
+  try {
+    const r = await pool.query("SELECT date FROM department_totals_cached_days WHERE date >= $1 AND date <= $2", [dateFrom, dateTo]);
+    return new Set(r.rows.map((row) => row.date));
+  } catch (e) { console.error("[department_totals_cached_days] load failed:", e.message); return new Set(); }
+}
+
+async function computeAndStoreGroupTotalsDay(dateKey) {
+  const result = await computeGroupChatTotalsLive({ dateFrom: dateKey, dateTo: dateKey });
+  const departmentsObj = Object.fromEntries(result.groups.map((g) => [g.name, g.totalChats]));
+  await upsertDepartmentTotalsDay(dateKey, result.grandTotal, departmentsObj);
+  await markGroupTotalsDayCached(dateKey);
+  return result;
+}
+
+// Cached entry point — computeMonthlySummary() calls this one.
+async function computeGroupChatTotals({ dateFrom, dateTo }) {
+  const todayKey = istTodayKeyGroups();
+  const days = [];
+  for (let d = new Date(`${dateFrom}T00:00:00Z`); d <= new Date(`${dateTo}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
+    days.push(d.toISOString().slice(0, 10));
+  }
+
+  const cachedDays = await getGroupTotalsCachedDays(dateFrom, dateTo);
+  const daysToFetch = days.filter((d) => d === todayKey || !cachedDays.has(d));
+  if (daysToFetch.length) {
+    await Promise.all(daysToFetch.map((d) =>
+      computeAndStoreGroupTotalsDay(d).catch((e) => console.error(`[group-totals] failed to fetch ${d}:`, e.message))
+    ));
+  }
+
+  const dbData = await loadDepartmentTotalsRangeFromDB(dateFrom, dateTo);
+  let grandTotal = 0;
+  const deptTotals = {};
+  for (const day of Object.values(dbData)) {
+    grandTotal += day.grandTotal || 0;
+    for (const [dept, count] of Object.entries(day.departments || {})) {
+      deptTotals[dept] = (deptTotals[dept] || 0) + count;
+    }
+  }
+
+  const groupSet = new Set(["General", "Social Trade", ...Object.keys(deptTotals).filter((g) => g !== "Unassigned")]);
+  const groups = [...groupSet].sort().map((g) => ({ name: g, totalChats: deptTotals[g] || 0 }));
+  if (deptTotals.Unassigned) groups.push({ name: "Unassigned", totalChats: deptTotals.Unassigned });
+
+  return { grandTotal, groups };
 }
 
 // ── Monthly Summary Report (chats by group, per-employee share, chat hours,
