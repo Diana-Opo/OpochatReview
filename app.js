@@ -3120,6 +3120,29 @@ ${opoLetterheadHtml()}
   <tbody>${rows}</tbody>
 </table>
 
+<div style="margin-top:20px;page-break-inside:avoid">
+  <div style="font-size:13px;font-weight:900;color:${PDF_TEXT};border-bottom:2px solid ${OPO_BRAND_BLUE};padding-bottom:6px;margin-bottom:10px">How to Read This Report</div>
+
+  <div style="font-size:9.5px;font-weight:800;color:#F5B800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Department Cards (Grand Total / General / Social Trade / KYC / Unassigned)</div>
+  <div style="font-size:9px;line-height:1.6;color:${PDF_TEXT_BODY};margin-bottom:10px">
+    <b style="color:${PDF_TEXT}">What it is:</b> the total number of individual customer chats (LiveChat + Chatwoot combined) opened in this date range, split by department.<br/>
+    <b style="color:${PDF_TEXT}">Where it comes from:</b> each chat counts toward exactly one department — for LiveChat, whichever routing group the chat actually ended in (its own group, or the group it was transferred to mid-conversation); for Chatwoot, the department assigned to whoever is currently the conversation's agent.<br/>
+    <b style="color:${PDF_TEXT}">What it tells you:</b> how chat volume was actually distributed across departments this period. "Unassigned" means a chat couldn't be matched to General/Social Trade/KYC (e.g. it landed in an unrelated queue, or no agent could be identified) — use "Debug Unassigned" on the report page to see exactly which chats and why.
+  </div>
+
+  <div style="font-size:9.5px;font-weight:800;color:#F5B800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Employee Table</div>
+  <div style="font-size:9px;line-height:1.7;color:${PDF_TEXT_BODY}">
+    <b style="color:${PDF_TEXT}">Employee</b> — the agent's name.<br/>
+    <b style="color:${PDF_TEXT}">Department(s)</b> — which department(s) this person is assigned to in Employee settings.<br/>
+    <b style="color:${PDF_TEXT}">Total Chats</b> — every chat this employee participated in during the period, counting a chat even if it was later transferred to someone else. This is a separate, usually larger number than the department cards above (one chat can be "touched" by more than one employee, but is only counted once toward a department) — the two totals are not expected to match.<br/>
+    <b style="color:${PDF_TEXT}">% Share</b> — this employee's Total Chats as a percentage of the period's grand total chat volume.<br/>
+    <b style="color:${PDF_TEXT}">Chat Hours</b> — total time this employee spent actively in chats: the sum, across all their chats, of the time between each chat's first and last message (capped at 3 hours per chat to exclude stale/abandoned sessions from skewing the total).<br/>
+    <b style="color:${PDF_TEXT}">Availability</b> — hours this employee was online and accepting chats during their scheduled shift, from LiveChat's agent-availability data.<br/>
+    <b style="color:${PDF_TEXT}">% Availability</b> — Availability as a percentage of their full scheduled shift time (Availability + time their queue showed closed).<br/>
+    <b style="color:${PDF_TEXT}">Leave (days)</b> — number of days this employee was marked "Leave" in the Leave sheet (configured under Config) during the period.
+  </div>
+</div>
+
 <div class="footer">Chat Review Dashboard — Monthly Summary Report · ${escHtml(dateFrom)} → ${escHtml(dateTo)}</div>
 
 <script>setTimeout(() => window.print(), 350)<\/script>
