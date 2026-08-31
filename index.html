@@ -541,8 +541,13 @@
               class="flex items-center gap-1.5 bg-[#1a2d4a] text-[#F5B800] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
               📄 Export PDF
             </button>
+            <button onclick="debugUnassignedMonthlySummary()" id="btnDebugUnassigned" data-permission="action:backfill"
+              class="hidden flex items-center gap-1.5 bg-[#1a2d4a] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              🔍 Debug Unassigned
+            </button>
           </div>
           <p class="text-xs text-slate-500 mt-2">Department cards count each chat once, toward whichever department it ended with (a chat transferred General → Social Trade only counts for Social Trade). The employee table's Total Chats/% Share instead counts every chat an employee ever touched (matches Total Chats/Transfers), so the two totals won't always match — that's expected. Leave days come from the Leave sheet configured in Config.</p>
+          <div id="unassignedDebugPanel" class="hidden mt-3 bg-[#0f1d35] rounded-xl border border-[#1a2d4a] max-h-64 overflow-y-auto"></div>
         </div>
         <div id="monthlySummaryContent" class="p-6"></div>
       </div>

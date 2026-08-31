@@ -3127,6 +3127,48 @@ ${opoLetterheadHtml()}
   win.document.close();
 }
 
+async function debugUnassignedMonthlySummary() {
+  const dateFrom = document.getElementById("monthlySummaryFrom")?.value;
+  const dateTo = document.getElementById("monthlySummaryTo")?.value;
+  const panel = document.getElementById("unassignedDebugPanel");
+  if (!dateFrom || !dateTo || !panel) { showStatus("Pick a From and To date first", "error"); return; }
+
+  panel.classList.remove("hidden");
+  panel.innerHTML = `<div class="p-4 text-center text-slate-500 text-sm"><span class="spinner"></span> Checking live data (this bypasses the cache, may take a while)...</div>`;
+
+  try {
+    const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
+    const res = await authFetch(`/api/reports/monthly-summary/debug-unassigned?${params.toString()}`);
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || res.status);
+    const rows = (data.unassigned_breakdown || []);
+    if (!rows.length) {
+      panel.innerHTML = `<div class="p-4 text-center text-emerald-400 text-sm">No unassigned chats in this range — every chat resolved to a department.</div>`;
+      return;
+    }
+    panel.innerHTML = `
+      <div class="px-4 py-2 border-b border-[#1a2d4a] text-xs text-slate-400">${rows.reduce((s,r)=>s+r.count,0)} unassigned chat(s) across ${rows.length} raw agent/assignee name(s):</div>
+      <table class="w-full text-xs">
+        <thead><tr class="text-left text-slate-500 uppercase">
+          <th class="px-4 py-2">Raw name (LiveChat/Chatwoot)</th>
+          <th class="px-4 py-2">Matched employee</th>
+          <th class="px-4 py-2">Reason</th>
+          <th class="px-4 py-2 text-center">Count</th>
+        </tr></thead>
+        <tbody>
+          ${rows.map(r => `<tr class="border-t border-[#1a2d4a]">
+            <td class="px-4 py-2 text-white">${escHtml(r.name)}</td>
+            <td class="px-4 py-2 text-slate-400">${r.employee ? escHtml(r.employee) : "—"}</td>
+            <td class="px-4 py-2 text-slate-400">${escHtml(r.reason)}</td>
+            <td class="px-4 py-2 text-center text-rose-400 font-semibold">${r.count}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>`;
+  } catch (e) {
+    panel.innerHTML = `<div class="p-4 text-center text-red-400 text-sm">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
 // ── Supervised Chats Report ────────────────────────────────────────────────────
 let _activeSupervisedChatsReport = null;
 let _supervisedChatsPage = 0;

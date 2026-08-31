@@ -4455,8 +4455,18 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
   }
 
   const groupCounts = {};
-  function bump(groups) {
-    (groups.length ? groups : ["Unassigned"]).forEach((g) => { groupCounts[g] = (groupCounts[g] || 0) + 1; });
+  const unassignedBreakdown = {}; // raw name -> { name, employee, reason, count }
+  function bump(groups, meta) {
+    if (groups.length) {
+      groups.forEach((g) => { groupCounts[g] = (groupCounts[g] || 0) + 1; });
+      return;
+    }
+    groupCounts.Unassigned = (groupCounts.Unassigned || 0) + 1;
+    const label = meta?.name || "(unknown)";
+    if (!unassignedBreakdown[label]) {
+      unassignedBreakdown[label] = { name: label, employee: meta?.employee || null, reason: meta?.reason || "unmatched", count: 0 };
+    }
+    unassignedBreakdown[label].count++;
   }
 
   let lcTotal = 0;
@@ -4475,7 +4485,8 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
       if (!finalAgent) continue; // no agent ever replied — nothing to attribute
       lcTotal++;
       const employee = resolveEmployeeForLcAgent(finalAgent.name, chatTime);
-      bump(employee ? [...(employeeGroups[employee] || [])] : []);
+      const groups = employee ? [...(employeeGroups[employee] || [])] : [];
+      bump(groups, { name: finalAgent.name, employee, reason: employee ? "employee has no department groups set" : "agent name didn't match any employee's agentKey" });
     }
   } while (pid);
 
@@ -4513,7 +4524,8 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
           return cwId === aEmail || cwId === aName || cwId.split("@")[0] === aName;
         });
         const employee = matchedShift ? matchedShift.employee : null;
-        bump(employee ? [...(employeeGroups[employee] || [])] : []);
+        const groups = employee ? [...(employeeGroups[employee] || [])] : [];
+        bump(groups, { name: assignee.name || assignee.email, employee, reason: employee ? "employee has no department groups set" : "assignee didn't match any employee's Chatwoot agent id" });
       }
     } catch (e) { console.error("[group-totals] Chatwoot error:", e.message); }
   }
@@ -4522,7 +4534,8 @@ async function computeGroupChatTotalsLive({ dateFrom, dateTo }) {
   const groups = [...groupSet].sort().map((g) => ({ name: g, totalChats: groupCounts[g] || 0 }));
   if (groupCounts.Unassigned) groups.push({ name: "Unassigned", totalChats: groupCounts.Unassigned });
 
-  return { grandTotal: lcTotal + cwTotal, groups };
+  const unassignedBreakdownList = Object.values(unassignedBreakdown).sort((a, b) => b.count - a.count);
+  return { grandTotal: lcTotal + cwTotal, groups, unassignedBreakdown: unassignedBreakdownList };
 }
 
 // ── Department totals cache (department_totals_daily) — same cache-past-days,
@@ -4671,6 +4684,18 @@ app.get("/api/reports/monthly-summary", authMiddleware, requirePermission("page:
     if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
     const result = await computeMonthlySummary({ dateFrom: date_from, dateTo: date_to });
     res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Diagnostic: which raw agent/assignee names in LiveChat/Chatwoot failed to resolve
+// to a department, and why — always live (bypasses the department_totals_daily
+// cache) so it reflects the current agent_shifts data immediately.
+app.get("/api/reports/monthly-summary/debug-unassigned", authMiddleware, requirePermission("action:backfill"), async (req, res) => {
+  try {
+    const { date_from, date_to } = req.query;
+    if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
+    const result = await computeGroupChatTotalsLive({ dateFrom: date_from, dateTo: date_to });
+    res.json({ grand_total: result.grandTotal, groups: result.groups, unassigned_breakdown: result.unassignedBreakdown });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
