@@ -4370,14 +4370,157 @@ function matchLeaveCount(leaveCounts, employeeFullName) {
   return 0;
 }
 
+// Among all PUBLIC agent messages in a thread, returns the one with the latest
+// timestamp — i.e. whichever agent actually closed out the conversation. Used
+// to attribute a chat to exactly one department: if it started with a General
+// agent and got handed to Social Trade, it should only count once, for
+// whoever it ended with — not once per department it passed through.
+function finalAgentInThread(events, users) {
+  let last = null;
+  for (const e of events) {
+    const isPrivate = e.visibility === "agents" || e.type === "annotation";
+    if (isPrivate || e.type !== "message") continue;
+    const user = users.find((u) => u.id === e.author_id);
+    if (user?.type !== "agent") continue;
+    if (!last || new Date(e.created_at) > new Date(last.created_at)) {
+      last = { id: user.id, name: user.name, created_at: e.created_at };
+    }
+  }
+  return last;
+}
+
+// Dedicated, uncached, single-pass count of unique chats by department — deliberately
+// separate from computeChatTotals()/chat_totals_daily, which counts a chat once per
+// employee who ever touched it (the right thing for "how many chats did X handle",
+// but wrong for a department total: it would double-count a chat transferred across
+// departments). Each chat here is attributed to exactly one department: whichever
+// employee it ended with (final LiveChat agent, or Chatwoot's current assignee).
+async function computeGroupChatTotals({ dateFrom, dateTo }) {
+  const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
+  const fromDate = new Date(new Date(`${dateFrom}T00:00:00.000Z`).getTime() - ISTANBUL_OFFSET_MS);
+  const toDate   = new Date(new Date(`${dateTo}T23:59:59.999Z`).getTime() - ISTANBUL_OFFSET_MS);
+  const lcFrom = fromDate.toISOString().replace(/\.\d{3}Z$/, ".000000+00:00");
+  const lcTo   = toDate.toISOString().replace(/\.\d{3}Z$/, ".999999+00:00");
+
+  const [allShifts, weekendOverrides] = await Promise.all([
+    visibleShifts(await loadShifts()),
+    loadWeekendOverrides(),
+  ]);
+
+  const employeeGroups = {};
+  const agentKeyShifts = {};
+  for (const s of allShifts) {
+    if (!employeeGroups[s.employee]) employeeGroups[s.employee] = new Set();
+    (s.groups || []).forEach((g) => employeeGroups[s.employee].add(g));
+    const key = s.agentKey.toLowerCase().trim();
+    if (!agentKeyShifts[key]) agentKeyShifts[key] = [];
+    agentKeyShifts[key].push(s);
+  }
+
+  function getIstHour(chatTime) {
+    return ((new Date(chatTime).getTime() + ISTANBUL_OFFSET_MS) / 3600000) % 24;
+  }
+  function istDayKey(ms) {
+    return new Date(ms + ISTANBUL_OFFSET_MS).toISOString().slice(0, 10);
+  }
+
+  // Same shared-login-by-shift-hour resolution used everywhere else in this file,
+  // just entered from a raw agent NAME instead of an already-known agentKey.
+  function resolveEmployeeForLcAgent(agentName, chatTimeIso) {
+    const low = (agentName || "").toLowerCase().trim();
+    const key = Object.keys(agentKeyShifts).find((k) => k === low || k === low.split(" ")[0]);
+    if (!key) return null;
+    const shiftList = agentKeyShifts[key];
+    const uniqueEmps = [...new Set(shiftList.map((s) => s.employee))];
+    if (uniqueEmps.length === 1) return uniqueEmps[0];
+    const dayKey = istDayKey(new Date(chatTimeIso).getTime());
+    const hour = getIstHour(chatTimeIso);
+    const overrideEmp = findOverrideEmployee(weekendOverrides, "livechat", dayKey, hour, uniqueEmps);
+    if (overrideEmp) return overrideEmp;
+    const matched = shiftList.find((s) => hour >= s.start && hour < s.end);
+    return (matched || shiftList[0]).employee;
+  }
+
+  const groupCounts = {};
+  function bump(groups) {
+    (groups.length ? groups : ["Unassigned"]).forEach((g) => { groupCounts[g] = (groupCounts[g] || 0) + 1; });
+  }
+
+  let lcTotal = 0;
+  let pid = null;
+  do {
+    const body = pid ? { page_id: pid } : { filters: { from: lcFrom, to: lcTo }, limit: 100 };
+    const data = await lcPost("list_archives", body);
+    pid = data.next_page_id || null;
+    for (const c of data.chats || []) {
+      const thread = c.thread || (c.threads?.[0]) || {};
+      const users = c.users || [];
+      const events = thread.events || [];
+      const chatTime = thread.created_at || null;
+      if (!chatTime) continue;
+      const finalAgent = finalAgentInThread(events, users);
+      if (!finalAgent) continue; // no agent ever replied — nothing to attribute
+      lcTotal++;
+      const employee = resolveEmployeeForLcAgent(finalAgent.name, chatTime);
+      bump(employee ? [...(employeeGroups[employee] || [])] : []);
+    }
+  } while (pid);
+
+  let cwTotal = 0;
+  if (chatwootEnabled()) {
+    try {
+      const cwFilter = [
+        { attribute_key: "status", filter_operator: "equal_to", values: ["resolved"], query_operator: "AND" },
+        { attribute_key: "created_at", filter_operator: "is_greater_than", values: [cwFilterDateFrom(lcFrom)], query_operator: "AND" },
+        { attribute_key: "created_at", filter_operator: "is_less_than", values: [cwFilterDateTo(lcTo)], query_operator: null },
+      ];
+      let cwPage = 1, cwAll = [], cwGrandTotal = 0;
+      while (true) {
+        const d = await cwPost("/conversations/filter", { payload: cwFilter }, { page: cwPage });
+        const inner = d.data || d;
+        const convs = inner.payload || inner.conversations || [];
+        if (cwPage === 1) cwGrandTotal = inner.meta?.all_count ?? inner.meta?.total_count ?? convs.length;
+        if (!convs.length) break;
+        cwAll = cwAll.concat(convs);
+        if (convs.length < 25 || cwAll.length >= cwGrandTotal) break;
+        cwPage++;
+      }
+      const fromMs = new Date(lcFrom).getTime();
+      const toMs = new Date(lcTo).getTime();
+      cwAll = cwAll.filter((c) => { const ms = (c.created_at || 0) * 1000; return ms >= fromMs && ms <= toMs; });
+      for (const conv of cwAll) {
+        const assignee = conv.meta?.assignee || null;
+        if (!assignee) continue;
+        cwTotal++;
+        const aEmail = (assignee.email || "").toLowerCase().trim();
+        const aName  = (assignee.name  || "").toLowerCase().trim();
+        const matchedShift = allShifts.find((s) => {
+          if (!s.chatwootAgentId) return false;
+          const cwId = s.chatwootAgentId.toLowerCase().trim();
+          return cwId === aEmail || cwId === aName || cwId.split("@")[0] === aName;
+        });
+        const employee = matchedShift ? matchedShift.employee : null;
+        bump(employee ? [...(employeeGroups[employee] || [])] : []);
+      }
+    } catch (e) { console.error("[group-totals] Chatwoot error:", e.message); }
+  }
+
+  const groupSet = new Set(["General", "Social Trade", ...Object.keys(groupCounts).filter((g) => g !== "Unassigned")]);
+  const groups = [...groupSet].sort().map((g) => ({ name: g, totalChats: groupCounts[g] || 0 }));
+  if (groupCounts.Unassigned) groups.push({ name: "Unassigned", totalChats: groupCounts.Unassigned });
+
+  return { grandTotal: lcTotal + cwTotal, groups };
+}
+
 // ── Monthly Summary Report (chats by group, per-employee share, chat hours,
 // availability, leave) ──────────────────────────────────────────────────────
 async function computeMonthlySummary({ dateFrom, dateTo }) {
-  const [chatTotals, agentActivity, allShifts, leaveCounts] = await Promise.all([
+  const [chatTotals, agentActivity, allShifts, leaveCounts, groupTotals] = await Promise.all([
     computeChatTotals({ dateFrom, dateTo, employeeFilter: null }),
     computeAgentActivity({ dateFrom, dateTo, employeeFilter: null }),
     loadShifts(),
     getLeaveCounts(dateFrom, dateTo).catch((e) => { console.error("[monthly-summary] leave sheet error:", e.message); return {}; }),
+    computeGroupChatTotals({ dateFrom, dateTo }),
   ]);
   const shifts = visibleShifts(allShifts);
 
@@ -4395,6 +4538,10 @@ async function computeMonthlySummary({ dateFrom, dateTo }) {
 
   const employeeNames = new Set([...Object.keys(chatByName), ...Object.keys(employeeGroups)]);
 
+  // Note: an employee's totalChats/% Share here counts every chat they ever
+  // touched (matching Total Chats/Transfers) — a different, deliberately larger
+  // number than the department stat cards above, which count each chat once
+  // toward whichever department it ended with (see computeGroupChatTotals).
   const employees = [...employeeNames].map((name) => {
     const chat = chatByName[name] || { total: 0, durationSec: 0 };
     const activity = activityByName[name] || { totalOnline: 0, totalClosed: 0 };
@@ -4410,19 +4557,7 @@ async function computeMonthlySummary({ dateFrom, dateTo }) {
     };
   }).sort((a, b) => b.totalChats - a.totalChats);
 
-  const grandTotal = employees.reduce((s, e) => s + e.totalChats, 0);
-
-  // Group totals — an employee belonging to more than one group (e.g. General
-  // AND Social Trade) has their chats counted fully in each group, per how
-  // the business wants shared/cross-trained agents represented here.
-  const groupSet = new Set(["General", "Social Trade"]);
-  employees.forEach((e) => e.groups.forEach((g) => groupSet.add(g)));
-  const groups = [...groupSet].sort().map((g) => ({
-    name: g,
-    totalChats: employees.filter((e) => e.groups.includes(g)).reduce((s, e) => s + e.totalChats, 0),
-  }));
-
-  return { date_from: dateFrom, date_to: dateTo, grand_total: grandTotal, groups, employees };
+  return { date_from: dateFrom, date_to: dateTo, grand_total: groupTotals.grandTotal, groups: groupTotals.groups, employees };
 }
 
 app.get("/api/reports/monthly-summary", authMiddleware, requirePermission("page:report-monthly-summary"), async (req, res) => {
