@@ -663,7 +663,7 @@ function applyEmployeeHourFilter(list) {
     const candidates = c.platform === "chatwoot" ? sameCwIdEmployees : sameKeyEmployees;
     const overrideEmp = findOverrideEmployee(c.platform, getIstanbulDayKey(c.started_at), h, candidates);
     if (overrideEmp) return overrideEmp === activeEmployeeShift.employee;
-    return h >= activeEmployeeShift.start && h < activeEmployeeShift.end;
+    return isHourInShift(h, activeEmployeeShift.start, activeEmployeeShift.end);
   });
 }
 
@@ -1095,7 +1095,7 @@ async function reviewAllVisible() {
     const inShift = (c) => {
       if (!employeeShift) return true;
       const h = getTehranHour(c.started_at);
-      return h >= employeeShift.start && h < employeeShift.end;
+      return isHourInShift(h, employeeShift.start, employeeShift.end);
     };
     const pageChats = (pageData.chats || []).filter(c => needsReview(c) && inShift(c));
 
@@ -1488,14 +1488,14 @@ function getEmployeeName(agentName, dateStr, platform, agentEmail) {
     });
     const overrideEmp = findOverrideEmployee("chatwoot", dayKey, h, candidates.map(s => s.employee));
     if (overrideEmp) return overrideEmp;
-    const m2 = candidates.find(s => h >= s.start && h < s.end);
+    const m2 = candidates.find(s => isHourInShift(h, s.start, s.end));
     return m2 ? m2.employee : agentName;
   }
 
   const candidates = agentShifts.filter(s => s.agentKey === full || s.agentKey === first);
   const overrideEmp = findOverrideEmployee("livechat", dayKey, h, candidates.map(s => s.employee));
   if (overrideEmp) return overrideEmp;
-  const match = candidates.find(s => h >= s.start && h < s.end);
+  const match = candidates.find(s => isHourInShift(h, s.start, s.end));
   return match ? match.employee : agentName;
 }
 
@@ -1743,8 +1743,19 @@ function iranDayToUtc(dateStr, isEnd) {
   return iso.replace(/\.\d{3}Z$/, (isEnd ? ".999999" : ".000000") + "+00:00");
 }
 
+// Fractional Istanbul/Tehran hour-of-day (0-24, includes minutes) so a shift boundary
+// like 17:30 or 01:30 can be represented and matched exactly, not just whole hours.
 function getTehranHour(dateStr) {
-  return parseInt(new Date(dateStr).toLocaleString("en-US", { timeZone: "Europe/Istanbul", hour: "numeric", hour12: false }));
+  const IST_OFFSET_MS = 3 * 60 * 60 * 1000;
+  const ms = new Date(dateStr).getTime();
+  if (Number.isNaN(ms)) return -1;
+  return ((ms + IST_OFFSET_MS) / 3600000) % 24;
+}
+
+// True when `hour` (a fractional 0-24 hour-of-day) falls inside a shift's [start, end)
+// window — including a shift that wraps past midnight, e.g. start=17.5, end=1.5.
+function isHourInShift(hour, start, end) {
+  return start <= end ? (hour >= start && hour < end) : (hour >= start || hour < end);
 }
 
 // Istanbul-local "YYYY-MM-DD" for a chat timestamp — matches how weekend_overrides
@@ -1760,7 +1771,7 @@ function getIstanbulDayKey(dateStr) {
 // identity — without it, an unrelated employee's override for the same platform/date/
 // hour under a different account would shadow the real match.
 function findOverrideEmployee(platform, dayKey, hour, candidateEmployees) {
-  const m = weekendOverrides.find(o => o.platform === platform && o.date === dayKey && hour >= o.start && hour < o.end && candidateEmployees.includes(o.employee));
+  const m = weekendOverrides.find(o => o.platform === platform && o.date === dayKey && isHourInShift(hour, o.start, o.end) && candidateEmployees.includes(o.employee));
   return m ? m.employee : null;
 }
 
@@ -1976,8 +1987,8 @@ function shiftRowHtml(s) {
         ${cwAgentOptionsHtml(s.chatwootAgentId || "")}
       </select>
     </td>
-    <td class="py-2 pr-3"><input class="sr-start w-16 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23" value="${s.start ?? 8}" /></td>
-    <td class="py-2 pr-3"><input class="sr-end w-16 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" value="${s.end ?? 16}" /></td>
+    <td class="py-2 pr-3"><input class="sr-start w-16 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23.5" step="0.5" value="${s.start ?? 8}" /></td>
+    <td class="py-2 pr-3"><input class="sr-end w-16 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" step="0.5" value="${s.end ?? 16}" /></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${groupCheckboxesHtml(s.groups)}</div></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${languageCheckboxesHtml(s.languages)}</div></td>
     <td class="py-2 pr-3"><input class="sr-username w-24 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm" value="${escHtml(s.username || "")}" placeholder="username" autocomplete="off" /></td>
@@ -2008,8 +2019,8 @@ function addShiftRow() {
         ${cwAgentOptionsHtml("")}
       </select>
     </td>
-    <td class="py-2 pr-3"><input class="sr-start w-16 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23" value="8" /></td>
-    <td class="py-2 pr-3"><input class="sr-end w-16 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" value="16" /></td>
+    <td class="py-2 pr-3"><input class="sr-start w-16 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23.5" step="0.5" value="8" /></td>
+    <td class="py-2 pr-3"><input class="sr-end w-16 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" step="0.5" value="16" /></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${groupCheckboxesHtml([])}</div></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${languageCheckboxesHtml([])}</div></td>
     <td class="py-2 pr-3"><input class="sr-username w-24 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm" placeholder="username" autocomplete="off" /></td>
@@ -2034,8 +2045,8 @@ async function saveSettings() {
     const employee = row.querySelector(".sr-employee").value.trim();
     const agentKey = row.querySelector(".sr-agent").value.trim();
     const chatwootAgentId = row.querySelector(".sr-cw-agent")?.value.trim() || "";
-    const start = parseInt(row.querySelector(".sr-start").value) || 0;
-    const end = parseInt(row.querySelector(".sr-end").value) || 24;
+    const start = parseFloat(row.querySelector(".sr-start").value) || 0;
+    const end = parseFloat(row.querySelector(".sr-end").value) || 24;
     const groups = [...row.querySelectorAll(".sr-group:checked")].map(cb => cb.value);
     const languages = [...row.querySelectorAll(".sr-lang:checked")].map(cb => cb.value);
     const username = row.querySelector(".sr-username")?.value.trim() || "";

@@ -136,7 +136,10 @@ const REVIEWS_FILE = path.join(__dirname, "reviews.json");
 // PostgreSQL (Railway) or fallback to reviews.json
 let pool = null;
 if (process.env.DATABASE_URL) {
-  pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  // Railway's managed Postgres requires SSL; a local/dev Postgres usually doesn't support
+  // it at all, so allow opting out for local work without touching the production path.
+  const sslOpt = process.env.PGSSL === "false" ? false : { rejectUnauthorized: false };
+  pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: sslOpt });
   pool.query(`CREATE TABLE IF NOT EXISTS reviews (
     chat_id VARCHAR(255) PRIMARY KEY,
     data JSONB NOT NULL,
@@ -171,8 +174,8 @@ if (process.env.DATABASE_URL) {
         id SERIAL PRIMARY KEY,
         employee VARCHAR(255) NOT NULL,
         agent_key VARCHAR(255) NOT NULL,
-        start_hour INTEGER NOT NULL,
-        end_hour INTEGER NOT NULL,
+        start_hour NUMERIC(4,2) NOT NULL,
+        end_hour NUMERIC(4,2) NOT NULL,
         groups JSONB DEFAULT '[]',
         languages JSONB DEFAULT '[]'
       )`);
@@ -190,6 +193,10 @@ if (process.env.DATABASE_URL) {
       await pool.query(`ALTER TABLE agent_shifts ADD COLUMN IF NOT EXISTS groups JSONB DEFAULT '[]'`);
       await pool.query(`ALTER TABLE agent_shifts ADD COLUMN IF NOT EXISTS languages JSONB DEFAULT '[]'`);
       await pool.query(`ALTER TABLE agent_shifts ADD COLUMN IF NOT EXISTS chatwoot_agent_id VARCHAR(255) DEFAULT ''`);
+      // start_hour/end_hour used to be whole-hour INTEGER — widen to NUMERIC so a shift
+      // boundary like 17:30 or 01:30 (e.g. a shift wrapping past midnight) can be stored.
+      await pool.query(`ALTER TABLE agent_shifts ALTER COLUMN start_hour TYPE NUMERIC(4,2) USING start_hour::numeric`);
+      await pool.query(`ALTER TABLE agent_shifts ALTER COLUMN end_hour TYPE NUMERIC(4,2) USING end_hour::numeric`);
       console.log("[db] agent_shifts table ready");
       // Seed from file if empty
       const cnt = await pool.query("SELECT COUNT(*) FROM agent_shifts");
@@ -345,10 +352,13 @@ if (process.env.DATABASE_URL) {
     shift_date TEXT NOT NULL,
     employee TEXT NOT NULL,
     platform TEXT NOT NULL,
-    start_hour INTEGER NOT NULL,
-    end_hour INTEGER NOT NULL
+    start_hour NUMERIC(4,2) NOT NULL,
+    end_hour NUMERIC(4,2) NOT NULL
   )`).then(() => console.log("[db] weekend_overrides table ready")).catch(e => console.error("[db] weekend_overrides init:", e.message));
   pool.query(`CREATE INDEX IF NOT EXISTS weekend_overrides_date_platform_idx ON weekend_overrides (shift_date, platform)`).catch(() => {});
+  // Widen to NUMERIC alongside agent_shifts, for the same overnight/half-hour reason.
+  pool.query(`ALTER TABLE weekend_overrides ALTER COLUMN start_hour TYPE NUMERIC(4,2) USING start_hour::numeric`).catch(() => {});
+  pool.query(`ALTER TABLE weekend_overrides ALTER COLUMN end_hour TYPE NUMERIC(4,2) USING end_hour::numeric`).catch(() => {});
 
   // ── app_settings table (simple key/value store, e.g. the Leave sheet URL) ──
   pool.query(`CREATE TABLE IF NOT EXISTS app_settings (
@@ -1323,7 +1333,7 @@ function groupAgentsOnShift(groupName, users, shifts, chatStartedAt) {
   return shifts
     .filter(s => {
       const inGroup = (s.groups || []).some(g => g.toLowerCase() === groupName);
-      const onShift = h < 0 || (h >= s.start && h < s.end);
+      const onShift = h < 0 || isHourInShift(h, s.start, s.end);
       return inGroup && onShift;
     })
     .map(s => {
@@ -1338,9 +1348,20 @@ function groupAgentsOnShift(groupName, users, shifts, chatStartedAt) {
     .filter(Boolean);
 }
 
+// Fractional Istanbul/Tehran hour-of-day (0-24, includes minutes) so a shift boundary
+// like 17:30 or 01:30 can be represented and matched exactly, not just whole hours.
 function getTehranHourFromIso(iso) {
-  try { return new Date(new Date(iso).toLocaleString("en-US", { timeZone: "Europe/Istanbul" })).getHours(); }
-  catch { return -1; }
+  if (!iso) return -1;
+  const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
+  const ms = new Date(iso).getTime();
+  if (Number.isNaN(ms)) return -1;
+  return ((ms + ISTANBUL_OFFSET_MS) / 3600000) % 24;
+}
+
+// True when `hour` (a fractional 0-24 hour-of-day) falls inside a shift's [start, end)
+// window — including a shift that wraps past midnight, e.g. start=17.5, end=1.5.
+function isHourInShift(hour, start, end) {
+  return start <= end ? (hour >= start && hour < end) : (hour >= start || hour < end);
 }
 
 // Istanbul-local "YYYY-MM-DD" for a chat timestamp — used to look up weekend_overrides,
@@ -2555,10 +2576,10 @@ async function computeChatTotalsLive({ dateFrom, dateTo, employeeFilter, include
         if (overrideEmp) {
           empName = overrideEmp;
         } else if (isShared) {
-          const matched = shiftList.find(s => istHour >= s.start && istHour < s.end);
+          const matched = shiftList.find(s => isHourInShift(istHour, s.start, s.end));
           empName = (matched || shiftList[0]).employee;
         } else {
-          const inShift = shiftList.some(s => istHour >= s.start && istHour < s.end);
+          const inShift = shiftList.some(s => isHourInShift(istHour, s.start, s.end));
           if (!inShift) continue;
           empName = uniqueEmpsForKey[0];
         }
@@ -2968,10 +2989,10 @@ async function computeSupervisedChatsLive({ dateFrom, dateTo, employeeFilter }) 
         if (overrideEmp) {
           empName = overrideEmp;
         } else if (isShared) {
-          const matched = shiftList.find(s => istHour >= s.start && istHour < s.end);
+          const matched = shiftList.find(s => isHourInShift(istHour, s.start, s.end));
           empName = (matched || shiftList[0]).employee;
         } else {
-          const inShift = shiftList.some(s => istHour >= s.start && istHour < s.end);
+          const inShift = shiftList.some(s => isHourInShift(istHour, s.start, s.end));
           if (!inShift) continue;
           empName = uniqueEmpsForKey[0];
         }
@@ -3452,8 +3473,11 @@ async function computeAndStoreAgentActivityDay(dateKey, shiftsToCompute, agentKe
   const tasks = shiftsToCompute.map((s) => (async () => {
     const agentEmail = agentKeyToEmail[s.agentKey.toLowerCase().trim()];
     if (!agentEmail) return;
+    // A shift that wraps past midnight (e.g. 17.5 -> 1.5) ends the next calendar day —
+    // push `end` 24h later so `to` lands after `from` instead of ~a day before it.
+    const wraps = s.end < s.start;
     const from = istLocalToUtcIso(dateKey, s.start);
-    const to = istLocalToUtcIso(dateKey, s.end);
+    const to = istLocalToUtcIso(dateKey, wraps ? s.end + 24 : s.end);
     try {
       // agents/performance's accepting/not_accepting/logged_in_time fields always
       // fill the entire queried window (they don't reflect true presence at all —
@@ -3464,7 +3488,7 @@ async function computeAndStoreAgentActivityDay(dateKey, shiftsToCompute, agentKe
         distribution: "day",
         filters: { from, to, agents: { values: [agentEmail] } },
       }, LC_REPORTS_AGENTS_API);
-      const shiftDurationHours = s.end - s.start;
+      const shiftDurationHours = wraps ? (s.end + 24 - s.start) : (s.end - s.start);
       const onlineHours = Math.min(shiftDurationHours, data?.total || 0);
       const closedHours = Math.max(0, shiftDurationHours - onlineHours);
       if (!result[s.employee]) result[s.employee] = { onlineHours: 0, closedHours: 0 };
@@ -3761,11 +3785,11 @@ app.get("/api/dashboard-stats", authMiddleware, requirePermission("page:dashboar
           if (overrideEmp) {
             emp[overrideEmp].total++;
           } else if (isShared) {
-            const matched = shiftList.find(s => istHour >= s.start && istHour < s.end);
+            const matched = shiftList.find(s => isHourInShift(istHour, s.start, s.end));
             const empName = (matched || shiftList[0]).employee;
             emp[empName].total++;
           } else {
-            const inShift = shiftList.some(s => istHour >= s.start && istHour < s.end);
+            const inShift = shiftList.some(s => isHourInShift(istHour, s.start, s.end));
             if (!inShift) continue;
             emp[uniqueEmpsForKey[0]].total++;
           }
@@ -3854,7 +3878,7 @@ app.get("/api/dashboard-stats", authMiddleware, requirePermission("page:dashboar
         } else if (matchingShifts.length === 1) {
           empName = matchingShifts[0].employee;
         } else {
-          const matched = chatHour >= 0 ? matchingShifts.find(s => chatHour >= s.start && chatHour < s.end) : null;
+          const matched = chatHour >= 0 ? matchingShifts.find(s => isHourInShift(chatHour, s.start, s.end)) : null;
           empName = (matched || matchingShifts[0]).employee;
         }
         if (!empName || !emp[empName]) continue;
@@ -3989,8 +4013,11 @@ async function loadShifts() {
       if (r.rows.length > 0) return r.rows.map(row => ({
         employee: row.employee,
         agentKey: row.agent_key,
-        start: row.start_hour,
-        end: row.end_hour,
+        // NUMERIC columns come back from pg as strings — parse to real numbers so
+        // downstream arithmetic (e.g. `+ 24` for a midnight-wrapping shift) adds
+        // instead of string-concatenating.
+        start: parseFloat(row.start_hour),
+        end: parseFloat(row.end_hour),
         groups: Array.isArray(row.groups) ? row.groups : [],
         languages: Array.isArray(row.languages) ? row.languages : [],
         chatwootAgentId: row.chatwoot_agent_id || "",
@@ -4052,7 +4079,7 @@ async function loadWeekendOverrides() {
   if (!pool) return [];
   try {
     const r = await pool.query("SELECT shift_date, employee, platform, start_hour, end_hour FROM weekend_overrides");
-    return r.rows.map(row => ({ date: row.shift_date, employee: row.employee, platform: row.platform, start: row.start_hour, end: row.end_hour }));
+    return r.rows.map(row => ({ date: row.shift_date, employee: row.employee, platform: row.platform, start: parseFloat(row.start_hour), end: parseFloat(row.end_hour) }));
   } catch { return []; }
 }
 
@@ -4063,7 +4090,7 @@ async function loadWeekendOverrides() {
 // same shared agentKey) — without it, an unrelated employee's override for the
 // same platform/date/hour under a DIFFERENT account would shadow the real match.
 function findOverrideEmployee(weekendOverrides, platform, dayKey, hour, candidateEmployees) {
-  const m = weekendOverrides.find(o => o.platform === platform && o.date === dayKey && hour >= o.start && hour < o.end && candidateEmployees.includes(o.employee));
+  const m = weekendOverrides.find(o => o.platform === platform && o.date === dayKey && isHourInShift(hour, o.start, o.end) && candidateEmployees.includes(o.employee));
   return m ? m.employee : null;
 }
 
@@ -4915,7 +4942,7 @@ app.post("/api/reports/generate", authMiddleware, requirePermission("action:mana
       // priority over the recurring shift.start/end window.
       const h = getTehranHourFromIso(startedAt);
       const overrideEmpLc = findOverrideEmployee(weekendOverrides, "livechat", istDayKeyFromIso(startedAt), h, sameKeyEmployees);
-      const inShiftLc = overrideEmpLc ? overrideEmpLc === employee : (h >= shift.start && h < shift.end);
+      const inShiftLc = overrideEmpLc ? overrideEmpLc === employee : isHourInShift(h, shift.start, shift.end);
       if (!inShiftLc) continue;
       chatsInShift++;
 
@@ -5017,7 +5044,7 @@ app.post("/api/reports/generate", authMiddleware, requirePermission("action:mana
         // Shift hour filter — exact-date override takes priority over the recurring window
         const h = getTehranHourFromIso(chatDate);
         const overrideEmpCw = findOverrideEmployee(weekendOverrides, "chatwoot", istDayKeyFromIso(chatDate), h, sameCwIdEmployees);
-        const inShiftCw = overrideEmpCw ? overrideEmpCw === employee : (h >= shift.start && h < shift.end);
+        const inShiftCw = overrideEmpCw ? overrideEmpCw === employee : isHourInShift(h, shift.start, shift.end);
         if (!inShiftCw) continue;
         chatsInShift++;
 
