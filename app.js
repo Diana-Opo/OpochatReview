@@ -444,7 +444,7 @@ async function syncLcAgents() {
     if (status) status.textContent = `${agentArr.length} agents synced from LiveChat`;
     if (list) {
       list.innerHTML = agentArr.map(a =>
-        `<div class="flex items-center gap-2 px-2 py-1 rounded-lg bg-[#0a1628] text-xs text-white">
+        `<div class="flex items-center gap-2 px-2 py-1 rounded-lg bg-[#11140f] text-xs text-white">
           ${a.avatar ? `<img src="${escHtml(a.avatar)}" class="w-5 h-5 rounded-full object-cover shrink-0" />` : `<div class="w-5 h-5 rounded-full bg-slate-300 shrink-0"></div>`}
           <span class="font-medium">${escHtml(a.name || "")}</span>
           <span class="text-slate-500 ml-auto">${escHtml(a.id || "")}</span>
@@ -482,7 +482,7 @@ async function syncCwAgents() {
       : "0 agents returned — check Chatwoot is enabled/configured";
     if (list) {
       list.innerHTML = agentArr.map(a =>
-        `<div class="flex items-center gap-2 px-2 py-1 rounded-lg bg-[#0a1628] text-xs text-white">
+        `<div class="flex items-center gap-2 px-2 py-1 rounded-lg bg-[#11140f] text-xs text-white">
           <div class="w-5 h-5 rounded-full bg-slate-300 shrink-0"></div>
           <span class="font-medium">${escHtml(a.name || "")}</span>
           <span class="text-slate-500 ml-auto">${escHtml(a.email || "")}</span>
@@ -841,12 +841,12 @@ function pagerHtml(page, totalPages, gotoFnName) {
   const prevDisabled = page <= 0;
   const nextDisabled = page >= totalPages - 1;
   return `
-    <div class="flex items-center justify-between px-4 py-3 border-t border-[#1a2d4a]">
+    <div class="flex items-center justify-between px-4 py-3 border-t border-[#2a3027]">
       <button onclick="${gotoFnName}(${page - 1})" ${prevDisabled ? "disabled" : ""}
-        class="text-xs px-3 py-1.5 rounded-lg bg-[#1a2d4a] text-slate-300 hover:bg-[#243d61] transition disabled:opacity-40 disabled:cursor-not-allowed">← Prev</button>
+        class="text-xs px-3 py-1.5 rounded-lg bg-[#2a3027] text-slate-300 hover:bg-[#373e34] transition disabled:opacity-40 disabled:cursor-not-allowed">← Prev</button>
       <span class="text-xs text-slate-500">Page ${page + 1} of ${totalPages}</span>
       <button onclick="${gotoFnName}(${page + 1})" ${nextDisabled ? "disabled" : ""}
-        class="text-xs px-3 py-1.5 rounded-lg bg-[#1a2d4a] text-slate-300 hover:bg-[#243d61] transition disabled:opacity-40 disabled:cursor-not-allowed">Next →</button>
+        class="text-xs px-3 py-1.5 rounded-lg bg-[#2a3027] text-slate-300 hover:bg-[#373e34] transition disabled:opacity-40 disabled:cursor-not-allowed">Next →</button>
     </div>`;
 }
 
@@ -923,7 +923,7 @@ function renderTable() {
       : r
         ? `<span class="text-xs px-2 py-0.5 rounded-full ${displayResolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${displayResolved ? "✓" : "✗"}</span>`
         : `<span class="text-slate-600 text-xs">—</span>`;
-    const langBadge = r?.language_detected ? `<span class="text-xs bg-[#1a2d4a] text-slate-300 px-2 py-0.5 rounded">${r.language_detected.toUpperCase()}</span>` : "—";
+    const langBadge = r?.language_detected ? `<span class="text-xs bg-[#2a3027] text-slate-300 px-2 py-0.5 rounded">${r.language_detected.toUpperCase()}</span>` : "—";
     const allAgents = chat.agents?.length > 0 ? chat.agents : (chat.agent ? [chat.agent] : []);
 
     // When employee filter active: show only that agent; otherwise show all
@@ -945,16 +945,16 @@ function renderTable() {
     const reReviewBtn = isAdmin ? `<button onclick="reviewChat('${chat.id}','${chat.thread_id||''}',this)" class="text-xs text-slate-500 hover:text-orange-500 px-1" title="Re-review">↺</button>` : "";
     const actionBtn = r
       ? `<div class="flex items-center gap-1" onclick="event.stopPropagation()">
-           <button onclick="openModal('${chat.id}','${chat.thread_id||''}')" class="text-xs text-[#F5B800] hover:underline">View</button>
+           <button onclick="openModal('${chat.id}','${chat.thread_id||''}')" class="text-xs text-[#a9f894] hover:underline">View</button>
            ${reReviewBtn}
          </div>`
       : isAdmin
-        ? `<button onclick="reviewChat('${chat.id}','${chat.thread_id||''}',this)" class="text-xs bg-blue-50 text-[#F5B800] px-2 py-0.5 rounded hover:bg-blue-100">Review</button>`
+        ? `<button onclick="reviewChat('${chat.id}','${chat.thread_id||''}',this)" class="text-xs bg-blue-50 text-[#a9f894] px-2 py-0.5 rounded hover:bg-blue-100">Review</button>`
         : `<span class="text-slate-600 text-xs">—</span>`;
 
     const platformBadge = isCW
       ? `<span class="text-xs bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded font-semibold">CW</span>`
-      : `<span class="text-xs bg-blue-100 text-[#F5B800] px-1.5 py-0.5 rounded font-semibold">LC</span>`;
+      : `<span class="text-xs bg-blue-100 text-[#a9f894] px-1.5 py-0.5 rounded font-semibold">LC</span>`;
 
     const deviceIcon = chat.device === "mobile"
       ? `<span title="Agent on mobile" class="text-base leading-none">📱</span>`
@@ -963,13 +963,13 @@ function renderTable() {
         : `<span class="text-slate-600 text-xs">—</span>`;
 
     const rowKey = chat.thread_id || chat.id;
-    return `<tr class="chat-row border-b border-[#1a2d4a]" id="row-${rowKey}" onclick="openModal('${chat.id}','${chat.thread_id||""}')">
+    return `<tr class="chat-row border-b border-[#2a3027]" id="row-${rowKey}" onclick="openModal('${chat.id}','${chat.thread_id||""}')">
       <td class="px-4 py-3">
         <div class="flex flex-col gap-0.5">
           <div class="flex items-center gap-1">
             ${platformBadge}
             <span class="font-mono text-xs text-slate-500">${chat.thread_id || chat.id}</span>
-            <button onclick="event.stopPropagation();copyId('${chat.thread_id || chat.id}')" title="Copy ID" class="shrink-0 text-slate-600 hover:text-[#F5B800] px-1 text-sm leading-none">⎘</button>
+            <button onclick="event.stopPropagation();copyId('${chat.thread_id || chat.id}')" title="Copy ID" class="shrink-0 text-slate-600 hover:text-[#a9f894] px-1 text-sm leading-none">⎘</button>
           </div>
           ${!isCW && chat.id !== chat.thread_id ? `<div class="flex items-center gap-1">
             <span class="text-slate-600 text-xs">C:</span>
@@ -1026,7 +1026,7 @@ async function reviewChat(chatId, threadId, btn) {
         `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "✓" : "✗"}</span>`;
       const reBtn = hasPermission("action:review_chats") ? `<button onclick="reviewChat('${chatId}','${threadId||''}',this)" class="text-xs text-slate-500 hover:text-orange-500 px-1" title="Re-review">↺</button>` : "";
       if (actionCell) actionCell.innerHTML = `<div class="flex items-center gap-1">
-        <button onclick="openModal('${chatId}','${threadId||''}')" class="text-xs text-[#F5B800] hover:underline">View</button>
+        <button onclick="openModal('${chatId}','${threadId||''}')" class="text-xs text-[#a9f894] hover:underline">View</button>
         ${reBtn}
       </div>`;
     }
@@ -1131,7 +1131,7 @@ async function reviewAllVisible() {
             if (statusEl) statusEl.innerHTML = review.skipped ? `<span class="text-slate-600 text-xs">—</span>` :
               `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "✓" : "✗"}</span>`;
             if (actionCell) actionCell.innerHTML = review.skipped ? `<span class="text-xs text-slate-500">—</span>` :
-              `<div class="flex items-center gap-1"><button onclick="openModal('${chat.id}','${tid}')" class="text-xs text-[#F5B800] hover:underline">View</button></div>`;
+              `<div class="flex items-center gap-1"><button onclick="openModal('${chat.id}','${tid}')" class="text-xs text-[#a9f894] hover:underline">View</button></div>`;
           } else {
             failed++;
             if (actionCell) actionCell.innerHTML = `<span class="text-xs text-red-400">Failed</span>`;
@@ -1178,7 +1178,7 @@ async function reviewAllVisible() {
           if (statusEl) statusEl.innerHTML = review.skipped ? `<span class="text-slate-600 text-xs">—</span>` :
             `<span class="text-xs px-2 py-0.5 rounded-full ${review.resolved ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}">${review.resolved ? "✓" : "✗"}</span>`;
           if (actionCell) actionCell.innerHTML = review.skipped ? `<span class="text-xs text-slate-500">—</span>` :
-            `<div class="flex items-center gap-1"><button onclick="openModal('${chat.id}','${chat.id}')" class="text-xs text-[#F5B800] hover:underline">View</button></div>`;
+            `<div class="flex items-center gap-1"><button onclick="openModal('${chat.id}','${chat.id}')" class="text-xs text-[#a9f894] hover:underline">View</button></div>`;
         } else { failed++; if (actionCell) actionCell.innerHTML = `<span class="text-xs text-red-400">Failed</span>`; }
       } catch { failed++; if (actionCell) actionCell.innerHTML = `<span class="text-xs text-red-400">Error</span>`; }
     }));
@@ -1250,7 +1250,7 @@ async function openModal(chatId, threadId, platformOverride) {
           <button onclick="reviewChatModal('${chatId}','${threadId||''}')" class="text-xs bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700">Retry</button>
         </div>`;
       }
-      return `<div class="mb-4 border border-[#1a2d4a] rounded-xl p-4">
+      return `<div class="mb-4 border border-[#2a3027] rounded-xl p-4">
         ${pr.supervisor_warning ? `<div class="mb-3 bg-orange-50 border border-orange-300 rounded-lg px-3 py-2 flex gap-2">
           <span class="text-orange-500 font-bold text-xs shrink-0">⚠ Supervisor Note</span>
           <span class="text-xs text-orange-700">${escHtml(pr.supervisor_warning_text || "")}</span>
@@ -1279,7 +1279,7 @@ async function openModal(chatId, threadId, platformOverride) {
       reviewHtml = `<div>
         <p class="text-xs text-slate-500 uppercase font-semibold mb-3">Review: ${escHtml(activeEmployeeShift.employee)} (${escHtml(modalFilteredAgentName)})</p>
         ${renderPerAgentCard(modalPR)}
-        <div class="mt-3 pt-3 border-t border-[#1a2d4a]">
+        <div class="mt-3 pt-3 border-t border-[#2a3027]">
           <p class="text-xs text-slate-500">Overall chat score: <span class="font-semibold text-slate-300">${(r.overall_score||0).toFixed(1)}</span></p>
         </div>
       </div>`;
@@ -1341,7 +1341,7 @@ async function openModal(chatId, threadId, platformOverride) {
           <p class="text-sm text-green-700 whitespace-pre-line">${escHtml(r.strengths)}</p>
         </div>` : ""}
         ${r.per_agent_reviews && Object.keys(r.per_agent_reviews).length > 0 ? `
-        <div class="mt-5 border-t border-[#1a2d4a] pt-4">
+        <div class="mt-5 border-t border-[#2a3027] pt-4">
           <p class="text-xs font-semibold text-slate-400 uppercase mb-3">Per-Agent Reviews</p>
           ${Object.values(r.per_agent_reviews).filter(Boolean).map(pr => renderPerAgentCard(pr)).join("")}
         </div>` : ""}
@@ -1374,13 +1374,13 @@ async function openModal(chatId, threadId, platformOverride) {
         </div>`;
       if (m.event_type === "system_message") return `
         <div class="flex justify-center mb-3">
-          <div class="text-xs text-slate-500 bg-[#0a1628] border border-[#1a2d4a] rounded-full px-3 py-1">
+          <div class="text-xs text-slate-500 bg-[#11140f] border border-[#2a3027] rounded-full px-3 py-1">
             ${escHtml(m.content)}
           </div>
         </div>`;
       return `
       <div class="flex ${m.author_type === "agent" ? "justify-end" : "justify-start"} mb-3">
-        <div class="max-w-[80%] rounded-xl px-3 py-2 text-sm ${m.author_type === "agent" ? "bg-blue-600 text-white" : "bg-[#1a2d4a] text-white"}">
+        <div class="max-w-[80%] rounded-xl px-3 py-2 text-sm ${m.author_type === "agent" ? "bg-blue-600 text-white" : "bg-[#2a3027] text-white"}">
           <p class="font-semibold text-xs opacity-70 mb-1">${m.author_name || ""}</p>
           <p class="leading-relaxed">${escHtml(m.content)}</p>
         </div>
@@ -1395,7 +1395,7 @@ async function openModal(chatId, threadId, platformOverride) {
             <h2 class="text-xl font-bold text-white">${chat.customer_name || "Unknown Customer"}</h2>
             <p class="text-sm text-slate-400 mt-1">
               ${modalFilteredAgentName
-                ? `Employee: <span class="font-medium text-[#F5B800]">${escHtml(activeEmployeeShift.employee)}</span> · Agent: <span class="font-medium">${escHtml(modalFilteredAgentName)}</span>`
+                ? `Employee: <span class="font-medium text-[#a9f894]">${escHtml(activeEmployeeShift.employee)}</span> · Agent: <span class="font-medium">${escHtml(modalFilteredAgentName)}</span>`
                 : `Agents: <span class="font-medium">${(chat.agents||[chat.agent]).filter(Boolean).map(a=>escHtml(a.name)).join(", ") || "—"}</span>`
               }
               · ${lang[r?.language_detected] || "Unknown language"}
@@ -1949,7 +1949,7 @@ function groupCheckboxesHtml(selected) {
   const sel = selected || [];
   return ALL_GROUPS.map(g => {
     const checked = sel.includes(g) ? "checked" : "";
-    const color = g === "General" ? "text-[#F5B800]" : g === "Social Trade" ? "text-green-600" : "text-purple-600";
+    const color = g === "General" ? "text-[#a9f894]" : g === "Social Trade" ? "text-green-600" : "text-purple-600";
     return `<label class="flex items-center gap-1 cursor-pointer whitespace-nowrap">
       <input type="checkbox" class="sr-group" value="${g}" ${checked} />
       <span class="text-xs ${color}">${g}</span>
@@ -1959,7 +1959,7 @@ function groupCheckboxesHtml(selected) {
 
 const ALL_LANGUAGES = [
   { value: "Persian", label: "FA", color: "text-rose-600" },
-  { value: "English", label: "EN", color: "text-[#F5B800]" },
+  { value: "English", label: "EN", color: "text-[#a9f894]" },
   { value: "Arabic",  label: "AR", color: "text-emerald-600" },
 ];
 
@@ -1975,26 +1975,26 @@ function languageCheckboxesHtml(selected) {
 }
 
 function shiftRowHtml(s) {
-  return `<tr class="border-b border-[#1a2d4a] shift-row">
-    <td class="py-2 pr-3"><input class="sr-employee w-full border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm" value="${escHtml(s.employee || "")}" placeholder="Employee name" /></td>
+  return `<tr class="border-b border-[#2a3027] shift-row">
+    <td class="py-2 pr-3"><input class="sr-employee w-full border border-[#2a3027] rounded-lg px-2 py-1.5 text-sm" value="${escHtml(s.employee || "")}" placeholder="Employee name" /></td>
     <td class="py-2 pr-3">
-      <select class="sr-agent w-full border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
+      <select class="sr-agent w-full border border-[#2a3027] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
         ${agentOptionsHtml(s.agentKey || "")}
       </select>
     </td>
     <td class="py-2 pr-3">
-      <select class="sr-cw-agent w-36 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-teal-300">
+      <select class="sr-cw-agent w-36 border border-[#2a3027] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-teal-300">
         ${cwAgentOptionsHtml(s.chatwootAgentId || "")}
       </select>
     </td>
-    <td class="py-2 pr-3"><input class="sr-start w-16 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23.5" step="0.5" value="${s.start ?? 8}" /></td>
-    <td class="py-2 pr-3"><input class="sr-end w-16 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" step="0.5" value="${s.end ?? 16}" /></td>
+    <td class="py-2 pr-3"><input class="sr-start w-16 border border-[#2a3027] rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23.5" step="0.5" value="${s.start ?? 8}" /></td>
+    <td class="py-2 pr-3"><input class="sr-end w-16 border border-[#2a3027] rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" step="0.5" value="${s.end ?? 16}" /></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${groupCheckboxesHtml(s.groups)}</div></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${languageCheckboxesHtml(s.languages)}</div></td>
-    <td class="py-2 pr-3"><input class="sr-username w-24 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm" value="${escHtml(s.username || "")}" placeholder="username" autocomplete="off" /></td>
-    <td class="py-2 pr-3"><div class="relative w-24"><input class="sr-password w-full border border-[#1a2d4a] rounded-lg px-2 py-1.5 pr-7 text-sm" type="password" placeholder="••••••" autocomplete="new-password" /><button type="button" tabindex="-1" onclick="togglePw(this)" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs">👁</button></div></td>
+    <td class="py-2 pr-3"><input class="sr-username w-24 border border-[#2a3027] rounded-lg px-2 py-1.5 text-sm" value="${escHtml(s.username || "")}" placeholder="username" autocomplete="off" /></td>
+    <td class="py-2 pr-3"><div class="relative w-24"><input class="sr-password w-full border border-[#2a3027] rounded-lg px-2 py-1.5 pr-7 text-sm" type="password" placeholder="••••••" autocomplete="new-password" /><button type="button" tabindex="-1" onclick="togglePw(this)" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs">👁</button></div></td>
     <td class="py-2 pr-3">
-      <select class="sr-access-group border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
+      <select class="sr-access-group border border-[#2a3027] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
         ${groupOptionsHtml(s.groupId)}
       </select>
     </td>
@@ -2006,27 +2006,27 @@ function shiftRowHtml(s) {
 function addShiftRow() {
   const tbody = document.getElementById("shiftsTableBody");
   const tr = document.createElement("tr");
-  tr.className = "border-b border-[#1a2d4a] shift-row";
+  tr.className = "border-b border-[#2a3027] shift-row";
   tr.innerHTML = `
-    <td class="py-2 pr-3"><input class="sr-employee w-full border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm" value="" placeholder="Employee name" /></td>
+    <td class="py-2 pr-3"><input class="sr-employee w-full border border-[#2a3027] rounded-lg px-2 py-1.5 text-sm" value="" placeholder="Employee name" /></td>
     <td class="py-2 pr-3">
-      <select class="sr-agent w-full border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
+      <select class="sr-agent w-full border border-[#2a3027] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
         ${agentOptionsHtml("")}
       </select>
     </td>
     <td class="py-2 pr-3">
-      <select class="sr-cw-agent w-36 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-teal-300">
+      <select class="sr-cw-agent w-36 border border-[#2a3027] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-teal-300">
         ${cwAgentOptionsHtml("")}
       </select>
     </td>
-    <td class="py-2 pr-3"><input class="sr-start w-16 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23.5" step="0.5" value="8" /></td>
-    <td class="py-2 pr-3"><input class="sr-end w-16 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" step="0.5" value="16" /></td>
+    <td class="py-2 pr-3"><input class="sr-start w-16 border border-[#2a3027] rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="23.5" step="0.5" value="8" /></td>
+    <td class="py-2 pr-3"><input class="sr-end w-16 border border-[#2a3027] rounded-lg px-2 py-1.5 text-sm text-center" type="number" min="0" max="24" step="0.5" value="16" /></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${groupCheckboxesHtml([])}</div></td>
     <td class="py-2 pr-3"><div class="flex flex-col gap-1">${languageCheckboxesHtml([])}</div></td>
-    <td class="py-2 pr-3"><input class="sr-username w-24 border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm" placeholder="username" autocomplete="off" /></td>
-    <td class="py-2 pr-3"><div class="relative w-24"><input class="sr-password w-full border border-[#1a2d4a] rounded-lg px-2 py-1.5 pr-7 text-sm" type="password" placeholder="••••••" autocomplete="new-password" /><button type="button" tabindex="-1" onclick="togglePw(this)" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs">👁</button></div></td>
+    <td class="py-2 pr-3"><input class="sr-username w-24 border border-[#2a3027] rounded-lg px-2 py-1.5 text-sm" placeholder="username" autocomplete="off" /></td>
+    <td class="py-2 pr-3"><div class="relative w-24"><input class="sr-password w-full border border-[#2a3027] rounded-lg px-2 py-1.5 pr-7 text-sm" type="password" placeholder="••••••" autocomplete="new-password" /><button type="button" tabindex="-1" onclick="togglePw(this)" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs">👁</button></div></td>
     <td class="py-2 pr-3">
-      <select class="sr-access-group border border-[#1a2d4a] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
+      <select class="sr-access-group border border-[#2a3027] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
         ${groupOptionsHtml(defaultAccessGroupId())}
       </select>
     </td>
@@ -2158,7 +2158,7 @@ function renderGroupsPage() {
   if (!content) return;
 
   content.innerHTML = `
-    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
+    <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] overflow-hidden">
       <table class="w-full">
         <thead>
           <tr class="text-left text-xs text-slate-500 uppercase">
@@ -2168,15 +2168,15 @@ function renderGroupsPage() {
         </thead>
         <tbody>
           ${groupsList.map(g => `
-            <tr class="border-t border-[#1a2d4a]">
+            <tr class="border-t border-[#2a3027]">
               <td class="px-5 py-3 text-sm text-white font-medium">
                 ${escHtml(g.name)}
-                ${g.is_super ? `<span class="ml-2 text-xs px-2 py-0.5 rounded-full bg-[#F5B800]/20 text-[#F5B800] font-medium">Built-in — always full access</span>` : ""}
+                ${g.is_super ? `<span class="ml-2 text-xs px-2 py-0.5 rounded-full bg-[#a9f894]/20 text-[#a9f894] font-medium">Built-in — always full access</span>` : ""}
               </td>
               <td class="px-5 py-3 text-center">
                 <div class="flex items-center justify-center gap-3">
                   <button onclick="openGroupDetailModal(${g.id}, 'view')" class="text-xs text-slate-400 hover:text-white hover:underline">View</button>
-                  <button onclick="openGroupDetailModal(${g.id}, 'edit')" class="text-xs text-[#F5B800] hover:underline">Edit</button>
+                  <button onclick="openGroupDetailModal(${g.id}, 'edit')" class="text-xs text-[#a9f894] hover:underline">Edit</button>
                   ${!g.is_super ? `<button onclick="deleteGroup(${g.id})" class="text-xs text-red-400 hover:text-red-300">Delete</button>` : ""}
                 </div>
               </td>
@@ -2199,7 +2199,7 @@ function openGroupDetailModal(id, mode) {
 
   const checkboxGrid = (keys) => keys.map(p => `
     <label class="flex items-center gap-1.5 text-xs text-slate-300 ${isEdit && !group.is_super ? "cursor-pointer" : ""}">
-      <input type="checkbox" class="gp-perm w-3.5 h-3.5 accent-[#F5B800]" data-key="${escHtml(p.key)}"
+      <input type="checkbox" class="gp-perm w-3.5 h-3.5 accent-[#a9f894]" data-key="${escHtml(p.key)}"
         ${group.permissions?.[p.key] ? "checked" : ""} ${(!isEdit || group.is_super) ? "disabled" : ""} ${group.is_super ? "checked" : ""} />
       ${escHtml(p.label)}
     </label>`).join("");
@@ -2209,9 +2209,9 @@ function openGroupDetailModal(id, mode) {
       <div class="flex items-center justify-between mb-5">
         <div class="flex items-center gap-2">
           ${isEdit
-            ? `<input class="gp-name text-lg font-bold bg-transparent border-b border-[#1a2d4a] focus:border-[#F5B800] text-white px-1 py-0.5 focus:outline-none" placeholder="Group name" value="${escHtml(group.name)}" />`
+            ? `<input class="gp-name text-lg font-bold bg-transparent border-b border-[#2a3027] focus:border-[#a9f894] text-white px-1 py-0.5 focus:outline-none" placeholder="Group name" value="${escHtml(group.name)}" />`
             : `<h3 class="text-lg font-bold text-white">${escHtml(group.name)}</h3>`}
-          ${group.is_super ? `<span class="text-xs px-2 py-0.5 rounded-full bg-[#F5B800]/20 text-[#F5B800] font-medium">Built-in — always full access</span>` : ""}
+          ${group.is_super ? `<span class="text-xs px-2 py-0.5 rounded-full bg-[#a9f894]/20 text-[#a9f894] font-medium">Built-in — always full access</span>` : ""}
         </div>
         <button onclick="closeModal()" class="text-slate-500 hover:text-white text-xl leading-none">×</button>
       </div>
@@ -2226,10 +2226,10 @@ function openGroupDetailModal(id, mode) {
         </div>
       </div>
       <div class="flex justify-end gap-2">
-        <button onclick="closeModal()" class="text-sm bg-[#1a2d4a] text-slate-300 font-semibold px-4 py-2 rounded-lg hover:bg-[#243d61] transition">Close</button>
+        <button onclick="closeModal()" class="text-sm bg-[#2a3027] text-slate-300 font-semibold px-4 py-2 rounded-lg hover:bg-[#373e34] transition">Close</button>
         ${isCreate
-          ? `<button onclick="createGroup()" class="text-sm bg-[#F5B800] text-black font-semibold px-4 py-2 rounded-lg hover:bg-[#D4A000] transition">Create</button>`
-          : isEdit ? `<button onclick="saveGroupPermissions(${group.id})" class="text-sm bg-[#F5B800] text-black font-semibold px-4 py-2 rounded-lg hover:bg-[#D4A000] transition">Save</button>` : ""}
+          ? `<button onclick="createGroup()" class="text-sm bg-[#a9f894] text-black font-semibold px-4 py-2 rounded-lg hover:bg-[#8fe078] transition">Create</button>`
+          : isEdit ? `<button onclick="saveGroupPermissions(${group.id})" class="text-sm bg-[#a9f894] text-black font-semibold px-4 py-2 rounded-lg hover:bg-[#8fe078] transition">Save</button>` : ""}
       </div>
     </div>`;
   document.getElementById("modal").classList.remove("hidden");
@@ -2343,8 +2343,8 @@ async function loadMonthlyOverview() {
       const chartId = `mc_${month.replace("-", "_")}`;
       const best = emps[0] || null;
       return `
-        <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
-          <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
+        <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] overflow-hidden">
+          <div class="px-5 py-3 border-b border-[#2a3027] flex items-center justify-between">
             <span class="font-semibold text-white text-sm">${monthLabel(month)}</span>
             ${total ? `<span class="text-xs text-slate-500">${total} chats reviewed</span>` : `<span class="text-xs text-slate-600">No data</span>`}
           </div>
@@ -2381,7 +2381,7 @@ async function loadMonthlyOverview() {
         },
         options: {
           scales: {
-            y: { min: 0, max: 10, grid: { color: "#f1f5f9" }, ticks: { stepSize: 2 } },
+            y: { min: 0, max: 10, grid: { color: "#fefefe" }, ticks: { stepSize: 2 } },
             x: { grid: { display: false } },
           },
           plugins: {
@@ -2488,11 +2488,11 @@ function renderTotalChatsReport(content, dateFrom, dateTo, data) {
     const mobile = e.mobile ?? 0;
     const pctMobile = e.livechat ? (mobile / e.livechat) * 100 : 0;
     return `
-    <tr class="border-t border-[#1a2d4a]">
+    <tr class="border-t border-[#2a3027]">
       <td class="px-4 py-2.5 text-white text-sm text-center">${escHtml(e.name)}</td>
       <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${e.livechat ?? 0}</td>
       <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${e.chatwoot ?? 0}</td>
-      <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${e.total}</td>
+      <td class="px-4 py-2.5 text-center text-[#a9f894] font-semibold text-sm">${e.total}</td>
       <td class="px-4 py-2.5 text-center text-orange-400 font-semibold text-sm">${supervised}</td>
       <td class="px-4 py-2.5 text-center text-orange-400 text-sm">${pctSupervised.toFixed(1)}%</td>
       <td class="px-4 py-2.5 text-center text-sky-400 font-semibold text-sm">${mobile}</td>
@@ -2505,21 +2505,21 @@ function renderTotalChatsReport(content, dateFrom, dateTo, data) {
   const grandSupervised = employees.reduce((s, e) => s + (e.supervised || 0), 0);
   const grandMobile = employees.reduce((s, e) => s + (e.mobile || 0), 0);
   const statCard = (label, val, color) => `
-    <div class="bg-[#0f1d35] rounded-xl border border-[#1a2d4a] p-4 text-center">
+    <div class="bg-[#171b15] rounded-xl border border-[#2a3027] p-4 text-center">
       <div class="text-xs text-slate-500 uppercase font-medium mb-1">${label}</div>
       <div class="text-xl font-bold" style="color:${color}">${val}</div>
     </div>`;
 
   content.innerHTML = `
     <div class="grid grid-cols-5 gap-4 mb-5">
-      ${statCard("LiveChat", grandLc, "#94a3b8")}
-      ${statCard("Chatwoot", grandCw, "#94a3b8")}
-      ${statCard("Total", data.total_chats, "#F5B800")}
+      ${statCard("LiveChat", grandLc, "#9ba397")}
+      ${statCard("Chatwoot", grandCw, "#9ba397")}
+      ${statCard("Total", data.total_chats, "#a9f894")}
       ${statCard("Needed Help", grandSupervised, "#fb923c")}
       ${statCard("Mobile", grandMobile, "#38bdf8")}
     </div>
-    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
-      <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
+    <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] overflow-hidden">
+      <div class="px-5 py-3 border-b border-[#2a3027] flex items-center justify-between">
         <span class="font-semibold text-white text-sm">${escHtml(dateFrom)} → ${escHtml(dateTo)}</span>
         <span class="text-xs text-slate-500">${data.total_chats} total chats</span>
       </div>
@@ -2543,19 +2543,21 @@ function renderTotalChatsReport(content, dateFrom, dateTo, data) {
     </div>`;
 }
 
-// ── PDF letterhead (Opo Finance branding) ─────────────────────────────────────
+// ── PDF letterhead (OPO branding) ─────────────────────────────────────────────
 
-const OPO_BRAND_BLUE = "#1e70ff";
-const OPO_LOGO_DATA_URI = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMCIgaGVpZ2h0PSIzMCIgdmlld0JveD0iMCAwIDMwIDMwIiBmaWxsPSJub25lIj48cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTE0Ljk5OTggMEMyMy4yODQxIDAgMzAgNi43MTU1OCAzMCAxNC45OTk4QzMwIDIzLjI4NDEgMjMuMjg0MSAzMCAxNC45OTk4IDMwQzYuNzE1NTggMzAgMCAyMy4yODQxIDAgMTQuOTk5OEMzLjg4MjM0ZS0wNSA2LjcxNTYgNi43MTU2IDMuNTAzMThlLTA1IDE0Ljk5OTggMFpNMTQuOTg1OCAxLjE4NjczQzEzLjA5NzggMS4xODY3MyAxMS41Nzg1IDIuNzA2MDQgOC41Mzk5MyA1Ljc0NDY0TDUuNzQ0NjQgOC41Mzk5M0MyLjcwNjA0IDExLjU3ODUgMS4xODY3MyAxMy4wOTc4IDEuMTg2NzMgMTQuOTg1OEMxLjE4NjczIDE2Ljg3MzcgMi43MDYwNCAxOC4zOTMgNS43NDQ2NCAyMS40MzE3TDguNTM5OTMgMjQuMjI2OUMxMS41Nzg1IDI3LjI2NTUgMTMuMDk3OCAyOC43ODQ5IDE0Ljk4NTggMjguNzg0OUMxNi44NzM3IDI4Ljc4NDggMTguMzkzIDI3LjI2NTUgMjEuNDMxNyAyNC4yMjY5TDI0LjIyNjkgMjEuNDMxN0MyNy4yNjU1IDE4LjM5MzEgMjguNzg0OSAxNi44NzM3IDI4Ljc4NDkgMTQuOTg1OEMyOC43ODQ5IDEzLjA5NzggMjcuMjY1NSAxMS41Nzg1IDI0LjIyNjkgOC41Mzk5M0wyMS40MzE3IDUuNzQ0NjRDMTguMzkzIDIuNzA2MDQgMTYuODczNyAxLjE4NjczIDE0Ljk4NTggMS4xODY3M1oiIGZpbGw9IndoaXRlIj48L3BhdGg+PC9zdmc+";
+// OPO brand accent (opo.com mint). Kept under the old name so every PDF picks it up.
+const OPO_BRAND_BLUE = "#a9f894";
+// White OPO wordmark on a transparent background
+const OPO_LOGO_DATA_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAcsAAABUCAYAAADtRRxlAAAHEUlEQVR4nO3dS1LcSBAAUJnwkiPRvedIHtaYI7FHHMl7JuSRYmS5v1JJqqx6b2EwjmhAnc5Ulurz7evrq8nAYfT5U//xeObfWaYdff7Rf/ycfH1t3fv5vuH3Y33tzjG1piH//HPm66SPnya3OPq2Y7E8jIJP0OWhHQXr24rfR7Gsy+sGMZWS3JRvbvrcq3huXSwFYSxrJTnFsu6YyqZbOJGb5KUYXre+AduiWArCcoIzVWAqluTQbR76xz4vO/4M5JWbdiuWPwRicVIEpmLJnkXTDXyZXteMo7WKpSJZviWBqViyS3cgN1XhdY1Yekj8ekMSFIzl697jX33ygdzj6dC/vtxUvpc1Yul7wtfqiqRhjfq8BJvpSH3xJDfVG0vHpmmec+kshzs2wVgvXSap4ylFLMlNHFLFwNJi2QW0Z0+kTnLwsjC3yE2MvS/NTUuKpQflnKJgsndXIDeRPDfNLZYm8XCJgklK023mLlEoWSU3zSmWHpazxTAa3LvUSKFktdx0b7HsglGh5FZdrOgw2SKWFEpWXet9T7EUjMxhSJa1Y0luYvWb+VuLpWBkCQWTlLE0Ht2Sm9gkN92y3Z2tyUjluT9tQkyxRNvHkjgidW5a1FkKRvaY1QjXhs/kJlK5GkvXiqVgJCWdAKkYeiW197nF0sxX1j4AHCCn3HSY88yy2zkDAGp7Hn5zZ2nmIgC1OZyrf+c6S10lALV6vKWz1FUCULMft3SWukoAavc8Xns57Sx1lQDQ/Dlrf9pZ6ioBYPLs8nuBXWXXNn/0n3825Xma/N3i7PW8FhpDl+LqaH31akrPTdP8VEJuOgxDsePOMvKGxN0v8/Pa3n4FG250or5/ORfLt6ZOkfNBTuSm/7xEX3c57iwj/jK1B+LgLfj7SL4xJZ7mkZv+zk0RRy0O0wk+0X6B4a7/6k7xFQbmY39tIEU8iaX53Yjc9GcsPQeNp8O4WE6fg+Wu5uGxW0hypIwlSf/+m3jKyU3/jItl1x5HoVCWG5TkqRtO5Dq5qeDcFG0YVjDeR1dACl0MiaPLuusjN5WZm36fRvIQqFB2BOP9dAWwvmFJCIXmpodAzyvDte2Z0BVQXWLbmBGvedpIef3S4c+5EYzzSXQsFeWmeg9yU/nX7ilKsdQZLaO7BHLVNgFEKZaeB8C+bE5wWphhxIz9bPJ3fAiybKTUfRS3FCEgyVOkSYBbk5sqEaWzBDI5qghqFGXpSIgx7cy5hszdCDtCjtiL/1d1XMPf6ywBTnHyyHVuJCrxEKWq7/0DFMA15J5YeVco4X/jI7qAP0WY/JZSxCOUiO/Q5K9VLOthUfnMPSH3/iHIfvKTU0YqyE0PQdYwmo23XG1dEhDDscnfR5QJPu7wl3P9ID25abkQ1+8h0KJa3eWyWY3AOuSmCnJTlM6y4w5unu6amdUI65Gb5ouSmz4jFcuOO7j7uWawPv/PCu4qu9mwwzrLCGstm/7uLdIF3pvdV2AbclPhG15E6yyb/gILygKDEYKTm8rMTa/jYhntRApBWVYwQinkpvJy0+9JsN++vr6GL7wHHLJr+3WiUU7bXtuhf3YS7X2EEnUdidwUPzc9dn98L2wWWq2BGTkQoVTjDkpuCn6497izHDZPLu3k8ijrSOdsD2UvT4hDbgo8OjAulp1fu/1IAJDhEOyp2bBRlpAAwGYjAdPOspShWKAsbSHDegTsKs91ltNxdYA9tf0xWHITW/kr1qad5cCzSyDH5RdyE5t3lZd28HEHB+S4TlFuYm0nY+xcZxl1kwKg/AX9chObdpXX9oaNtgUecZh1zZKdb+Qm1nJ25OJSsYx0GgmxglGy49JEnmu73ZiIyBraS7F3aRh24IE6qYc4LFFi6nnGzbnhWFYffr3niK4uiCEF3QCnYuJx5iiWEQpSuVrnbimWhjxIwQkMzBlyvfYachNLvd5ys3brqSNDQEc7h4w8KJQ0fUL6mXguhNzEJrnpls5y0L2gCT/cS6Gs29BBPs58LnmLLr50mKyam+49z7ILdg/VuZVCWb5x8fuYHDu15c21DpNkM19PmXP4c1cwfwhKUgdjhhT7WBRM7hntuMs9w7Bjhj24pIsNs6jZg9zEKrlpbrHsCEpO0Y2xN7mJ5LlpSbFs+m+sg2CwdCkApCI3kTQ3LS2Ww/jv3EXFlEEMkHNc6jLr1abKTSmK5cDhrHXq3nd38OTMsGy9k3ieU71gymI5BKU7uTroJolEbqpvEk+b8kVTF8uBwCxX8js22JDcVP4+w29rvPhaxXIgMMsskrpJopObytFuMbnwliO6Uuo2M+hYNFzvXp5NoCO6LIOph9wUR9t/XCM3ZVMspwnzqWmao+3zqgtCxZIIhVNuqrxA5lIszxXPsePo30ijPXMm4JYBqFgSyTg3HSdfp0liusdwZ699hk/6F8k9u4KSDVcpAAAAAElFTkSuQmCC";
 
-// Dark theme shared across all PDF exports — matches opo.com's own dark navy site
-// and this panel's own dark UI, instead of a plain white printout.
-const PDF_BG        = "#0a1628";
-const PDF_CARD_BG   = "#0f1d35";
-const PDF_BORDER    = "#1a2d4a";
-const PDF_TEXT      = "#f1f5f9";
-const PDF_TEXT_DIM  = "#94a3b8";
-const PDF_TEXT_BODY = "#cbd5e1";
+// Dark theme shared across all PDF exports — matches opo.com's green-tinted black
+// site and this panel's own dark UI, instead of a plain white printout.
+const PDF_BG        = "#0a0c0a";
+const PDF_CARD_BG   = "#171b15";
+const PDF_BORDER    = "#2a3027";
+const PDF_TEXT      = "#fefefe";
+const PDF_TEXT_DIM  = "#9ba397";
+const PDF_TEXT_BODY = "#bfc7bb";
 
 // Forces background colors/images to actually print — browsers strip them by default
 // unless "Background graphics" is checked in the print dialog, and this CSS overrides that.
@@ -2563,14 +2565,9 @@ const PDF_FORCE_PRINT_COLORS_CSS = `* { -webkit-print-color-adjust: exact !impor
 
 function opoLetterheadHtml() {
   return `
-<div style="display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:8mm">
-  <div style="width:32px;height:32px;border-radius:9px;background:${OPO_BRAND_BLUE};display:flex;align-items:center;justify-content:center;flex-shrink:0">
-    <img src="${OPO_LOGO_DATA_URI}" style="width:18px;height:18px;display:block" />
-  </div>
-  <div>
-    <div style="font-size:12.5px;font-weight:900;color:${PDF_TEXT};letter-spacing:.03em;line-height:1.1">OPO FINANCE</div>
-    <div style="font-size:7px;color:${PDF_TEXT_DIM};letter-spacing:.09em;text-transform:uppercase;margin-top:1px;text-align:center">Support Quality Report</div>
-  </div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:5px;margin-bottom:8mm">
+  <img src="${OPO_LOGO_DATA_URI}" alt="OPO" style="height:20px;width:auto;display:block" />
+  <div style="font-size:7px;color:${PDF_TEXT_DIM};letter-spacing:.09em;text-transform:uppercase">Support Quality Report</div>
 </div>`;
 }
 
@@ -2652,12 +2649,13 @@ function downloadTotalChatsPdf() {
 
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Total Chats — ${escHtml(dateFrom)} to ${escHtml(dateTo)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   @page { size: A4 portrait; margin: 1.5cm 16mm; background: ${PDF_BG}; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   ${PDF_FORCE_PRINT_COLORS_CSS}
   html { background: ${PDF_BG}; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
+  body { font-family: "Instrument Sans", Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
   table { width: 100%; border-collapse: collapse; }
   th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
        color: ${PDF_TEXT_DIM}; text-align: center; padding: 8px 10px; border-bottom: 2px solid ${OPO_BRAND_BLUE}; }
@@ -2672,7 +2670,7 @@ ${opoLetterheadHtml()}
     <div style="font-size:20px;font-weight:900;color:${PDF_TEXT};line-height:1.1">Total Chats Report</div>
     <div style="font-size:11px;color:${PDF_TEXT_DIM};margin-top:4px">${escHtml(dateFrom)} → ${escHtml(dateTo)}${employeeFilter ? ` · ${escHtml(employeeFilter)}` : ""}</div>
   </div>
-  <div style="background:#132a4d;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
+  <div style="background:#20251e;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
               letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
     Generated ${new Date().toLocaleDateString()}
   </div>
@@ -2793,9 +2791,9 @@ function renderChatTransfersReport(content, dateFrom, dateTo, data) {
   const rows = employees.map(e => {
     const pctTransferred = e.total ? (e.transferred / e.total) * 100 : 0;
     return `
-    <tr class="border-t border-[#1a2d4a]">
+    <tr class="border-t border-[#2a3027]">
       <td class="px-4 py-2.5 text-white text-sm text-center">${escHtml(e.name)}</td>
-      <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${e.total}</td>
+      <td class="px-4 py-2.5 text-center text-[#a9f894] font-semibold text-sm">${e.total}</td>
       <td class="px-4 py-2.5 text-center text-emerald-400 font-semibold text-sm">${e.answered}</td>
       <td class="px-4 py-2.5 text-center text-rose-400 font-semibold text-sm">${e.transferred}</td>
       <td class="px-4 py-2.5 text-center text-amber-400 text-sm" title="Handed off to a different department (LiveChat logged an explicit transfer)">${e.transferredDept || 0}</td>
@@ -2810,21 +2808,21 @@ function renderChatTransfersReport(content, dateFrom, dateTo, data) {
   const grandTransferredDept = employees.reduce((s, e) => s + (e.transferredDept || 0), 0);
   const grandTransferredNoResponse = employees.reduce((s, e) => s + (e.transferredNoResponse || 0), 0);
   const statCard = (label, val, color) => `
-    <div class="bg-[#0f1d35] rounded-xl border border-[#1a2d4a] p-4 text-center">
+    <div class="bg-[#171b15] rounded-xl border border-[#2a3027] p-4 text-center">
       <div class="text-xs text-slate-500 uppercase font-medium mb-1">${label}</div>
       <div class="text-xl font-bold" style="color:${color}">${val}</div>
     </div>`;
 
   content.innerHTML = `
     <div class="grid grid-cols-5 gap-4 mb-5">
-      ${statCard("Total (LiveChat)", grandTotal, "#F5B800")}
+      ${statCard("Total (LiveChat)", grandTotal, "#a9f894")}
       ${statCard("Answered Solo", grandAnswered, "#34d399")}
       ${statCard("Transferred", grandTransferred, "#fb7185")}
       ${statCard("— Dept. Transfer", grandTransferredDept, "#fbbf24")}
       ${statCard("— No Response", grandTransferredNoResponse, "#fb923c")}
     </div>
-    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
-      <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
+    <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] overflow-hidden">
+      <div class="px-5 py-3 border-b border-[#2a3027] flex items-center justify-between">
         <span class="font-semibold text-white text-sm">${escHtml(dateFrom)} → ${escHtml(dateTo)}</span>
         <span class="text-xs text-slate-500">${grandTotal} total chats</span>
       </div>
@@ -2876,12 +2874,13 @@ function downloadChatTransfersPdf() {
 
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Chat Transfers — ${escHtml(dateFrom)} to ${escHtml(dateTo)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   @page { size: A4 portrait; margin: 1.5cm 16mm; background: ${PDF_BG}; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   ${PDF_FORCE_PRINT_COLORS_CSS}
   html { background: ${PDF_BG}; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
+  body { font-family: "Instrument Sans", Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
   table { width: 100%; border-collapse: collapse; }
   th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
        color: ${PDF_TEXT_DIM}; text-align: center; padding: 8px 10px; border-bottom: 2px solid ${OPO_BRAND_BLUE}; }
@@ -2896,7 +2895,7 @@ ${opoLetterheadHtml()}
     <div style="font-size:20px;font-weight:900;color:${PDF_TEXT};line-height:1.1">Chat Transfers Report</div>
     <div style="font-size:11px;color:${PDF_TEXT_DIM};margin-top:4px">${escHtml(dateFrom)} → ${escHtml(dateTo)}${employeeFilter ? ` · ${escHtml(employeeFilter)}` : ""} · LiveChat only</div>
   </div>
-  <div style="background:#132a4d;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
+  <div style="background:#20251e;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
               letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
     Generated ${new Date().toLocaleDateString()}
   </div>
@@ -3003,10 +3002,10 @@ function renderMonthlySummaryReport(content, dateFrom, dateTo, data) {
     const pctShare = grandTotal ? (e.totalChats / grandTotal) * 100 : 0;
     const pctAvail = availabilityPct(e);
     return `
-    <tr class="border-t border-[#1a2d4a]">
+    <tr class="border-t border-[#2a3027]">
       <td class="px-4 py-2.5 text-white text-sm text-center">${escHtml(e.name)}</td>
       <td class="px-4 py-2.5 text-center text-slate-400 text-xs">${(e.groups || []).map(escHtml).join(", ") || "—"}</td>
-      <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${e.totalChats}</td>
+      <td class="px-4 py-2.5 text-center text-[#a9f894] font-semibold text-sm">${e.totalChats}</td>
       <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${pctShare.toFixed(1)}%</td>
       <td class="px-4 py-2.5 text-center text-sky-400 font-semibold text-sm">${e.chatHours.toFixed(1)}h</td>
       <td class="px-4 py-2.5 text-center text-emerald-400 font-semibold text-sm">${e.onlineHours.toFixed(1)}h</td>
@@ -3016,19 +3015,19 @@ function renderMonthlySummaryReport(content, dateFrom, dateTo, data) {
   }).join("");
 
   const statCard = (label, val, color) => `
-    <div class="bg-[#0f1d35] rounded-xl border border-[#1a2d4a] p-4 text-center">
+    <div class="bg-[#171b15] rounded-xl border border-[#2a3027] p-4 text-center">
       <div class="text-xs text-slate-500 uppercase font-medium mb-1">${label}</div>
       <div class="text-xl font-bold" style="color:${color}">${val}</div>
     </div>`;
-  const groupCards = groups.map(g => statCard(escHtml(g.name), g.totalChats, "#F5B800")).join("");
+  const groupCards = groups.map(g => statCard(escHtml(g.name), g.totalChats, "#a9f894")).join("");
 
   content.innerHTML = `
     <div class="grid gap-4 mb-5" style="grid-template-columns:repeat(${groups.length + 1},1fr)">
-      ${statCard("Grand Total", grandTotal, "#94a3b8")}
+      ${statCard("Grand Total", grandTotal, "#9ba397")}
       ${groupCards}
     </div>
-    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
-      <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
+    <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] overflow-hidden">
+      <div class="px-5 py-3 border-b border-[#2a3027] flex items-center justify-between">
         <span class="font-semibold text-white text-sm">${escHtml(dateFrom)} → ${escHtml(dateTo)}</span>
         <span class="text-xs text-slate-500">${grandTotal} total chats</span>
       </div>
@@ -3078,16 +3077,17 @@ function downloadMonthlySummaryPdf() {
     </tr>`;
   }).join("");
 
-  const statBlocks = [["Grand Total", grandTotal, OPO_BRAND_BLUE], ...groups.map(g => [g.name, g.totalChats, "#F5B800"])];
+  const statBlocks = [["Grand Total", grandTotal, OPO_BRAND_BLUE], ...groups.map(g => [g.name, g.totalChats, "#a9f894"])];
 
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Monthly Summary — ${escHtml(dateFrom)} to ${escHtml(dateTo)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   @page { size: A4 portrait; margin: 1.5cm 16mm; background: ${PDF_BG}; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   ${PDF_FORCE_PRINT_COLORS_CSS}
   html { background: ${PDF_BG}; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
+  body { font-family: "Instrument Sans", Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
   table { width: 100%; border-collapse: collapse; }
   th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
        color: ${PDF_TEXT_DIM}; text-align: center; padding: 8px 10px; border-bottom: 2px solid ${OPO_BRAND_BLUE}; }
@@ -3102,7 +3102,7 @@ ${opoLetterheadHtml()}
     <div style="font-size:20px;font-weight:900;color:${PDF_TEXT};line-height:1.1">Monthly Summary Report</div>
     <div style="font-size:11px;color:${PDF_TEXT_DIM};margin-top:4px">${escHtml(dateFrom)} → ${escHtml(dateTo)}</div>
   </div>
-  <div style="background:#132a4d;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
+  <div style="background:#20251e;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
               letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
     Generated ${new Date().toLocaleDateString()}
   </div>
@@ -3134,27 +3134,27 @@ ${opoLetterheadHtml()}
 <div style="margin-top:20px;page-break-inside:avoid">
   <div style="font-size:13px;font-weight:900;color:${PDF_TEXT};border-bottom:2px solid ${OPO_BRAND_BLUE};padding-bottom:6px;margin-bottom:10px">Performance Summary</div>
 
-  <div style="font-size:9.5px;font-weight:800;color:#F5B800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Where the demand went</div>
+  <div style="font-size:9.5px;font-weight:800;color:#a9f894;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Where the demand went</div>
   <div style="font-size:9px;line-height:1.6;color:${PDF_TEXT_BODY};margin-bottom:10px">
     The department totals above show how customer demand was actually split across General, Social Trade, and KYC this period. This is the real workload each team carried — useful for judging whether staffing in each department matches the volume it's actually handling, and for spotting a department that's quietly overloaded or under-used.
   </div>
 
-  <div style="font-size:9.5px;font-weight:800;color:#F5B800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">How the workload was carried across the team</div>
+  <div style="font-size:9.5px;font-weight:800;color:#a9f894;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">How the workload was carried across the team</div>
   <div style="font-size:9px;line-height:1.6;color:${PDF_TEXT_BODY};margin-bottom:10px">
     Total Chats and % Share show how much of the team's total workload each person actually carried. A wide spread here — a few people far above the rest, others well below — is worth a closer look, whether that means rebalancing chats or recognizing strong performers.
   </div>
 
-  <div style="font-size:9.5px;font-weight:800;color:#F5B800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Effort behind the numbers</div>
+  <div style="font-size:9.5px;font-weight:800;color:#a9f894;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Effort behind the numbers</div>
   <div style="font-size:9px;line-height:1.6;color:${PDF_TEXT_BODY};margin-bottom:10px">
     Chat Hours reflects the actual time each person spent engaged with customers, not just how many chats passed through them — two employees with the same chat count can represent very different amounts of real work, and this is where that difference shows up.
   </div>
 
-  <div style="font-size:9.5px;font-weight:800;color:#F5B800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Reliability during scheduled shifts</div>
+  <div style="font-size:9.5px;font-weight:800;color:#a9f894;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Reliability during scheduled shifts</div>
   <div style="font-size:9px;line-height:1.6;color:${PDF_TEXT_BODY};margin-bottom:10px">
     Availability and % Availability show how consistently each person was actually online and ready to help during the hours they were scheduled — independent of how busy the queue happened to be. Low availability against a full shift is a reliability signal worth following up on directly.
   </div>
 
-  <div style="font-size:9.5px;font-weight:800;color:#F5B800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Reading the numbers in context</div>
+  <div style="font-size:9.5px;font-weight:800;color:#a9f894;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Reading the numbers in context</div>
   <div style="font-size:9px;line-height:1.6;color:${PDF_TEXT_BODY}">
     Leave (days) is there so the numbers above aren't misread — someone on leave for part of the month will naturally show lower chats, hours, and availability, and that's attendance, not a performance drop.
   </div>
@@ -3184,16 +3184,16 @@ async function debugUnassignedMonthlySummary() {
     const rows = (data.unassigned_breakdown || []);
     const knownKeys = (data.known_agent_keys || []);
     const knownKeysHtml = `
-      <div class="px-4 py-2 border-t border-[#1a2d4a] text-xs text-slate-400">Configured Chatwoot agent IDs (LiveChat now uses the chat's own routing group directly, not agent matching — this list is only relevant to Chatwoot mismatches):</div>
+      <div class="px-4 py-2 border-t border-[#2a3027] text-xs text-slate-400">Configured Chatwoot agent IDs (LiveChat now uses the chat's own routing group directly, not agent matching — this list is only relevant to Chatwoot mismatches):</div>
       <div class="px-4 py-2 flex flex-wrap gap-1.5">
-        ${knownKeys.map(k => `<span class="text-xs bg-[#0a1628] border border-[#1a2d4a] rounded px-2 py-1 text-slate-300" title="${escHtml(k.employees.join(', '))}">${escHtml(k.agentKey)}</span>`).join("") || '<span class="text-xs text-slate-500">(none found)</span>'}
+        ${knownKeys.map(k => `<span class="text-xs bg-[#11140f] border border-[#2a3027] rounded px-2 py-1 text-slate-300" title="${escHtml(k.employees.join(', '))}">${escHtml(k.agentKey)}</span>`).join("") || '<span class="text-xs text-slate-500">(none found)</span>'}
       </div>`;
     if (!rows.length) {
       panel.innerHTML = `<div class="p-4 text-center text-emerald-400 text-sm">No unassigned chats in this range — every chat resolved to a department.</div>` + knownKeysHtml;
       return;
     }
     panel.innerHTML = `
-      <div class="px-4 py-2 border-b border-[#1a2d4a] text-xs text-slate-400">${rows.reduce((s,r)=>s+r.count,0)} unassigned chat(s) across ${rows.length} raw agent/assignee name(s):</div>
+      <div class="px-4 py-2 border-b border-[#2a3027] text-xs text-slate-400">${rows.reduce((s,r)=>s+r.count,0)} unassigned chat(s) across ${rows.length} raw agent/assignee name(s):</div>
       <table class="w-full text-xs">
         <thead><tr class="text-left text-slate-500 uppercase">
           <th class="px-4 py-2">Raw name (LiveChat/Chatwoot)</th>
@@ -3203,7 +3203,7 @@ async function debugUnassignedMonthlySummary() {
           <th class="px-4 py-2">Sample chat ID(s)</th>
         </tr></thead>
         <tbody>
-          ${rows.map(r => `<tr class="border-t border-[#1a2d4a]">
+          ${rows.map(r => `<tr class="border-t border-[#2a3027]">
             <td class="px-4 py-2 text-white">${escHtml(r.name)}</td>
             <td class="px-4 py-2 text-slate-400">${r.employee ? escHtml(r.employee) : "—"}</td>
             <td class="px-4 py-2 text-slate-400">${escHtml(r.reason)}</td>
@@ -3355,23 +3355,23 @@ function renderSupervisedChatsReport(content, dateFrom, dateTo, data) {
   const rows = pageChats.map(c => {
     const dateLabel = c.date ? new Date(c.date).toLocaleString() : "—";
     return `
-    <tr class="border-t border-[#1a2d4a] align-top">
+    <tr class="border-t border-[#2a3027] align-top">
       <td class="px-4 py-2.5 text-white text-sm text-center">${escHtml(c.employee || "—")}</td>
       <td class="px-4 py-2.5 text-slate-400 text-sm text-center">${escHtml(c.agent_name || "—")}</td>
       <td class="px-4 py-2.5 text-slate-400 text-xs text-center whitespace-nowrap">${escHtml(dateLabel)}</td>
-      <td class="px-4 py-2.5 text-[#F5B800] text-sm text-center">${escHtml(c.reviewed_by || "—")}</td>
+      <td class="px-4 py-2.5 text-[#a9f894] text-sm text-center">${escHtml(c.reviewed_by || "—")}</td>
       <td class="px-4 py-2.5 text-slate-300 text-sm max-w-md">
         <div class="line-clamp-2" title="${escHtml(c.note || "")}">${escHtml(c.note || "—")}</div>
       </td>
       <td class="px-4 py-2.5 text-center">
-        <button onclick="openModal('${c.chat_id}','${c.thread_id || ''}','${c.platform}')" class="text-xs text-[#F5B800] hover:underline">View</button>
+        <button onclick="openModal('${c.chat_id}','${c.thread_id || ''}','${c.platform}')" class="text-xs text-[#a9f894] hover:underline">View</button>
       </td>
     </tr>`;
   }).join("");
 
   content.innerHTML = `
-    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
-      <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
+    <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] overflow-hidden">
+      <div class="px-5 py-3 border-b border-[#2a3027] flex items-center justify-between">
         <span class="font-semibold text-white text-sm">${escHtml(dateFrom)} → ${escHtml(dateTo)}</span>
         <span class="text-xs text-slate-500">${chats.length} supervised chat${chats.length === 1 ? "" : "s"}</span>
       </div>
@@ -3599,7 +3599,7 @@ function renderCampaignReport(content, data) {
   const postChange = pctChange(preAvg, postAvg);
 
   const statCard = (label, val, color) => `
-    <div class="bg-[#0f1d35] rounded-xl border border-[#1a2d4a] p-4 text-center">
+    <div class="bg-[#171b15] rounded-xl border border-[#2a3027] p-4 text-center">
       <div class="text-xs text-slate-500 uppercase font-medium mb-1">${label}</div>
       <div class="text-xl font-bold" style="color:${color}">${val}</div>
     </div>`;
@@ -3609,30 +3609,30 @@ function renderCampaignReport(content, data) {
     const supervised = e.supervised ?? 0;
     const pctSupervised = e.total ? (supervised / e.total) * 100 : 0;
     return `
-    <tr class="border-t border-[#1a2d4a]">
+    <tr class="border-t border-[#2a3027]">
       <td class="px-4 py-2.5 text-white text-sm text-center">${escHtml(e.name)}</td>
       <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${e.livechat}</td>
       <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${e.chatwoot}</td>
       <td class="px-4 py-2.5 text-center text-white text-sm">${e.total}</td>
-      <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${e.during_campaign_total}</td>
-      <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${pct.toFixed(1)}%</td>
+      <td class="px-4 py-2.5 text-center text-[#a9f894] font-semibold text-sm">${e.during_campaign_total}</td>
+      <td class="px-4 py-2.5 text-center text-[#a9f894] font-semibold text-sm">${pct.toFixed(1)}%</td>
       <td class="px-4 py-2.5 text-center text-orange-400 font-semibold text-sm">${supervised}</td>
       <td class="px-4 py-2.5 text-center text-orange-400 text-sm">${pctSupervised.toFixed(1)}%</td>
     </tr>`;
   }).join("");
 
   const statCards = [
-    statCard(`Total (${escHtml(baseline.date_from)} → ${escHtml(baseline.date_to)})`, baseline.total, "#94a3b8"),
-    statCard(`Total (${escHtml(current.date_from)} → ${escHtml(current.date_to)})`, current.total, "#F5B800"),
+    statCard(`Total (${escHtml(baseline.date_from)} → ${escHtml(baseline.date_to)})`, baseline.total, "#9ba397"),
+    statCard(`Total (${escHtml(current.date_from)} → ${escHtml(current.date_to)})`, current.total, "#a9f894"),
     statCard("Change", `${totalChange >= 0 ? "+" : ""}${totalChange.toFixed(1)}%`, totalChange >= 0 ? "#22c55e" : "#ef4444"),
-    statCard(`Avg/day before ${escHtml(campaign_start)}`, preAvg.toFixed(1), "#94a3b8"),
-    statCard(`Avg/day during (${escHtml(campaign_start)} → ${escHtml(campaign_end)})`, duringAvg.toFixed(1), "#F5B800"),
+    statCard(`Avg/day before ${escHtml(campaign_start)}`, preAvg.toFixed(1), "#9ba397"),
+    statCard(`Avg/day during (${escHtml(campaign_start)} → ${escHtml(campaign_end)})`, duringAvg.toFixed(1), "#a9f894"),
     statCard("Daily Load Change", `${avgChange >= 0 ? "+" : ""}${avgChange.toFixed(1)}%`, avgChange >= 0 ? "#22c55e" : "#ef4444"),
   ];
   if (post_campaign.days > 0) {
     statCards.push(
       statCard(`Avg/day after ${escHtml(campaign_end)}`, postAvg.toFixed(1), "#38bdf8"),
-      statCard("Post-Campaign vs Baseline", `${postChange >= 0 ? "+" : ""}${postChange.toFixed(1)}%`, Math.abs(postChange) <= 15 ? "#94a3b8" : postChange >= 0 ? "#22c55e" : "#ef4444"),
+      statCard("Post-Campaign vs Baseline", `${postChange >= 0 ? "+" : ""}${postChange.toFixed(1)}%`, Math.abs(postChange) <= 15 ? "#9ba397" : postChange >= 0 ? "#22c55e" : "#ef4444"),
     );
   }
 
@@ -3641,36 +3641,36 @@ function renderCampaignReport(content, data) {
       ${statCards.join("")}
     </div>
 
-    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5 mb-5">
+    <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5 mb-5">
       <p class="text-sm text-slate-300 leading-relaxed">${buildCampaignNarrative(data)}</p>
     </div>
 
-    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5 mb-5">
+    <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5 mb-5">
       <div class="text-xs text-slate-500 uppercase font-semibold mb-3">Key Findings</div>
       <ul class="space-y-2">
-        ${buildCampaignKeyFindings(data).map(f => `<li class="text-sm text-slate-300 leading-relaxed flex gap-2"><span class="text-[#F5B800] shrink-0">•</span><span>${f}</span></li>`).join("")}
+        ${buildCampaignKeyFindings(data).map(f => `<li class="text-sm text-slate-300 leading-relaxed flex gap-2"><span class="text-[#a9f894] shrink-0">•</span><span>${f}</span></li>`).join("")}
       </ul>
     </div>
 
-    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-4 mb-5">
+    <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-4 mb-5">
       <p class="text-xs text-slate-500 leading-relaxed">${CAMPAIGN_METHODOLOGY_HTML}</p>
     </div>
 
     <div class="grid grid-cols-2 gap-5 mb-5">
-      <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-4">
+      <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-4">
         <div class="text-sm font-semibold text-white mb-3">Baseline vs Current</div>
         <canvas id="campCompareCanvas" height="180"></canvas>
-        <p class="text-xs text-slate-400 leading-relaxed mt-3 pt-3 border-t border-[#1a2d4a]">${buildCompareChartAnalysis(data)}</p>
+        <p class="text-xs text-slate-400 leading-relaxed mt-3 pt-3 border-t border-[#2a3027]">${buildCompareChartAnalysis(data)}</p>
       </div>
-      <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-4">
+      <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-4">
         <div class="text-sm font-semibold text-white mb-3">Daily Volume — Current Period <span class="text-xs font-normal text-slate-500">(grey/gold/blue = pre/during/post campaign)</span></div>
         <canvas id="campDailyCanvas" height="180"></canvas>
-        <p class="text-xs text-slate-400 leading-relaxed mt-3 pt-3 border-t border-[#1a2d4a]">${buildDailyChartAnalysis(data)}</p>
+        <p class="text-xs text-slate-400 leading-relaxed mt-3 pt-3 border-t border-[#2a3027]">${buildDailyChartAnalysis(data)}</p>
       </div>
     </div>
 
-    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
-      <div class="px-5 py-3 border-b border-[#1a2d4a]">
+    <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] overflow-hidden">
+      <div class="px-5 py-3 border-b border-[#2a3027]">
         <span class="font-semibold text-white text-sm">Per-Employee Breakdown — Current Period</span>
       </div>
       <div class="overflow-x-auto">
@@ -3708,16 +3708,16 @@ function renderCampaignCharts(data) {
       data: {
         labels: ["LiveChat", "Chatwoot", "Total"],
         datasets: [
-          { label: "Baseline", data: [baseline.livechat, baseline.chatwoot, baseline.total], backgroundColor: "#64748b", borderRadius: 6 },
-          { label: "Current", data: [current.livechat, current.chatwoot, current.total], backgroundColor: "#F5B800", borderRadius: 6 },
+          { label: "Baseline", data: [baseline.livechat, baseline.chatwoot, baseline.total], backgroundColor: "#5b6657", borderRadius: 6 },
+          { label: "Current", data: [current.livechat, current.chatwoot, current.total], backgroundColor: "#a9f894", borderRadius: 6 },
         ],
       },
       options: {
         scales: {
-          y: { beginAtZero: true, grid: { color: "#1a2d4a" }, ticks: { color: "#94a3b8" } },
-          x: { grid: { display: false }, ticks: { color: "#94a3b8" } },
+          y: { beginAtZero: true, grid: { color: "#2a3027" }, ticks: { color: "#9ba397" } },
+          x: { grid: { display: false }, ticks: { color: "#9ba397" } },
         },
-        plugins: { legend: { labels: { color: "#e2e8f0" } } },
+        plugins: { legend: { labels: { color: "#dee3dc" } } },
       },
     });
   }
@@ -3726,7 +3726,7 @@ function renderCampaignCharts(data) {
   if (dailyCanvas) {
     const days = Object.keys(daily).sort();
     const totals = days.map(d => daily[d].livechat + daily[d].chatwoot);
-    const colors = days.map(d => d < campaign_start ? "#64748b" : d > campaign_end ? "#38bdf8" : "#F5B800");
+    const colors = days.map(d => d < campaign_start ? "#5b6657" : d > campaign_end ? "#38bdf8" : "#a9f894");
     _campDailyChart = new Chart(dailyCanvas.getContext("2d"), {
       type: "bar",
       data: {
@@ -3735,8 +3735,8 @@ function renderCampaignCharts(data) {
       },
       options: {
         scales: {
-          y: { beginAtZero: true, grid: { color: "#1a2d4a" }, ticks: { color: "#94a3b8" } },
-          x: { grid: { display: false }, ticks: { color: "#94a3b8", maxRotation: 90, minRotation: 90 } },
+          y: { beginAtZero: true, grid: { color: "#2a3027" }, ticks: { color: "#9ba397" } },
+          x: { grid: { display: false }, ticks: { color: "#9ba397", maxRotation: 90, minRotation: 90 } },
         },
         plugins: { legend: { display: false } },
       },
@@ -3780,12 +3780,13 @@ function downloadCampaignImpactPdf() {
 
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Campaign Impact Report</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   @page { size: A4 portrait; margin: 1.5cm 16mm; background: ${PDF_BG}; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   ${PDF_FORCE_PRINT_COLORS_CSS}
   html { background: ${PDF_BG}; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
+  body { font-family: "Instrument Sans", Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
   table { width: 100%; border-collapse: collapse; }
   th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
        color: ${PDF_TEXT_DIM}; text-align: center; padding: 8px 10px; border-bottom: 2px solid ${OPO_BRAND_BLUE}; }
@@ -3809,7 +3810,7 @@ ${opoLetterheadHtml()}
       <div><strong style="color:${PDF_TEXT_BODY}">Campaign:</strong> ${escHtml(campaign_start)} → ${escHtml(campaign_end)}</div>
     </div>
   </div>
-  <div style="background:#132a4d;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
+  <div style="background:#20251e;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
               letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
     Generated ${new Date().toLocaleDateString()}
   </div>
@@ -3955,13 +3956,13 @@ async function refreshSavedReportsPanel(type, containerId) {
       return;
     }
     el.innerHTML = list.map(r => `
-      <div class="flex items-center justify-between px-3 py-2 border-b border-[#1a2d4a] last:border-0">
+      <div class="flex items-center justify-between px-3 py-2 border-b border-[#2a3027] last:border-0">
         <div class="min-w-0">
           <div class="text-sm text-white truncate">${escHtml(r.label)}</div>
           <div class="text-xs text-slate-500">${new Date(r.created_at).toLocaleString()}${r.created_by ? " · " + escHtml(r.created_by) : ""}</div>
         </div>
         <div class="flex gap-2 shrink-0">
-          <button onclick="loadSavedReport('${type}', ${r.id})" class="text-xs bg-[#1a2d4a] text-[#F5B800] hover:bg-[#243d61] px-2.5 py-1 rounded-lg transition">Load</button>
+          <button onclick="loadSavedReport('${type}', ${r.id})" class="text-xs bg-[#2a3027] text-[#a9f894] hover:bg-[#373e34] px-2.5 py-1 rounded-lg transition">Load</button>
           ${hasPermission("action:manage_reports") ? `<button onclick="deleteSavedReport('${type}', ${r.id}, '${containerId}')" class="text-xs text-red-400 hover:text-red-300 px-2 py-1">✕</button>` : ""}
         </div>
       </div>`).join("");
@@ -4019,7 +4020,7 @@ let _platformStatusChart = null;
 
 function switchPlatformTab(platform) {
   _platformActiveTab = platform;
-  const activeCls = "px-4 py-2 text-sm font-medium border-b-2 border-[#F5B800] text-white transition";
+  const activeCls = "px-4 py-2 text-sm font-medium border-b-2 border-[#a9f894] text-white transition";
   const inactiveCls = "px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-white transition";
   document.getElementById("tab-livechat").className = platform === "livechat" ? activeCls : inactiveCls;
   document.getElementById("tab-chatwoot").className = platform === "chatwoot" ? activeCls : inactiveCls;
@@ -4048,7 +4049,7 @@ function renderPlatformStatusTab() {
   const p = _platformActiveTab === "livechat" ? data.livechat : data.chatwoot;
 
   const statCard = (label, val, color) => `
-    <div class="bg-[#0f1d35] rounded-xl border border-[#1a2d4a] p-4 text-center">
+    <div class="bg-[#171b15] rounded-xl border border-[#2a3027] p-4 text-center">
       <div class="text-xs text-slate-500 uppercase font-medium mb-1">${label}</div>
       <div class="text-xl font-bold" style="color:${color}">${val}</div>
     </div>`;
@@ -4060,11 +4061,11 @@ function renderPlatformStatusTab() {
       ${!p.active && p.error ? `<span class="text-xs text-slate-500">— ${escHtml(p.error)}</span>` : ""}
     </div>
     <div class="grid grid-cols-3 gap-4 mb-5">
-      ${statCard("Today", p.today, "#F5B800")}
-      ${statCard("This Week", p.week, "#94a3b8")}
-      ${statCard("This Month", p.month, "#94a3b8")}
+      ${statCard("Today", p.today, "#a9f894")}
+      ${statCard("This Week", p.week, "#9ba397")}
+      ${statCard("This Month", p.month, "#9ba397")}
     </div>
-    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-4">
+    <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-4">
       <div class="text-sm font-semibold text-white mb-3">Daily Volume — ${monthLabel(data.month)}</div>
       ${Object.keys(p.daily || {}).length
         ? `<canvas id="platformStatusCanvas" height="100"></canvas>`
@@ -4082,11 +4083,11 @@ function renderPlatformStatusChart(p) {
   const totals = days.map(d => p.daily[d]);
   _platformStatusChart = new Chart(canvas.getContext("2d"), {
     type: "bar",
-    data: { labels: days.map(d => d.slice(5)), datasets: [{ label: "Chats", data: totals, backgroundColor: "#F5B800", borderRadius: 4 }] },
+    data: { labels: days.map(d => d.slice(5)), datasets: [{ label: "Chats", data: totals, backgroundColor: "#a9f894", borderRadius: 4 }] },
     options: {
       scales: {
-        y: { beginAtZero: true, grid: { color: "#1a2d4a" }, ticks: { color: "#94a3b8" } },
-        x: { grid: { display: false }, ticks: { color: "#94a3b8", maxRotation: 90, minRotation: 90 } },
+        y: { beginAtZero: true, grid: { color: "#2a3027" }, ticks: { color: "#9ba397" } },
+        x: { grid: { display: false }, ticks: { color: "#9ba397", maxRotation: 90, minRotation: 90 } },
       },
       plugins: { legend: { display: false } },
     },
@@ -4142,7 +4143,7 @@ function renderPlatformCosts() {
 
   if (!data.tracking_since) {
     content.innerHTML = `
-      <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-8 text-center">
+      <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-8 text-center">
         <p class="text-slate-400 text-sm">${data.today == null
           ? "Cost tracking requires a database — DATABASE_URL isn't configured on this deployment."
           : "No Claude usage tracked yet. Costs will appear here once reviews are run."}</p>
@@ -4151,43 +4152,43 @@ function renderPlatformCosts() {
   }
 
   const statCard = (label, val, color) => `
-    <div class="bg-[#0f1d35] rounded-xl border border-[#1a2d4a] p-4 text-center">
+    <div class="bg-[#171b15] rounded-xl border border-[#2a3027] p-4 text-center">
       <div class="text-xs text-slate-500 uppercase font-medium mb-1">${label}</div>
       <div class="text-xl font-bold" style="color:${color}">${val}</div>
     </div>`;
 
   const purposeLabel = { chat_review: "Chat Reviews", monthly_report: "Monthly Report Analysis" };
   const purposeRows = Object.entries(data.by_purpose || {}).map(([k, v]) => `
-    <tr class="border-t border-[#1a2d4a]">
+    <tr class="border-t border-[#2a3027]">
       <td class="px-4 py-2.5 text-white text-sm text-center">${escHtml(purposeLabel[k] || k)}</td>
       <td class="px-4 py-2.5 text-center text-slate-400 text-sm">${v.calls}</td>
-      <td class="px-4 py-2.5 text-center text-[#F5B800] font-semibold text-sm">${fmtCost(v.cost)}</td>
+      <td class="px-4 py-2.5 text-center text-[#a9f894] font-semibold text-sm">${fmtCost(v.cost)}</td>
     </tr>`).join("");
 
   content.innerHTML = `
     <p class="text-xs text-slate-500 mb-4">Tracking Claude API usage since ${escHtml(data.tracking_since)}. Costs from before that date weren't recorded and can't be shown.</p>
     <div class="grid grid-cols-3 gap-4 mb-5">
-      ${statCard("Today", fmtCost(data.today.cost), "#F5B800")}
-      ${statCard("This Week", fmtCost(data.week.cost), "#94a3b8")}
-      ${statCard("This Month", fmtCost(data.month.cost), "#94a3b8")}
+      ${statCard("Today", fmtCost(data.today.cost), "#a9f894")}
+      ${statCard("This Week", fmtCost(data.week.cost), "#9ba397")}
+      ${statCard("This Month", fmtCost(data.month.cost), "#9ba397")}
     </div>
 
     ${data.custom ? `
-    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-4 mb-5">
+    <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-4 mb-5">
       <div class="text-xs text-slate-500 uppercase font-medium mb-1">Custom Range: ${escHtml(data.custom_range.from)} → ${escHtml(data.custom_range.to)}</div>
-      <div class="text-2xl font-bold text-[#F5B800]">${fmtCost(data.custom.cost)}</div>
+      <div class="text-2xl font-bold text-[#a9f894]">${fmtCost(data.custom.cost)}</div>
       <div class="text-xs text-slate-500 mt-1">${data.custom.calls} Claude calls · ${(data.custom.input_tokens / 1000).toFixed(0)}K input / ${(data.custom.output_tokens / 1000).toFixed(0)}K output tokens</div>
     </div>` : ""}
 
     <div class="grid grid-cols-2 gap-5 mb-5">
-      <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-4">
+      <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-4">
         <div class="text-sm font-semibold text-white mb-3">Daily Cost</div>
         ${Object.keys(data.daily || {}).length
           ? `<canvas id="platformCostsCanvas" height="140"></canvas>`
           : `<p class="text-center text-slate-600 text-sm py-6">No data yet</p>`}
       </div>
-      <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
-        <div class="px-5 py-3 border-b border-[#1a2d4a]">
+      <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] overflow-hidden">
+        <div class="px-5 py-3 border-b border-[#2a3027]">
           <span class="font-semibold text-white text-sm">Cost by Purpose</span>
         </div>
         <table class="w-full">
@@ -4214,11 +4215,11 @@ function renderPlatformCostsChart(daily) {
   const costs = days.map(d => daily[d].cost);
   _platformCostsChart = new Chart(canvas.getContext("2d"), {
     type: "bar",
-    data: { labels: days.map(d => d.slice(5)), datasets: [{ label: "Cost", data: costs, backgroundColor: "#F5B800", borderRadius: 4 }] },
+    data: { labels: days.map(d => d.slice(5)), datasets: [{ label: "Cost", data: costs, backgroundColor: "#a9f894", borderRadius: 4 }] },
     options: {
       scales: {
-        y: { beginAtZero: true, grid: { color: "#1a2d4a" }, ticks: { color: "#94a3b8", callback: (v) => "$" + v } },
-        x: { grid: { display: false }, ticks: { color: "#94a3b8", maxRotation: 90, minRotation: 90 } },
+        y: { beginAtZero: true, grid: { color: "#2a3027" }, ticks: { color: "#9ba397", callback: (v) => "$" + v } },
+        x: { grid: { display: false }, ticks: { color: "#9ba397", maxRotation: 90, minRotation: 90 } },
       },
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => "$" + ctx.parsed.y.toFixed(3) } } },
     },
@@ -4305,20 +4306,20 @@ async function loadAgentActivity() {
 function renderAgentActivity(content, dateFrom, dateTo, data) {
   const cards = data.employees.map(e => {
     const rows = e.days.map(d => `
-      <tr class="border-t border-[#1a2d4a]">
+      <tr class="border-t border-[#2a3027]">
         <td class="px-4 py-2 text-slate-300 text-sm text-center">${escHtml(d.date)}</td>
         <td class="px-4 py-2 text-center text-emerald-400 text-sm">${fmtHoursMinutes(d.onlineHours)}</td>
         <td class="px-4 py-2 text-center text-orange-400 text-sm">${fmtHoursMinutes(d.closedHours)}</td>
       </tr>`).join("");
     return `
-    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
-      <div class="px-5 py-3 border-b border-[#1a2d4a] flex items-center justify-between">
+    <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] overflow-hidden">
+      <div class="px-5 py-3 border-b border-[#2a3027] flex items-center justify-between">
         <span class="font-semibold text-white text-sm">${escHtml(e.name)}</span>
         <span class="text-xs text-slate-500">Online: <span class="text-emerald-400 font-semibold">${fmtHoursMinutes(e.totalOnline)}</span> · Chat Closed: <span class="text-orange-400 font-semibold">${fmtHoursMinutes(e.totalClosed)}</span></span>
       </div>
       <div class="overflow-x-auto max-h-64 overflow-y-auto">
         <table class="w-full">
-          <thead class="sticky top-0 bg-[#0f1d35]">
+          <thead class="sticky top-0 bg-[#171b15]">
             <tr class="text-center text-xs text-slate-500 uppercase">
               <th class="px-4 py-2 font-medium">Date</th>
               <th class="px-4 py-2 font-medium">Online</th>
@@ -4411,12 +4412,13 @@ function downloadAgentActivityPdf() {
 
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Agent Activity — ${escHtml(dateFrom)} to ${escHtml(dateTo)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   @page { size: A4 portrait; margin: 1.5cm 16mm; background: ${PDF_BG}; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   ${PDF_FORCE_PRINT_COLORS_CSS}
   html { background: ${PDF_BG}; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
+  body { font-family: "Instrument Sans", Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
   table { width: 100%; border-collapse: collapse; }
   th { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
        color: ${PDF_TEXT_DIM}; text-align: center; padding: 6px 10px; border-bottom: 2px solid ${OPO_BRAND_BLUE}; }
@@ -4433,7 +4435,7 @@ ${opoLetterheadHtml()}
     <div style="font-size:20px;font-weight:900;color:${PDF_TEXT};line-height:1.1">Agent Activity Report</div>
     <div style="font-size:11px;color:${PDF_TEXT_DIM};margin-top:4px">${escHtml(dateFrom)} → ${escHtml(dateTo)}${employeeFilter ? ` · ${escHtml(employeeFilter)}` : ""}</div>
   </div>
-  <div style="background:#132a4d;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
+  <div style="background:#20251e;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
               letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
     Generated ${new Date().toLocaleDateString()}
   </div>
@@ -4489,7 +4491,7 @@ function renderScoreRow(label, val) {
   const bg = val >= 7 ? "bg-green-500" : val >= 5 ? "bg-yellow-400" : "bg-red-500";
   return `<div class="flex items-center gap-2 mb-1.5">
     <span class="text-xs text-slate-400 w-36 shrink-0">${label}</span>
-    <div class="flex-1 bg-[#1a2d4a] rounded-full h-2"><div class="${bg} h-2 rounded-full" style="width:${pct}%"></div></div>
+    <div class="flex-1 bg-[#2a3027] rounded-full h-2"><div class="${bg} h-2 rounded-full" style="width:${pct}%"></div></div>
     <span class="text-xs font-semibold w-8 text-right ${scoreColor(val)}">${val.toFixed(1)}</span>
   </div>`;
 }
@@ -4515,20 +4517,20 @@ function renderReportView(r) {
     ${noReviewWarning}
     <div class="flex flex-wrap gap-3">
       ${[
-        ["Total Chats",   r.total_chats,                        "text-[#F5B800]"],
+        ["Total Chats",   r.total_chats,                        "text-[#a9f894]"],
         ["In Shift",      r.chats_in_shift ?? "—",              "text-slate-300"],
         ["Reviewed",      r.reviewed_chats,                     "text-purple-600"],
         ["Missed",        r.missed_chats,                       "text-red-500"],
         ["Resolved",      (r.resolved_rate??0)+"%",             "text-green-600"],
         ["Avg Duration",  fmtDuration(r.avg_chat_duration_sec), "text-white"],
         ["First Response",fmtDuration(r.avg_first_response_sec),"text-white"],
-      ].map(([l,v,c]) => `<div class="bg-[#0a1628] border border-[#1a2d4a] rounded-xl px-4 py-3 text-center min-w-[80px]">
+      ].map(([l,v,c]) => `<div class="bg-[#11140f] border border-[#2a3027] rounded-xl px-4 py-3 text-center min-w-[80px]">
         <div class="text-xs text-slate-500 mb-1">${l}</div>
         <div class="text-xl font-black ${c}">${v ?? "—"}</div>
       </div>`).join("")}
     </div>
 
-    <div class="bg-[#0a1628] border border-[#1a2d4a] rounded-xl p-4">
+    <div class="bg-[#11140f] border border-[#2a3027] rounded-xl p-4">
       <p class="text-xs font-semibold text-slate-400 uppercase mb-3">Score Breakdown</p>
       <div class="flex items-center gap-3 mb-3">
         <span class="text-xs text-slate-400 w-36">Overall Average</span>
@@ -4545,7 +4547,7 @@ function renderReportView(r) {
       ${renderScoreRow("Language",         s.language)}
     </div>
 
-    ${trend ? `<div class="bg-[#0a1628] border border-[#1a2d4a] rounded-xl p-4">
+    ${trend ? `<div class="bg-[#11140f] border border-[#2a3027] rounded-xl p-4">
       <p class="text-xs font-semibold text-slate-400 uppercase mb-4">Weekly Trend</p>
       <div class="flex gap-6 justify-around">${trend}</div>
     </div>` : ""}
@@ -4566,7 +4568,7 @@ function renderReportView(r) {
       </div>` : ""}
     </div>
 
-    ${r.review_notes?.length ? `<details class="bg-[#0a1628] border border-[#1a2d4a] rounded-xl">
+    ${r.review_notes?.length ? `<details class="bg-[#11140f] border border-[#2a3027] rounded-xl">
       <summary class="px-4 py-3 text-xs font-semibold text-slate-400 uppercase cursor-pointer">
         Raw Review Notes (${r.review_notes.length})
       </summary>
@@ -4576,9 +4578,9 @@ function renderReportView(r) {
     </details>` : ""}
 
     <div class="bg-blue-50 border border-blue-100 rounded-xl p-4">
-      <p class="text-xs font-semibold text-[#F5B800] uppercase mb-2">Admin Notes</p>
+      <p class="text-xs font-semibold text-[#a9f894] uppercase mb-2">Admin Notes</p>
       ${hasPermission("action:manage_reports")
-        ? `<textarea id="reportNotes" class="w-full text-sm border border-[#1a2d4a] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-[#0f1d35]" rows="3" placeholder="Add notes...">${escHtml(r.admin_notes || "")}</textarea>
+        ? `<textarea id="reportNotes" class="w-full text-sm border border-[#2a3027] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-[#171b15]" rows="3" placeholder="Add notes...">${escHtml(r.admin_notes || "")}</textarea>
            <button onclick="saveReportNotes('${escHtml(r.employee)}','${escHtml(r.month)}')" class="mt-2 bg-blue-600 text-white px-3 py-1.5 text-xs rounded-lg hover:bg-blue-700">Save Notes</button>`
         : `<p class="text-sm text-blue-700">${r.admin_notes || "—"}</p>`}
     </div>
@@ -4595,7 +4597,7 @@ function renderReportsAdmin(list) {
   }
 
   const generatePanel = `
-    <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5 mb-6">
+    <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5 mb-6">
       <div class="flex items-center justify-between mb-3">
         <p class="text-xs font-semibold text-slate-400 uppercase">Generate New Report</p>
         <button onclick="deleteAllReports()" class="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition">🗑 Delete All Reports</button>
@@ -4603,7 +4605,7 @@ function renderReportsAdmin(list) {
       <div class="flex flex-wrap gap-2 items-end">
         <div>
           <label class="text-xs text-slate-500 block mb-1">Employee</label>
-          <select id="rptEmployee" class="text-sm border border-[#1a2d4a] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
+          <select id="rptEmployee" class="text-sm border border-[#2a3027] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
             <option value="">Select...</option>
             ${[...new Map(agentShifts.map(s => [s.employee, s])).values()]
               .sort((a, b) => a.employee.localeCompare(b.employee))
@@ -4612,7 +4614,7 @@ function renderReportsAdmin(list) {
         </div>
         <div>
           <label class="text-xs text-slate-500 block mb-1">Month</label>
-          <select id="rptMonth" class="text-sm border border-[#1a2d4a] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
+          <select id="rptMonth" class="text-sm border border-[#2a3027] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
             ${monthOpts.join("")}
           </select>
         </div>
@@ -4641,7 +4643,7 @@ function renderReportsAdmin(list) {
       return `
         <div class="mb-1">
           <button onclick="document.getElementById('${mid}').classList.toggle('hidden');this.querySelector('span').textContent=document.getElementById('${mid}').classList.contains('hidden')?'▶':'▼'"
-            class="w-full text-left flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-[#1a2d4a] transition">
+            class="w-full text-left flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-[#2a3027] transition">
             <span class="text-xs text-slate-500 w-3">▼</span>
             <span class="text-sm font-semibold text-slate-300">${monthLabel(month)}</span>
             <span class="ml-auto text-xs text-slate-500">${emps.length} report${emps.length > 1 ? "s" : ""}</span>
@@ -4652,9 +4654,9 @@ function renderReportsAdmin(list) {
     const yid = `year-${year}`;
     const total = Object.values(tree[year]).flat().length;
     return `
-      <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden mb-4">
+      <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] overflow-hidden mb-4">
         <button onclick="document.getElementById('${yid}').classList.toggle('hidden');this.querySelector('span').textContent=document.getElementById('${yid}').classList.contains('hidden')?'▶':'▼'"
-          class="w-full text-left flex items-center gap-3 px-5 py-3.5 bg-[#0a1628] hover:bg-[#1a2d4a] transition border-b border-[#1a2d4a]">
+          class="w-full text-left flex items-center gap-3 px-5 py-3.5 bg-[#11140f] hover:bg-[#2a3027] transition border-b border-[#2a3027]">
           <span class="text-xs text-slate-500 w-3">▼</span>
           <span class="text-base font-bold text-white">${year}</span>
           <span class="text-xs text-slate-500">${total} report${total > 1 ? "s" : ""}</span>
@@ -4669,7 +4671,7 @@ function renderReportsAdmin(list) {
 function renderReportsEmployee(list) {
   if (!list.length) return `
     <div class="flex flex-col items-center justify-center py-20 text-center">
-      <div class="w-16 h-16 bg-[#1a2d4a] rounded-2xl flex items-center justify-center text-3xl mb-4">📋</div>
+      <div class="w-16 h-16 bg-[#2a3027] rounded-2xl flex items-center justify-center text-3xl mb-4">📋</div>
       <p class="text-white font-semibold text-base mb-1">No reports yet</p>
       <p class="text-slate-500 text-sm max-w-xs">Your monthly performance reports will appear here once your manager generates them.</p>
     </div>`;
@@ -4680,7 +4682,7 @@ function renderReportsEmployee(list) {
       const r = tree[year][month][0];
       return `
         <button onclick="viewSavedReport('${escHtml(r.employee)}','${month}')"
-          class="w-full text-left flex justify-between items-center px-4 py-3.5 bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] hover:border-blue-300 hover:bg-blue-50 transition group">
+          class="w-full text-left flex justify-between items-center px-4 py-3.5 bg-[#171b15] rounded-2xl border border-[#2a3027] hover:border-blue-300 hover:bg-blue-50 transition group">
           <div>
             <p class="text-sm font-semibold text-white group-hover:text-blue-700">${monthLabel(month)}</p>
             <p class="text-xs text-slate-500 mt-0.5">Generated ${new Date(r.generated_at).toLocaleDateString()}</p>
@@ -4723,7 +4725,7 @@ async function viewSavedReport(employee, month) {
   if (report.error) { container.innerHTML = `<p class="text-red-500 p-6">${escHtml(report.error)}</p>`; return; }
   _activeReport = report;
   container.innerHTML = `
-    <div class="flex items-center justify-between px-6 py-4 bg-[#0f1d35] border-b border-[#1a2d4a] sticky top-0 z-10">
+    <div class="flex items-center justify-between px-6 py-4 bg-[#171b15] border-b border-[#2a3027] sticky top-0 z-10">
       <div class="flex items-center gap-3">
         <button onclick="openReports()" class="text-slate-500 hover:text-white transition text-lg leading-none">←</button>
         <div>
@@ -4732,7 +4734,7 @@ async function viewSavedReport(employee, month) {
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <button onclick="downloadReportPdf()" class="flex items-center gap-1.5 bg-[#1a2d4a] hover:bg-[#243d61] text-white text-xs font-medium px-3 py-2 rounded-lg transition">
+        <button onclick="downloadReportPdf()" class="flex items-center gap-1.5 bg-[#2a3027] hover:bg-[#373e34] text-white text-xs font-medium px-3 py-2 rounded-lg transition">
           ⬇ Download PDF
         </button>
         ${hasPermission("action:manage_reports") ? `<button onclick="deleteThisReport('${escHtml(employee)}','${escHtml(month)}')" class="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-500 text-xs font-medium px-3 py-2 rounded-lg transition">
@@ -4763,12 +4765,13 @@ function downloadReportPdf() {
 
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>${escHtml(r.employee)} — ${monthLabel(r.month)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   @page { size: A4 portrait; margin: 1.5cm 16mm; background: ${PDF_BG}; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   ${PDF_FORCE_PRINT_COLORS_CSS}
   html { background: ${PDF_BG}; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
+  body { font-family: "Instrument Sans", Arial, Helvetica, sans-serif; font-size: 11px; color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; }
 
   .card { background: ${PDF_CARD_BG}; border: 1px solid ${PDF_BORDER}; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px;
           page-break-inside: avoid; break-inside: avoid; }
@@ -4790,7 +4793,7 @@ ${opoLetterheadHtml()}
     <div style="font-size:22px;font-weight:900;color:${PDF_TEXT};line-height:1.1">${escHtml(r.employee)}</div>
     <div style="font-size:12px;color:${PDF_TEXT_DIM};margin-top:3px">${monthLabel(r.month)} Performance Report</div>
   </div>
-  <div style="background:#132a4d;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
+  <div style="background:#20251e;color:#7fb0ff;font-size:9px;font-weight:700;text-transform:uppercase;
               letter-spacing:.06em;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-top:4px">
     Generated ${new Date(r.generated_at).toLocaleDateString()}
   </div>

@@ -8,19 +8,30 @@
     tailwind.config = {
       theme: {
         extend: {
+          fontFamily: {
+            sans: ['"Instrument Sans"', 'system-ui', 'sans-serif'],
+            mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+          },
           colors: {
+            // OPO brand (opo.com): green-tinted blacks + mint accent.
+            // Kept under the old "navy"/"gold" names so existing classes pick up the new palette.
             navy: {
-              950: '#060d1e',
-              900: '#0a1628',
-              800: '#0f1d35',
-              700: '#1a2d4a',
-              600: '#243d61',
+              950: '#0a0c0a',
+              900: '#11140f',
+              800: '#171b15',
+              700: '#2a3027',
+              600: '#373e34',
             },
             gold: {
-              400: '#FFD84D',
-              500: '#F5B800',
-              600: '#D4A000',
-            }
+              400: '#c6fbb6',
+              500: '#a9f894',
+              600: '#8fe078',
+            },
+            // Neutral grays re-tinted to OPO's green-gray scale
+            slate: {
+              50: '#f2f5f1', 100: '#eef1ec', 200: '#dee3dc', 300: '#bfc7bb', 400: '#9ba397',
+              500: '#7d8679', 600: '#5b6657', 700: '#373e34', 800: '#20251e', 900: '#141812', 950: '#0a0c0a',
+            },
           }
         }
       }
@@ -29,42 +40,43 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
-<body class="bg-[#060d1e] h-screen overflow-hidden flex">
+<body class="bg-[#0a0c0a] h-screen overflow-hidden flex">
 
   <!-- ── Sidebar ───────────────────────────────────────────────────────────── -->
-  <aside id="sidebar" class="w-56 bg-[#0a1628] flex flex-col shrink-0 h-full">
+  <aside id="sidebar" class="w-56 bg-[#11140f] flex flex-col shrink-0 h-full">
     <!-- Logo -->
-    <div class="px-5 py-5 border-b border-[#1a2d4a]">
-      <div class="flex items-center gap-2.5 mb-1">
-        <div class="w-8 h-8 bg-[#F5B800] rounded-xl flex items-center justify-center text-black text-xs font-bold shrink-0">CR</div>
-        <span class="text-white font-semibold text-sm">Chat Review</span>
-      </div>
-      <p class="text-slate-500 text-xs pl-10">AI Quality Monitor</p>
+    <div class="px-5 py-5 border-b border-[#2a3027]">
+      <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAcsAAABUCAYAAADtRRxlAAAHEUlEQVR4nO3dS1LcSBAAUJnwkiPRvedIHtaYI7FHHMl7JuSRYmS5v1JJqqx6b2EwjmhAnc5Ulurz7evrq8nAYfT5U//xeObfWaYdff7Rf/ycfH1t3fv5vuH3Y33tzjG1piH//HPm66SPnya3OPq2Y7E8jIJP0OWhHQXr24rfR7Gsy+sGMZWS3JRvbvrcq3huXSwFYSxrJTnFsu6YyqZbOJGb5KUYXre+AduiWArCcoIzVWAqluTQbR76xz4vO/4M5JWbdiuWPwRicVIEpmLJnkXTDXyZXteMo7WKpSJZviWBqViyS3cgN1XhdY1Yekj8ekMSFIzl697jX33ygdzj6dC/vtxUvpc1Yul7wtfqiqRhjfq8BJvpSH3xJDfVG0vHpmmec+kshzs2wVgvXSap4ylFLMlNHFLFwNJi2QW0Z0+kTnLwsjC3yE2MvS/NTUuKpQflnKJgsndXIDeRPDfNLZYm8XCJgklK023mLlEoWSU3zSmWHpazxTAa3LvUSKFktdx0b7HsglGh5FZdrOgw2SKWFEpWXet9T7EUjMxhSJa1Y0luYvWb+VuLpWBkCQWTlLE0Ht2Sm9gkN92y3Z2tyUjluT9tQkyxRNvHkjgidW5a1FkKRvaY1QjXhs/kJlK5GkvXiqVgJCWdAKkYeiW197nF0sxX1j4AHCCn3HSY88yy2zkDAGp7Hn5zZ2nmIgC1OZyrf+c6S10lALV6vKWz1FUCULMft3SWukoAavc8Xns57Sx1lQDQ/Dlrf9pZ6ioBYPLs8nuBXWXXNn/0n3825Xma/N3i7PW8FhpDl+LqaH31akrPTdP8VEJuOgxDsePOMvKGxN0v8/Pa3n4FG250or5/ORfLt6ZOkfNBTuSm/7xEX3c57iwj/jK1B+LgLfj7SL4xJZ7mkZv+zk0RRy0O0wk+0X6B4a7/6k7xFQbmY39tIEU8iaX53Yjc9GcsPQeNp8O4WE6fg+Wu5uGxW0hypIwlSf/+m3jKyU3/jItl1x5HoVCWG5TkqRtO5Dq5qeDcFG0YVjDeR1dACl0MiaPLuusjN5WZm36fRvIQqFB2BOP9dAWwvmFJCIXmpodAzyvDte2Z0BVQXWLbmBGvedpIef3S4c+5EYzzSXQsFeWmeg9yU/nX7ilKsdQZLaO7BHLVNgFEKZaeB8C+bE5wWphhxIz9bPJ3fAiybKTUfRS3FCEgyVOkSYBbk5sqEaWzBDI5qghqFGXpSIgx7cy5hszdCDtCjtiL/1d1XMPf6ywBTnHyyHVuJCrxEKWq7/0DFMA15J5YeVco4X/jI7qAP0WY/JZSxCOUiO/Q5K9VLOthUfnMPSH3/iHIfvKTU0YqyE0PQdYwmo23XG1dEhDDscnfR5QJPu7wl3P9ID25abkQ1+8h0KJa3eWyWY3AOuSmCnJTlM6y4w5unu6amdUI65Gb5ouSmz4jFcuOO7j7uWawPv/PCu4qu9mwwzrLCGstm/7uLdIF3pvdV2AbclPhG15E6yyb/gILygKDEYKTm8rMTa/jYhntRApBWVYwQinkpvJy0+9JsN++vr6GL7wHHLJr+3WiUU7bXtuhf3YS7X2EEnUdidwUPzc9dn98L2wWWq2BGTkQoVTjDkpuCn6497izHDZPLu3k8ijrSOdsD2UvT4hDbgo8OjAulp1fu/1IAJDhEOyp2bBRlpAAwGYjAdPOspShWKAsbSHDegTsKs91ltNxdYA9tf0xWHITW/kr1qad5cCzSyDH5RdyE5t3lZd28HEHB+S4TlFuYm0nY+xcZxl1kwKg/AX9chObdpXX9oaNtgUecZh1zZKdb+Qm1nJ25OJSsYx0GgmxglGy49JEnmu73ZiIyBraS7F3aRh24IE6qYc4LFFi6nnGzbnhWFYffr3niK4uiCEF3QCnYuJx5iiWEQpSuVrnbimWhjxIwQkMzBlyvfYachNLvd5ys3brqSNDQEc7h4w8KJQ0fUL6mXguhNzEJrnpls5y0L2gCT/cS6Gs29BBPs58LnmLLr50mKyam+49z7ILdg/VuZVCWb5x8fuYHDu15c21DpNkM19PmXP4c1cwfwhKUgdjhhT7WBRM7hntuMs9w7Bjhj24pIsNs6jZg9zEKrlpbrHsCEpO0Y2xN7mJ5LlpSbFs+m+sg2CwdCkApCI3kTQ3LS2Ww/jv3EXFlEEMkHNc6jLr1abKTSmK5cDhrHXq3nd38OTMsGy9k3ieU71gymI5BKU7uTroJolEbqpvEk+b8kVTF8uBwCxX8js22JDcVP4+w29rvPhaxXIgMMsskrpJopObytFuMbnwliO6Uuo2M+hYNFzvXp5NoCO6LIOph9wUR9t/XCM3ZVMspwnzqWmao+3zqgtCxZIIhVNuqrxA5lIszxXPsePo30ijPXMm4JYBqFgSyTg3HSdfp0liusdwZ699hk/6F8k9u4KSDVcpAAAAAElFTkSuQmCC" alt="OPO" class="h-5 w-auto block mb-2" />
+      <p class="text-white font-semibold text-sm">Chat Review</p>
+      <p class="text-slate-500 text-[10px] font-mono uppercase tracking-wider">AI Quality Monitor</p>
     </div>
 
     <!-- Nav -->
     <nav class="flex-1 p-3 space-y-0.5 overflow-y-auto">
       <button onclick="showPage('dashboard')" id="nav-dashboard" data-permission="page:dashboard"
-        class="sidebar-nav w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+        class="sidebar-nav w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#2a3027] transition-all hidden">
         <span class="text-base w-5 text-center">📊</span> Dashboard
       </button>
       <!-- Reviews category -->
       <div>
         <button onclick="toggleReviewsMenu()" id="nav-reviews-header" data-submenu-header="reviews-submenu"
-          class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+          class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#2a3027] transition-all hidden">
           <span class="text-base w-5 text-center">💬</span>
           <span class="flex-1">Reviews</span>
           <span id="reviews-chevron" class="text-xs transition-transform duration-200">▼</span>
         </button>
         <div id="reviews-submenu" class="ml-2 mt-0.5 space-y-0.5">
           <button onclick="showPage('chats')" id="nav-chats" data-permission="page:chats"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#2a3027] transition-all hidden">
             <span class="text-xs">💬</span> Chat Review
           </button>
           <button onclick="showPage('report-supervised-chats')" id="nav-report-supervised-chats" data-permission="page:report-supervised-chats"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#2a3027] transition-all hidden">
             <span class="text-xs">🛡️</span> Supervised Chats
           </button>
         </div>
@@ -72,38 +84,38 @@
       <!-- Reports category -->
       <div>
         <button onclick="toggleReportsMenu()" id="nav-reports-header" data-submenu-header="reports-submenu"
-          class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+          class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#2a3027] transition-all hidden">
           <span class="text-base w-5 text-center">📋</span>
           <span class="flex-1">Reports</span>
           <span id="reports-chevron" class="text-xs transition-transform duration-200">▼</span>
         </button>
         <div id="reports-submenu" class="ml-2 mt-0.5 space-y-0.5">
           <button onclick="showPage('reports')" id="nav-reports" data-permission="page:reports"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#2a3027] transition-all hidden">
             <span class="text-xs">👤</span> Employee Report
           </button>
           <button onclick="showPage('report-monthly')" id="nav-report-monthly" data-permission="page:report-monthly"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#2a3027] transition-all hidden">
             <span class="text-xs">📈</span> Monthly Overview
           </button>
           <button onclick="showPage('report-total-chats')" id="nav-report-total-chats" data-permission="page:report-total-chats"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#2a3027] transition-all hidden">
             <span class="text-xs">🔢</span> Total Chats
           </button>
           <button onclick="showPage('report-campaign')" id="nav-report-campaign" data-permission="page:report-campaign"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#2a3027] transition-all hidden">
             <span class="text-xs">🚀</span> Campaign Impact
           </button>
           <button onclick="showPage('report-agent-activity')" id="nav-report-agent-activity" data-permission="page:report-agent-activity"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#2a3027] transition-all hidden">
             <span class="text-xs">⏱️</span> Agent Activity
           </button>
           <button onclick="showPage('report-chat-transfers')" id="nav-report-chat-transfers" data-permission="page:report-chat-transfers"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#2a3027] transition-all hidden">
             <span class="text-xs">🔀</span> Chat Transfers
           </button>
           <button onclick="showPage('report-monthly-summary')" id="nav-report-monthly-summary" data-permission="page:report-monthly-summary"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#2a3027] transition-all hidden">
             <span class="text-xs">🗓️</span> Monthly Summary
           </button>
         </div>
@@ -111,18 +123,18 @@
       <!-- Platform category -->
       <div>
         <button onclick="togglePlatformMenu()" id="nav-platform-header" data-submenu-header="platform-submenu"
-          class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+          class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#2a3027] transition-all hidden">
           <span class="text-base w-5 text-center">🧩</span>
           <span class="flex-1">Platform</span>
           <span id="platform-chevron" class="text-xs transition-transform duration-200">▼</span>
         </button>
         <div id="platform-submenu" class="ml-2 mt-0.5 space-y-0.5">
           <button onclick="showPage('report-platform-status')" id="nav-report-platform-status" data-permission="page:report-platform-status"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#2a3027] transition-all hidden">
             <span class="text-xs">📡</span> Platform Status
           </button>
           <button onclick="showPage('report-platform-costs')" id="nav-report-platform-costs" data-permission="page:report-platform-costs"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#2a3027] transition-all hidden">
             <span class="text-xs">💰</span> Platform Costs
           </button>
         </div>
@@ -130,22 +142,22 @@
       <!-- Settings category -->
       <div>
         <button onclick="toggleSettingsMenu()" id="nav-settings-header" data-submenu-header="settings-submenu"
-          class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+          class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-[#2a3027] transition-all hidden">
           <span class="text-base w-5 text-center">⚙️</span>
           <span class="flex-1">Settings</span>
           <span id="settings-chevron" class="text-xs transition-transform duration-200">▼</span>
         </button>
         <div id="settings-submenu" class="ml-2 mt-0.5 space-y-0.5">
           <button onclick="showPage('employees')" id="nav-employees" data-permission="page:employees"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#2a3027] transition-all hidden">
             <span class="text-xs">👥</span> Employees
           </button>
           <button onclick="showPage('groups')" id="nav-groups" data-permission="page:groups"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#2a3027] transition-all hidden">
             <span class="text-xs">🛂</span> Groups
           </button>
           <button onclick="showPage('config')" id="nav-config" data-permission="page:config"
-            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#1a2d4a] transition-all hidden">
+            class="sidebar-subnav w-full text-left flex items-center gap-2 pl-6 pr-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-[#2a3027] transition-all hidden">
             <span class="text-xs">⚙️</span> Config
           </button>
         </div>
@@ -153,18 +165,18 @@
     </nav>
 
     <!-- User + Logout -->
-    <div class="p-4 border-t border-[#1a2d4a]">
+    <div class="p-4 border-t border-[#2a3027]">
       <div id="sidebarUserInfo" class="mb-3 hidden">
         <p id="sidebarUsername" class="text-white text-sm font-medium truncate"></p>
         <p id="sidebarRole" class="text-slate-500 text-xs capitalize"></p>
       </div>
       <div class="flex items-center gap-2 mt-1">
         <button onclick="openChangePassword()"
-          class="text-xs text-slate-400 hover:text-[#F5B800] bg-[#1a2d4a] hover:bg-[#243d61] px-2 py-1.5 rounded-lg transition" title="Change password">
+          class="text-xs text-slate-400 hover:text-[#a9f894] bg-[#2a3027] hover:bg-[#373e34] px-2 py-1.5 rounded-lg transition" title="Change password">
           🔑
         </button>
         <button onclick="logout()"
-          class="flex-1 text-xs text-slate-400 hover:text-red-400 bg-[#1a2d4a] hover:bg-red-900/30 px-2 py-1.5 rounded-lg transition" title="Sign out">
+          class="flex-1 text-xs text-slate-400 hover:text-red-400 bg-[#2a3027] hover:bg-red-900/30 px-2 py-1.5 rounded-lg transition" title="Sign out">
           ↩ Sign out
         </button>
       </div>
@@ -175,43 +187,43 @@
   <div class="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
 
     <!-- Status bar (global) -->
-    <div id="statusBar" class="hidden bg-[#1a2d4a] border-b border-[#F5B800]/30 px-6 py-2 text-sm text-[#FFD84D] shrink-0"></div>
+    <div id="statusBar" class="hidden bg-[#2a3027] border-b border-[#a9f894]/30 px-6 py-2 text-sm text-[#c6fbb6] shrink-0"></div>
 
     <!-- Pages -->
     <div class="flex-1 overflow-y-auto">
 
       <!-- ── DASHBOARD ───────────────────────────────────────────────────── -->
       <div id="page-dashboard" class="hidden">
-        <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a] flex items-center justify-between">
+        <div class="px-6 py-4 bg-[#11140f] border-b border-[#2a3027] flex items-center justify-between">
           <h2 class="text-base font-bold text-white">Dashboard</h2>
-          <button onclick="loadDashboard()" id="btnDashboardRefresh" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 bg-[#1a2d4a] hover:bg-[#243d61] rounded-lg transition">
+          <button onclick="loadDashboard()" id="btnDashboardRefresh" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 bg-[#2a3027] hover:bg-[#373e34] rounded-lg transition">
             <svg id="dashRefreshIcon" xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
             Refresh
           </button>
         </div>
         <div class="p-6 space-y-5">
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5">
+            <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5">
               <p class="text-xs text-slate-300 uppercase font-semibold mb-1">Total Chats</p>
-              <p id="statTotal" class="text-3xl font-black text-[#F5B800]">—</p>
+              <p id="statTotal" class="text-3xl font-black text-[#a9f894]">—</p>
             </div>
-            <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5">
+            <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5">
               <p class="text-xs text-slate-300 uppercase font-semibold mb-1">Reviewed</p>
               <p id="statReviewed" class="text-3xl font-black text-white">—</p>
             </div>
-            <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5">
+            <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5">
               <p class="text-xs text-slate-300 uppercase font-semibold mb-1">Avg Score</p>
               <p id="statAvg" class="text-3xl font-black text-white">—</p>
             </div>
-            <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5">
+            <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5">
               <p class="text-xs text-slate-300 uppercase font-semibold mb-1">Resolved</p>
               <p id="statResolved" class="text-3xl font-black text-white">—</p>
             </div>
           </div>
-          <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5">
+          <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5">
             <h3 class="text-sm font-semibold text-white mb-4">Score by Agent</h3>
             <div id="chartLoading" class="hidden items-center justify-center py-10 text-slate-400 text-sm gap-2 flex">
-              <span class="inline-block w-4 h-4 border-2 border-[#1a2d4a] border-t-[#F5B800] rounded-full animate-spin"></span>
+              <span class="inline-block w-4 h-4 border-2 border-[#2a3027] border-t-[#a9f894] rounded-full animate-spin"></span>
               Loading data…
             </div>
             <canvas id="agentChart" height="80"></canvas>
@@ -221,23 +233,23 @@
 
       <!-- ── CHAT REVIEW ─────────────────────────────────────────────────── -->
       <div id="page-chats" class="hidden">
-        <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a]">
+        <div class="px-6 py-4 bg-[#11140f] border-b border-[#2a3027]">
           <div class="flex flex-wrap items-center gap-2">
-            <input type="date" id="dateFrom" class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+            <input type="date" id="dateFrom" class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             <span class="text-slate-400 text-sm">to</span>
-            <input type="date" id="dateTo" class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
-            <select id="agentFilter" class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30">
+            <input type="date" id="dateTo" class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
+            <select id="agentFilter" class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30">
               <option value="">All Agents</option>
             </select>
-            <select id="platformFilter" onchange="currentPage = 0; renderTable();" class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30">
+            <select id="platformFilter" onchange="currentPage = 0; renderTable();" class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30">
               <option value="">All Platforms</option>
               <option value="livechat">LiveChat</option>
               <option value="chatwoot">Chatwoot</option>
             </select>
-            <button id="btnLoad" class="bg-[#F5B800] text-black px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#D4A000] transition">
+            <button id="btnLoad" class="bg-[#a9f894] text-black px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#8fe078] transition">
               Load Chats
             </button>
-            <button id="btnRefreshList" onclick="refreshChatList()" class="text-sm bg-[#1a2d4a] text-slate-300 px-3 py-2 rounded-lg hover:bg-[#243d61] transition" title="Refresh list">
+            <button id="btnRefreshList" onclick="refreshChatList()" class="text-sm bg-[#2a3027] text-slate-300 px-3 py-2 rounded-lg hover:bg-[#373e34] transition" title="Refresh list">
               ⟳ Refresh
             </button>
             <button id="btnReviewAll" class="hidden text-sm bg-emerald-600 text-white px-3 py-2 rounded-lg hover:bg-emerald-700 transition">
@@ -247,14 +259,14 @@
           </div>
         </div>
         <div class="p-5 relative">
-          <div id="chatsLoadingOverlay" class="hidden absolute inset-0 bg-[#060d1e]/75 backdrop-blur-sm z-20 rounded-2xl flex flex-col items-center justify-center gap-3">
-            <div class="w-10 h-10 border-4 border-[#1a2d4a] border-t-[#F5B800] rounded-full animate-spin"></div>
+          <div id="chatsLoadingOverlay" class="hidden absolute inset-0 bg-[#0a0c0a]/75 backdrop-blur-sm z-20 rounded-2xl flex flex-col items-center justify-center gap-3">
+            <div class="w-10 h-10 border-4 border-[#2a3027] border-t-[#a9f894] rounded-full animate-spin"></div>
             <span id="chatsLoadingText" class="text-sm text-slate-400 font-medium">Loading chats...</span>
           </div>
-          <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
+          <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] overflow-hidden">
             <div class="overflow-x-auto">
               <table class="w-full text-sm">
-                <thead class="bg-[#0a1628] border-b border-[#1a2d4a]">
+                <thead class="bg-[#11140f] border-b border-[#2a3027]">
                   <tr>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase">Chat ID</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase">Agent</th>
@@ -280,7 +292,7 @@
 
       <!-- ── REPORTS ─────────────────────────────────────────────────────── -->
       <div id="page-reports" class="hidden">
-        <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a]">
+        <div class="px-6 py-4 bg-[#11140f] border-b border-[#2a3027]">
           <h2 class="text-base font-bold text-white">Reports</h2>
         </div>
         <div id="reportsContent" class="p-6"></div>
@@ -288,15 +300,15 @@
 
       <!-- ── REPORT: MONTHLY OVERVIEW ──────────────────────────────────── -->
       <div id="page-report-monthly" class="hidden h-full overflow-y-auto">
-        <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a] sticky top-0 z-10 flex items-center justify-between">
+        <div class="px-6 py-4 bg-[#11140f] border-b border-[#2a3027] sticky top-0 z-10 flex items-center justify-between">
           <h2 class="text-base font-bold text-white">Monthly Overview</h2>
           <div class="flex items-center gap-2">
             <label class="text-sm text-slate-400">Year</label>
             <select id="monthlyYear" onchange="loadMonthlyOverview()"
-              class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30">
+              class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30">
             </select>
             <button onclick="loadMonthlyOverview()" title="Refresh"
-              class="p-1.5 rounded-lg text-slate-400 hover:text-[#F5B800] hover:bg-[#1a2d4a] transition text-base leading-none">⟳</button>
+              class="p-1.5 rounded-lg text-slate-400 hover:text-[#a9f894] hover:bg-[#2a3027] transition text-base leading-none">⟳</button>
           </div>
         </div>
         <div id="monthlyOverviewContent" class="p-6 grid grid-cols-2 gap-5"></div>
@@ -304,46 +316,46 @@
 
       <!-- ── REPORT: TOTAL CHATS ──────────────────────────────────────────── -->
       <div id="page-report-total-chats" class="hidden h-full overflow-y-auto">
-        <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a] sticky top-0 z-10">
+        <div class="px-6 py-4 bg-[#11140f] border-b border-[#2a3027] sticky top-0 z-10">
           <h2 class="text-base font-bold text-white mb-3">Total Chats</h2>
           <div class="flex flex-wrap items-end gap-3">
             <div>
               <label class="block text-xs text-slate-400 mb-1">From</label>
               <input type="date" id="totalChatsFrom"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <div>
               <label class="block text-xs text-slate-400 mb-1">To</label>
               <input type="date" id="totalChatsTo"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <div>
               <label class="block text-xs text-slate-400 mb-1">Agent</label>
               <select id="totalChatsAgent"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30">
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30">
                 <option value="">All Employees</option>
               </select>
             </div>
             <button onclick="loadTotalChatsReport()"
-              class="bg-[#F5B800] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#D4A000] transition">Search</button>
+              class="bg-[#a9f894] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#8fe078] transition">Search</button>
             <button onclick="downloadTotalChatsPdf()"
-              class="flex items-center gap-1.5 bg-[#1a2d4a] text-[#F5B800] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              class="flex items-center gap-1.5 bg-[#2a3027] text-[#a9f894] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#373e34] transition">
               📄 Export PDF
             </button>
             <button onclick="saveTotalChatsReport()"
-              class="flex items-center gap-1.5 bg-[#1a2d4a] text-[#F5B800] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              class="flex items-center gap-1.5 bg-[#2a3027] text-[#a9f894] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#373e34] transition">
               💾 Save
             </button>
             <button onclick="toggleSavedReportsPanel('total_chats', 'savedTotalChatsPanel')"
-              class="flex items-center gap-1.5 bg-[#1a2d4a] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              class="flex items-center gap-1.5 bg-[#2a3027] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#373e34] transition">
               📁 Saved Reports
             </button>
             <button onclick="backfillTotalChats()" id="btnBackfillTotalChats" data-permission="action:backfill"
-              class="hidden flex items-center gap-1.5 bg-[#1a2d4a] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              class="hidden flex items-center gap-1.5 bg-[#2a3027] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#373e34] transition">
               <span id="backfillTotalChatsIcon">⏬</span> Backfill Cache
             </button>
           </div>
-          <div id="savedTotalChatsPanel" class="hidden mt-3 bg-[#0f1d35] rounded-xl border border-[#1a2d4a] max-h-64 overflow-y-auto"></div>
+          <div id="savedTotalChatsPanel" class="hidden mt-3 bg-[#171b15] rounded-xl border border-[#2a3027] max-h-64 overflow-y-auto"></div>
           <p class="text-xs text-slate-500 mt-2">Cached days are served instantly; any day not yet cached (or today) is fetched live automatically. "Backfill Cache" is optional — it just pre-warms the From/To range shown above so the first search of it is fast too (admin only).</p>
         </div>
         <div id="totalChatsContent" class="p-6"></div>
@@ -351,70 +363,70 @@
 
       <!-- ── REPORT: CAMPAIGN IMPACT ──────────────────────────────────────── -->
       <div id="page-report-campaign" class="hidden h-full overflow-y-auto">
-        <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a] sticky top-0 z-10">
+        <div class="px-6 py-4 bg-[#11140f] border-b border-[#2a3027] sticky top-0 z-10">
           <h2 class="text-base font-bold text-white mb-3">Campaign Impact</h2>
           <div class="flex flex-wrap items-end gap-3">
             <div>
               <label class="block text-xs text-slate-400 mb-1">Baseline From</label>
               <input type="date" id="campBaselineFrom"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <div>
               <label class="block text-xs text-slate-400 mb-1">Baseline To</label>
               <input type="date" id="campBaselineTo"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <div>
               <label class="block text-xs text-slate-400 mb-1">Current From</label>
               <input type="date" id="campCurrentFrom"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <div>
               <label class="block text-xs text-slate-400 mb-1">Current To</label>
               <input type="date" id="campCurrentTo"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <div>
               <label class="block text-xs text-slate-400 mb-1">Campaign Start</label>
               <input type="date" id="campStart"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <div>
               <label class="block text-xs text-slate-400 mb-1">Campaign End</label>
               <input type="date" id="campEnd"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <button onclick="loadCampaignImpactReport()"
-              class="bg-[#F5B800] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#D4A000] transition">Search</button>
+              class="bg-[#a9f894] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#8fe078] transition">Search</button>
             <button onclick="downloadCampaignImpactPdf()"
-              class="flex items-center gap-1.5 bg-[#1a2d4a] text-[#F5B800] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              class="flex items-center gap-1.5 bg-[#2a3027] text-[#a9f894] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#373e34] transition">
               📄 Export PDF
             </button>
             <button onclick="saveCampaignImpactReport()"
-              class="flex items-center gap-1.5 bg-[#1a2d4a] text-[#F5B800] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              class="flex items-center gap-1.5 bg-[#2a3027] text-[#a9f894] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#373e34] transition">
               💾 Save
             </button>
             <button onclick="toggleSavedReportsPanel('campaign_impact', 'savedCampaignPanel')"
-              class="flex items-center gap-1.5 bg-[#1a2d4a] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              class="flex items-center gap-1.5 bg-[#2a3027] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#373e34] transition">
               📁 Saved Reports
             </button>
           </div>
-          <div id="savedCampaignPanel" class="hidden mt-3 bg-[#0f1d35] rounded-xl border border-[#1a2d4a] max-h-64 overflow-y-auto"></div>
+          <div id="savedCampaignPanel" class="hidden mt-3 bg-[#171b15] rounded-xl border border-[#2a3027] max-h-64 overflow-y-auto"></div>
         </div>
         <div id="campaignContent" class="p-6"></div>
       </div>
 
       <!-- ── REPORT: PLATFORM STATUS ──────────────────────────────────────── -->
       <div id="page-report-platform-status" class="hidden h-full overflow-y-auto">
-        <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a] sticky top-0 z-10 flex items-center justify-between">
+        <div class="px-6 py-4 bg-[#11140f] border-b border-[#2a3027] sticky top-0 z-10 flex items-center justify-between">
           <h2 class="text-base font-bold text-white">Platform Status</h2>
           <button onclick="loadPlatformStatus()" title="Refresh"
-            class="p-1.5 rounded-lg text-slate-400 hover:text-[#F5B800] hover:bg-[#1a2d4a] transition text-base leading-none">⟳</button>
+            class="p-1.5 rounded-lg text-slate-400 hover:text-[#a9f894] hover:bg-[#2a3027] transition text-base leading-none">⟳</button>
         </div>
         <div class="px-6 pt-4">
-          <div class="flex gap-1 border-b border-[#1a2d4a]">
+          <div class="flex gap-1 border-b border-[#2a3027]">
             <button onclick="switchPlatformTab('livechat')" id="tab-livechat"
-              class="px-4 py-2 text-sm font-medium border-b-2 border-[#F5B800] text-white transition">LiveChat</button>
+              class="px-4 py-2 text-sm font-medium border-b-2 border-[#a9f894] text-white transition">LiveChat</button>
             <button onclick="switchPlatformTab('chatwoot')" id="tab-chatwoot"
               class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-white transition">Chatwoot</button>
           </div>
@@ -424,25 +436,25 @@
 
       <!-- ── REPORT: PLATFORM COSTS ───────────────────────────────────────── -->
       <div id="page-report-platform-costs" class="hidden h-full overflow-y-auto">
-        <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a] sticky top-0 z-10">
+        <div class="px-6 py-4 bg-[#11140f] border-b border-[#2a3027] sticky top-0 z-10">
           <div class="flex items-center justify-between mb-3">
             <h2 class="text-base font-bold text-white">Platform Costs</h2>
             <button onclick="loadPlatformCosts()" title="Refresh"
-              class="p-1.5 rounded-lg text-slate-400 hover:text-[#F5B800] hover:bg-[#1a2d4a] transition text-base leading-none">⟳</button>
+              class="p-1.5 rounded-lg text-slate-400 hover:text-[#a9f894] hover:bg-[#2a3027] transition text-base leading-none">⟳</button>
           </div>
           <div class="flex flex-wrap items-end gap-3">
             <div>
               <label class="block text-xs text-slate-400 mb-1">Custom Range From</label>
               <input type="date" id="costsCustomFrom"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <div>
               <label class="block text-xs text-slate-400 mb-1">Custom Range To</label>
               <input type="date" id="costsCustomTo"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <button onclick="loadPlatformCosts()"
-              class="bg-[#F5B800] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#D4A000] transition">Search</button>
+              class="bg-[#a9f894] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#8fe078] transition">Search</button>
           </div>
         </div>
         <div id="platformCostsContent" class="p-6"></div>
@@ -450,34 +462,34 @@
 
       <!-- ── REPORT: AGENT ACTIVITY ───────────────────────────────────────── -->
       <div id="page-report-agent-activity" class="hidden h-full overflow-y-auto">
-        <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a] sticky top-0 z-10">
+        <div class="px-6 py-4 bg-[#11140f] border-b border-[#2a3027] sticky top-0 z-10">
           <h2 class="text-base font-bold text-white mb-3">Agent Activity</h2>
           <div class="flex flex-wrap items-end gap-3">
             <div>
               <label class="block text-xs text-slate-400 mb-1">From</label>
               <input type="date" id="activityFrom"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <div>
               <label class="block text-xs text-slate-400 mb-1">To</label>
               <input type="date" id="activityTo"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <div>
               <label class="block text-xs text-slate-400 mb-1">Agent</label>
               <select id="activityAgent"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30">
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30">
                 <option value="">All Employees</option>
               </select>
             </div>
             <button onclick="loadAgentActivity()"
-              class="bg-[#F5B800] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#D4A000] transition">Search</button>
+              class="bg-[#a9f894] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#8fe078] transition">Search</button>
             <button onclick="downloadAgentActivityPdf()"
-              class="flex items-center gap-1.5 bg-[#1a2d4a] text-[#F5B800] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              class="flex items-center gap-1.5 bg-[#2a3027] text-[#a9f894] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#373e34] transition">
               📄 Export PDF
             </button>
             <button onclick="backfillAgentActivity()" id="btnBackfillActivity" data-permission="action:backfill"
-              class="hidden flex items-center gap-1.5 bg-[#1a2d4a] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              class="hidden flex items-center gap-1.5 bg-[#2a3027] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#373e34] transition">
               <span id="backfillActivityIcon">⏬</span> Backfill Cache
             </button>
           </div>
@@ -488,30 +500,30 @@
 
       <!-- ── REPORT: CHAT TRANSFERS ──────────────────────────────────────── -->
       <div id="page-report-chat-transfers" class="hidden h-full overflow-y-auto">
-        <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a] sticky top-0 z-10">
+        <div class="px-6 py-4 bg-[#11140f] border-b border-[#2a3027] sticky top-0 z-10">
           <h2 class="text-base font-bold text-white mb-3">Chat Transfers</h2>
           <div class="flex flex-wrap items-end gap-3">
             <div>
               <label class="block text-xs text-slate-400 mb-1">From</label>
               <input type="date" id="transfersFrom"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <div>
               <label class="block text-xs text-slate-400 mb-1">To</label>
               <input type="date" id="transfersTo"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <div>
               <label class="block text-xs text-slate-400 mb-1">Agent</label>
               <select id="transfersAgent"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30">
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30">
                 <option value="">All Employees</option>
               </select>
             </div>
             <button onclick="loadChatTransfersReport()"
-              class="bg-[#F5B800] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#D4A000] transition">Search</button>
+              class="bg-[#a9f894] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#8fe078] transition">Search</button>
             <button onclick="downloadChatTransfersPdf()"
-              class="flex items-center gap-1.5 bg-[#1a2d4a] text-[#F5B800] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              class="flex items-center gap-1.5 bg-[#2a3027] text-[#a9f894] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#373e34] transition">
               📄 Export PDF
             </button>
           </div>
@@ -522,64 +534,64 @@
 
       <!-- ── REPORT: MONTHLY SUMMARY ──────────────────────────────────────── -->
       <div id="page-report-monthly-summary" class="hidden h-full overflow-y-auto">
-        <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a] sticky top-0 z-10">
+        <div class="px-6 py-4 bg-[#11140f] border-b border-[#2a3027] sticky top-0 z-10">
           <h2 class="text-base font-bold text-white mb-3">Monthly Summary</h2>
           <div class="flex flex-wrap items-end gap-3">
             <div>
               <label class="block text-xs text-slate-400 mb-1">From</label>
               <input type="date" id="monthlySummaryFrom"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <div>
               <label class="block text-xs text-slate-400 mb-1">To</label>
               <input type="date" id="monthlySummaryTo"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <button onclick="loadMonthlySummaryReport()"
-              class="bg-[#F5B800] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#D4A000] transition">Search</button>
+              class="bg-[#a9f894] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#8fe078] transition">Search</button>
             <button onclick="downloadMonthlySummaryPdf()"
-              class="flex items-center gap-1.5 bg-[#1a2d4a] text-[#F5B800] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              class="flex items-center gap-1.5 bg-[#2a3027] text-[#a9f894] font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#373e34] transition">
               📄 Export PDF
             </button>
             <button onclick="debugUnassignedMonthlySummary()" id="btnDebugUnassigned" data-permission="action:backfill"
-              class="hidden flex items-center gap-1.5 bg-[#1a2d4a] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              class="hidden flex items-center gap-1.5 bg-[#2a3027] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#373e34] transition">
               🔍 Debug Unassigned
             </button>
             <button onclick="backfillMonthlySummary()" id="btnBackfillMonthlySummary" data-permission="action:backfill"
-              class="hidden flex items-center gap-1.5 bg-[#1a2d4a] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#243d61] transition">
+              class="hidden flex items-center gap-1.5 bg-[#2a3027] text-slate-300 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#373e34] transition">
               <span id="backfillMonthlySummaryIcon">⏬</span> Backfill Cache
             </button>
           </div>
           <p class="text-xs text-slate-500 mt-2">Department cards count each chat once, toward whichever department it ended with (a chat transferred General → Social Trade only counts for Social Trade). The employee table's Total Chats/% Share instead counts every chat an employee ever touched (matches Total Chats/Transfers), so the two totals won't always match — that's expected. Leave days come from the Leave sheet configured in Config.</p>
-          <div id="unassignedDebugPanel" class="hidden mt-3 bg-[#0f1d35] rounded-xl border border-[#1a2d4a] max-h-64 overflow-y-auto"></div>
+          <div id="unassignedDebugPanel" class="hidden mt-3 bg-[#171b15] rounded-xl border border-[#2a3027] max-h-64 overflow-y-auto"></div>
         </div>
         <div id="monthlySummaryContent" class="p-6"></div>
       </div>
 
       <!-- ── REPORT: SUPERVISED CHATS ─────────────────────────────────────── -->
       <div id="page-report-supervised-chats" class="hidden h-full overflow-y-auto">
-        <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a] sticky top-0 z-10">
+        <div class="px-6 py-4 bg-[#11140f] border-b border-[#2a3027] sticky top-0 z-10">
           <h2 class="text-base font-bold text-white mb-3">Supervised Chats</h2>
           <div class="flex flex-wrap items-end gap-3">
             <div>
               <label class="block text-xs text-slate-400 mb-1">From</label>
               <input type="date" id="supervisedFrom"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <div>
               <label class="block text-xs text-slate-400 mb-1">To</label>
               <input type="date" id="supervisedTo"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
             </div>
             <div>
               <label class="block text-xs text-slate-400 mb-1">Employee</label>
               <select id="supervisedAgent"
-                class="text-sm bg-[#0f1d35] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30">
+                class="text-sm bg-[#171b15] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30">
                 <option value="">All Employees</option>
               </select>
             </div>
             <button onclick="loadSupervisedChatsReport()"
-              class="bg-[#F5B800] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#D4A000] transition">Search</button>
+              class="bg-[#a9f894] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#8fe078] transition">Search</button>
           </div>
           <p class="text-xs text-slate-500 mt-2">Chats where someone other than the assigned agent left a private note/annotation — i.e. a supervisor had to step in and guide them.</p>
         </div>
@@ -588,18 +600,18 @@
 
       <!-- ── EMPLOYEES ───────────────────────────────────────────────────── -->
       <div id="page-employees" class="hidden">
-        <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a] flex items-center justify-between">
+        <div class="px-6 py-4 bg-[#11140f] border-b border-[#2a3027] flex items-center justify-between">
           <h2 class="text-base font-bold text-white">Employees</h2>
-          <button onclick="refreshSettingsAgents()" class="bg-[#1a2d4a] text-[#F5B800] px-3 py-1.5 rounded-lg text-sm hover:bg-[#243d61] transition flex items-center gap-1">
+          <button onclick="refreshSettingsAgents()" class="bg-[#2a3027] text-[#a9f894] px-3 py-1.5 rounded-lg text-sm hover:bg-[#373e34] transition flex items-center gap-1">
             <span id="settingsAgentRefreshIcon">⟳</span> Refresh Agents
           </button>
         </div>
         <div class="p-6">
-          <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] overflow-hidden">
+          <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] overflow-hidden">
             <div class="overflow-x-auto p-4">
               <table class="w-full text-sm" id="shiftsTable">
                 <thead>
-                  <tr class="text-left text-xs font-semibold text-slate-400 uppercase border-b border-[#1a2d4a]">
+                  <tr class="text-left text-xs font-semibold text-slate-400 uppercase border-b border-[#2a3027]">
                     <th class="pb-2 pr-3">Employee</th>
                     <th class="pb-2 pr-3">LiveChat Agent</th>
                     <th class="pb-2 pr-3">Chatwoot Agent</th>
@@ -616,46 +628,46 @@
                 </thead>
                 <tbody id="shiftsTableBody"></tbody>
               </table>
-              <button onclick="addShiftRow()" class="mt-4 text-sm text-[#F5B800] hover:text-[#FFD84D] flex items-center gap-1">
+              <button onclick="addShiftRow()" class="mt-4 text-sm text-[#a9f894] hover:text-[#c6fbb6] flex items-center gap-1">
                 + Add Row
               </button>
             </div>
           </div>
           <div class="flex justify-end mt-4">
-            <button onclick="saveSettings()" class="bg-[#F5B800] text-black px-6 py-2 rounded-xl text-sm font-medium hover:bg-[#D4A000] transition">Save</button>
+            <button onclick="saveSettings()" class="bg-[#a9f894] text-black px-6 py-2 rounded-xl text-sm font-medium hover:bg-[#8fe078] transition">Save</button>
           </div>
         </div>
       </div>
 
       <!-- ── GROUPS (access management) ───────────────────────────────────── -->
       <div id="page-groups" class="hidden h-full overflow-y-auto">
-        <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a] flex items-center justify-between">
+        <div class="px-6 py-4 bg-[#11140f] border-b border-[#2a3027] flex items-center justify-between">
           <h2 class="text-base font-bold text-white">Groups</h2>
-          <button onclick="openGroupDetailModal(null, 'create')" class="bg-[#F5B800] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#D4A000] transition">+ Add Group</button>
+          <button onclick="openGroupDetailModal(null, 'create')" class="bg-[#a9f894] text-black font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-[#8fe078] transition">+ Add Group</button>
         </div>
         <div id="groupsContent" class="p-6 space-y-4"></div>
       </div>
 
       <!-- ── CONFIG ────────────────────────────────────────────────────────── -->
       <div id="page-config" class="hidden h-full overflow-y-auto">
-        <div class="px-6 py-4 bg-[#0a1628] border-b border-[#1a2d4a] flex items-center justify-between">
+        <div class="px-6 py-4 bg-[#11140f] border-b border-[#2a3027] flex items-center justify-between">
           <h2 class="text-base font-bold text-white">Config</h2>
           <button onclick="refreshAllKnowledge()" id="btnRefreshAllKb"
-            class="flex items-center gap-2 bg-[#F5B800] text-black px-4 py-1.5 rounded-lg text-sm hover:bg-[#D4A000] transition">
+            class="flex items-center gap-2 bg-[#a9f894] text-black px-4 py-1.5 rounded-lg text-sm hover:bg-[#8fe078] transition">
             <span id="refreshAllIcon">⟳</span> Refresh All
           </button>
         </div>
         <div class="p-6 space-y-4">
 
           <!-- LiveChat Agent List -->
-          <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5">
+          <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5">
             <div class="flex items-center justify-between mb-3">
               <div>
                 <h3 class="font-semibold text-white text-sm">LiveChat Agent List</h3>
                 <p class="text-xs text-slate-400 mt-0.5">Sync agent list from LiveChat — run when a new agent is added</p>
               </div>
               <button onclick="syncLcAgents()" id="btnSyncAgents"
-                class="flex items-center gap-1.5 text-xs bg-[#1a2d4a] text-[#F5B800] hover:bg-[#243d61] px-3 py-1.5 rounded-lg transition font-medium">
+                class="flex items-center gap-1.5 text-xs bg-[#2a3027] text-[#a9f894] hover:bg-[#373e34] px-3 py-1.5 rounded-lg transition font-medium">
                 <span id="syncAgentsIcon">⟳</span> Sync Now
               </button>
             </div>
@@ -664,14 +676,14 @@
           </div>
 
           <!-- Chatwoot Agent List -->
-          <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5">
+          <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5">
             <div class="flex items-center justify-between mb-3">
               <div>
                 <h3 class="font-semibold text-white text-sm">Chatwoot Agent List</h3>
                 <p class="text-xs text-slate-400 mt-0.5">Sync agent list from Chatwoot — run when a new agent is added</p>
               </div>
               <button onclick="syncCwAgents()" id="btnSyncCwAgents"
-                class="flex items-center gap-1.5 text-xs bg-[#1a2d4a] text-[#F5B800] hover:bg-[#243d61] px-3 py-1.5 rounded-lg transition font-medium">
+                class="flex items-center gap-1.5 text-xs bg-[#2a3027] text-[#a9f894] hover:bg-[#373e34] px-3 py-1.5 rounded-lg transition font-medium">
                 <span id="syncCwAgentsIcon">⟳</span> Sync Now
               </button>
             </div>
@@ -680,18 +692,18 @@
           </div>
 
           <!-- Leave Sheet -->
-          <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5">
+          <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5">
             <div class="mb-3">
               <h3 class="font-semibold text-white text-sm">Leave Sheet</h3>
               <p class="text-xs text-slate-400 mt-0.5">Google Sheets link (roster with "Leave" cells) — used by the Monthly Summary report. Must be shared as "Anyone with the link can view".</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <input type="text" id="leaveSheetUrl" placeholder="https://docs.google.com/spreadsheets/d/.../edit"
-                class="flex-1 min-w-[280px] text-sm bg-[#0a1628] border border-[#1a2d4a] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+                class="flex-1 min-w-[280px] text-sm bg-[#11140f] border border-[#2a3027] text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
               <button onclick="saveLeaveSheetUrl()"
-                class="text-xs bg-[#1a2d4a] text-[#F5B800] hover:bg-[#243d61] px-3 py-1.5 rounded-lg transition font-medium">Save</button>
+                class="text-xs bg-[#2a3027] text-[#a9f894] hover:bg-[#373e34] px-3 py-1.5 rounded-lg transition font-medium">Save</button>
               <button onclick="testLeaveSheetUrl()" id="btnTestLeaveSheet"
-                class="flex items-center gap-1.5 text-xs bg-[#1a2d4a] text-[#F5B800] hover:bg-[#243d61] px-3 py-1.5 rounded-lg transition font-medium">
+                class="flex items-center gap-1.5 text-xs bg-[#2a3027] text-[#a9f894] hover:bg-[#373e34] px-3 py-1.5 rounded-lg transition font-medium">
                 <span id="testLeaveSheetIcon">⟳</span> Test Sync
               </button>
             </div>
@@ -699,97 +711,97 @@
           </div>
 
           <!-- Knowledge Base -->
-          <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5">
+          <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5">
             <div class="flex items-center justify-between mb-3">
               <div>
                 <h3 class="font-semibold text-white text-sm">Knowledge Base</h3>
                 <p class="text-xs text-slate-400 mt-0.5">Google Docs — product info, account types, rules</p>
               </div>
               <div class="flex items-center gap-2">
-                <span id="cfg-kb-badge" class="text-xs px-2 py-1 rounded-full bg-[#1a2d4a] text-slate-400">—</span>
-                <button onclick="refreshOneSource('kb',this)" class="text-xs bg-[#1a2d4a] text-[#F5B800] hover:bg-[#243d61] px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
+                <span id="cfg-kb-badge" class="text-xs px-2 py-1 rounded-full bg-[#2a3027] text-slate-400">—</span>
+                <button onclick="refreshOneSource('kb',this)" class="text-xs bg-[#2a3027] text-[#a9f894] hover:bg-[#373e34] px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
               </div>
             </div>
             <p class="text-xs text-slate-400">Last fetched: <span id="cfg-kb-fetched">—</span></p>
           </div>
 
           <!-- Campaigns -->
-          <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5">
+          <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5">
             <div class="flex items-center justify-between mb-3">
               <div>
                 <h3 class="font-semibold text-white text-sm">Campaigns</h3>
                 <p class="text-xs text-slate-400 mt-0.5">Google Sheets — active promotions & bonuses</p>
               </div>
               <div class="flex items-center gap-2">
-                <span id="cfg-camp-badge" class="text-xs px-2 py-1 rounded-full bg-[#1a2d4a] text-slate-400">—</span>
-                <button onclick="refreshOneSource('campaigns',this)" class="text-xs bg-[#1a2d4a] text-[#F5B800] hover:bg-[#243d61] px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
+                <span id="cfg-camp-badge" class="text-xs px-2 py-1 rounded-full bg-[#2a3027] text-slate-400">—</span>
+                <button onclick="refreshOneSource('campaigns',this)" class="text-xs bg-[#2a3027] text-[#a9f894] hover:bg-[#373e34] px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
               </div>
             </div>
             <p class="text-xs text-slate-400">Last fetched: <span id="cfg-camp-fetched">—</span></p>
           </div>
 
           <!-- Macros -->
-          <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5">
+          <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5">
             <div class="flex items-center justify-between mb-3">
               <div>
                 <h3 class="font-semibold text-white text-sm">Macros</h3>
                 <p class="text-xs text-slate-400 mt-0.5">Google Sheets — standard agent response macros</p>
               </div>
               <div class="flex items-center gap-2">
-                <span id="cfg-macros-badge" class="text-xs px-2 py-1 rounded-full bg-[#1a2d4a] text-slate-400">—</span>
-                <button onclick="refreshOneSource('macros',this)" class="text-xs bg-[#1a2d4a] text-[#F5B800] hover:bg-[#243d61] px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
+                <span id="cfg-macros-badge" class="text-xs px-2 py-1 rounded-full bg-[#2a3027] text-slate-400">—</span>
+                <button onclick="refreshOneSource('macros',this)" class="text-xs bg-[#2a3027] text-[#a9f894] hover:bg-[#373e34] px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
               </div>
             </div>
             <p class="text-xs text-slate-400">Last fetched: <span id="cfg-macros-fetched">—</span></p>
           </div>
 
           <!-- Tags -->
-          <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5">
+          <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5">
             <div class="flex items-center justify-between mb-3">
               <div>
                 <h3 class="font-semibold text-white text-sm">Tags</h3>
                 <p class="text-xs text-slate-400 mt-0.5">Google Sheets — chat classification tags</p>
               </div>
               <div class="flex items-center gap-2">
-                <span id="cfg-tags-badge" class="text-xs px-2 py-1 rounded-full bg-[#1a2d4a] text-slate-400">—</span>
-                <button onclick="refreshOneSource('tags',this)" class="text-xs bg-[#1a2d4a] text-[#F5B800] hover:bg-[#243d61] px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
+                <span id="cfg-tags-badge" class="text-xs px-2 py-1 rounded-full bg-[#2a3027] text-slate-400">—</span>
+                <button onclick="refreshOneSource('tags',this)" class="text-xs bg-[#2a3027] text-[#a9f894] hover:bg-[#373e34] px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
               </div>
             </div>
             <p class="text-xs text-slate-400">Last fetched: <span id="cfg-tags-fetched">—</span></p>
           </div>
 
           <!-- Protocol Docs -->
-          <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5">
+          <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5">
             <div class="flex items-center justify-between mb-3">
               <div>
                 <h3 class="font-semibold text-white text-sm">Protocol Docs</h3>
                 <p class="text-xs text-slate-400 mt-0.5">Google Docs — internal agent protocols & guidelines</p>
               </div>
               <div class="flex items-center gap-2">
-                <span id="cfg-proto-badge" class="text-xs px-2 py-1 rounded-full bg-[#1a2d4a] text-slate-400">—</span>
-                <button onclick="refreshOneSource('protocol',this)" class="text-xs bg-[#1a2d4a] text-[#F5B800] hover:bg-[#243d61] px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
+                <span id="cfg-proto-badge" class="text-xs px-2 py-1 rounded-full bg-[#2a3027] text-slate-400">—</span>
+                <button onclick="refreshOneSource('protocol',this)" class="text-xs bg-[#2a3027] text-[#a9f894] hover:bg-[#373e34] px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
               </div>
             </div>
             <p class="text-xs text-slate-400">Last fetched: <span id="cfg-proto-fetched">—</span></p>
           </div>
 
           <!-- Telegram Updates -->
-          <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5">
+          <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5">
             <div class="flex items-center justify-between mb-3">
               <div>
                 <h3 class="font-semibold text-white text-sm">Telegram Updates</h3>
                 <p class="text-xs text-slate-400 mt-0.5">Telegram channel — latest team announcements</p>
               </div>
               <div class="flex items-center gap-2">
-                <span id="cfg-tg-badge" class="text-xs px-2 py-1 rounded-full bg-[#1a2d4a] text-slate-400">—</span>
-                <button onclick="refreshOneSource('telegram',this)" class="text-xs bg-[#1a2d4a] text-[#F5B800] hover:bg-[#243d61] px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
+                <span id="cfg-tg-badge" class="text-xs px-2 py-1 rounded-full bg-[#2a3027] text-slate-400">—</span>
+                <button onclick="refreshOneSource('telegram',this)" class="text-xs bg-[#2a3027] text-[#a9f894] hover:bg-[#373e34] px-2.5 py-1 rounded-lg transition font-medium">⟳</button>
               </div>
             </div>
             <p class="text-xs text-slate-400">Last fetched: <span id="cfg-tg-fetched">—</span></p>
           </div>
 
           <!-- Fix Dashboard Data -->
-          <div class="bg-[#0f1d35] rounded-2xl border border-[#1a2d4a] p-5">
+          <div class="bg-[#171b15] rounded-2xl border border-[#2a3027] p-5">
             <div class="flex items-center justify-between">
               <div>
                 <h3 class="font-semibold text-white text-sm">Fix Dashboard Data</h3>
@@ -809,8 +821,8 @@
   </div><!-- /main -->
 
   <!-- ── Confirm Delete Modal ─────────────────────────────────────────────── -->
-  <div id="confirmModal" class="hidden fixed inset-0 bg-[#060d1e]/80 z-[90] flex items-center justify-center p-4">
-    <div class="bg-[#0f1d35] rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-[#1a2d4a]">
+  <div id="confirmModal" class="hidden fixed inset-0 bg-[#0a0c0a]/80 z-[90] flex items-center justify-center p-4">
+    <div class="bg-[#171b15] rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-[#2a3027]">
       <div class="flex items-center gap-3 mb-3">
         <div class="w-10 h-10 bg-red-900/30 rounded-full flex items-center justify-center text-red-400 text-lg shrink-0">🗑</div>
         <h3 class="text-base font-bold text-white">Delete Report?</h3>
@@ -818,7 +830,7 @@
       <p id="confirmModalMsg" class="text-sm text-slate-400 mb-5"></p>
       <div class="flex gap-2 justify-center">
         <button onclick="closeConfirmModal()"
-          class="flex-1 px-4 py-2 text-sm text-center text-slate-300 bg-[#1a2d4a] hover:bg-[#243d61] rounded-lg transition">Cancel</button>
+          class="flex-1 px-4 py-2 text-sm text-center text-slate-300 bg-[#2a3027] hover:bg-[#373e34] rounded-lg transition">Cancel</button>
         <button onclick="runConfirmAction()"
           class="flex-1 px-4 py-2 text-sm text-center text-white bg-red-500 hover:bg-red-600 rounded-lg transition font-medium">Yes, Delete</button>
       </div>
@@ -826,18 +838,18 @@
   </div>
 
   <!-- ── Chat Detail Modal ─────────────────────────────────────────────────── -->
-  <div id="modal" class="hidden fixed inset-0 bg-[#060d1e]/80 z-50 flex items-center justify-center p-4">
-    <div class="bg-[#0f1d35] rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto border border-[#1a2d4a]">
+  <div id="modal" class="hidden fixed inset-0 bg-[#0a0c0a]/80 z-50 flex items-center justify-center p-4">
+    <div class="bg-[#171b15] rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto border border-[#2a3027]">
       <div id="modalContent"></div>
     </div>
   </div>
 
   <!-- ── Change Password Modal ─────────────────────────────────────────────── -->
-  <div id="changePasswordModal" class="hidden fixed inset-0 bg-[#060d1e]/90 z-[110] flex items-center justify-center p-4">
-    <div class="bg-[#0f1d35] rounded-2xl shadow-2xl w-full max-w-sm p-8 border border-[#1a2d4a]">
+  <div id="changePasswordModal" class="hidden fixed inset-0 bg-[#0a0c0a]/90 z-[110] flex items-center justify-center p-4">
+    <div class="bg-[#171b15] rounded-2xl shadow-2xl w-full max-w-sm p-8 border border-[#2a3027]">
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-2">
-          <div class="w-9 h-9 bg-[#F5B800] rounded-xl flex items-center justify-center text-black text-lg">🔑</div>
+          <div class="w-9 h-9 bg-[#a9f894] rounded-xl flex items-center justify-center text-black text-lg">🔑</div>
           <h2 class="text-lg font-bold text-white">Change Password</h2>
         </div>
         <button id="btnClosePwModal" onclick="closeChangePassword()" class="text-slate-400 hover:text-white text-xl leading-none hidden">✕</button>
@@ -847,13 +859,13 @@
       <div id="changePwSuccess" class="hidden mb-4 text-sm text-emerald-400 bg-emerald-900/30 rounded-lg px-3 py-2">Password updated successfully.</div>
       <div class="space-y-3">
         <div class="relative"><input id="currentPassword" type="password" placeholder="Current password" autocomplete="current-password"
-          class="w-full bg-[#0a1628] border border-[#1a2d4a] text-white placeholder-slate-500 rounded-lg px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" /><button type="button" tabindex="-1" onclick="togglePw(this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-base">👁</button></div>
+          class="w-full bg-[#11140f] border border-[#2a3027] text-white placeholder-slate-500 rounded-lg px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" /><button type="button" tabindex="-1" onclick="togglePw(this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-base">👁</button></div>
         <div class="relative"><input id="newPassword" type="password" placeholder="New password (min 6 chars)" autocomplete="new-password"
-          class="w-full bg-[#0a1628] border border-[#1a2d4a] text-white placeholder-slate-500 rounded-lg px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" /><button type="button" tabindex="-1" onclick="togglePw(this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-base">👁</button></div>
+          class="w-full bg-[#11140f] border border-[#2a3027] text-white placeholder-slate-500 rounded-lg px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" /><button type="button" tabindex="-1" onclick="togglePw(this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-base">👁</button></div>
         <div class="relative"><input id="confirmPassword" type="password" placeholder="Confirm new password" autocomplete="new-password"
-          class="w-full bg-[#0a1628] border border-[#1a2d4a] text-white placeholder-slate-500 rounded-lg px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" /><button type="button" tabindex="-1" onclick="togglePw(this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-base">👁</button></div>
+          class="w-full bg-[#11140f] border border-[#2a3027] text-white placeholder-slate-500 rounded-lg px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" /><button type="button" tabindex="-1" onclick="togglePw(this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-base">👁</button></div>
         <button id="btnChangePassword" onclick="doChangePassword()"
-          class="w-full bg-[#F5B800] text-black py-2.5 rounded-lg text-sm font-semibold hover:bg-[#D4A000] transition">
+          class="w-full bg-[#a9f894] text-black py-2.5 rounded-lg text-sm font-semibold hover:bg-[#8fe078] transition">
           Update Password
         </button>
       </div>
@@ -861,40 +873,40 @@
   </div>
 
   <!-- ── Save Report Modal ─────────────────────────────────────────────────── -->
-  <div id="saveReportModal" class="hidden fixed inset-0 bg-[#060d1e]/90 z-[110] flex items-center justify-center p-4"
+  <div id="saveReportModal" class="hidden fixed inset-0 bg-[#0a0c0a]/90 z-[110] flex items-center justify-center p-4"
     onclick="if (event.target === this) closeSaveReportModal(false)">
-    <div class="bg-[#0f1d35] rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-[#1a2d4a]">
+    <div class="bg-[#171b15] rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-[#2a3027]">
       <div class="flex items-center gap-2 mb-1">
-        <div class="w-9 h-9 bg-[#F5B800] rounded-xl flex items-center justify-center text-black text-lg">💾</div>
+        <div class="w-9 h-9 bg-[#a9f894] rounded-xl flex items-center justify-center text-black text-lg">💾</div>
         <h2 class="text-lg font-bold text-white">Save Report</h2>
       </div>
       <p class="text-xs text-slate-400 mb-4">Give this report a name so you can find it later.</p>
       <input id="saveReportLabelInput" type="text" placeholder="Report name"
         onkeydown="if (event.key === 'Enter') closeSaveReportModal(true); if (event.key === 'Escape') closeSaveReportModal(false);"
-        class="w-full bg-[#0a1628] border border-[#1a2d4a] text-white placeholder-slate-500 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30 mb-4" />
+        class="w-full bg-[#11140f] border border-[#2a3027] text-white placeholder-slate-500 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30 mb-4" />
       <div class="flex justify-center gap-2">
-        <button onclick="closeSaveReportModal(false)" class="flex-1 px-4 py-2 rounded-lg text-sm text-center text-slate-300 hover:bg-[#1a2d4a] transition">Cancel</button>
-        <button onclick="closeSaveReportModal(true)" class="flex-1 px-4 py-2 rounded-lg text-sm text-center font-semibold bg-[#F5B800] text-black hover:bg-[#D4A000] transition">Save</button>
+        <button onclick="closeSaveReportModal(false)" class="flex-1 px-4 py-2 rounded-lg text-sm text-center text-slate-300 hover:bg-[#2a3027] transition">Cancel</button>
+        <button onclick="closeSaveReportModal(true)" class="flex-1 px-4 py-2 rounded-lg text-sm text-center font-semibold bg-[#a9f894] text-black hover:bg-[#8fe078] transition">Save</button>
       </div>
     </div>
   </div>
 
   <!-- ── Login Modal ───────────────────────────────────────────────────────── -->
-  <div id="loginModal" class="hidden fixed inset-0 bg-[#060d1e]/90 z-[100] flex items-center justify-center p-4">
-    <div class="bg-[#0f1d35] rounded-2xl shadow-2xl w-full max-w-sm p-8 border border-[#1a2d4a]">
+  <div id="loginModal" class="hidden fixed inset-0 bg-[#0a0c0a]/90 z-[100] flex items-center justify-center p-4">
+    <div class="bg-[#171b15] rounded-2xl shadow-2xl w-full max-w-sm p-8 border border-[#2a3027]">
       <div class="flex items-center justify-center gap-2 mb-4">
-        <div class="w-9 h-9 bg-[#F5B800] rounded-xl flex items-center justify-center text-black font-bold">CR</div>
+        <div class="w-9 h-9 bg-[#a9f894] rounded-xl flex items-center justify-center text-black font-bold">CR</div>
       </div>
       <h2 class="text-xl font-bold text-white mb-1 text-center">Chat Review</h2>
       <p class="text-xs text-slate-400 text-center mb-6">Sign in to continue</p>
       <div id="loginError" class="hidden mb-4 text-sm text-red-400 bg-red-900/30 rounded-lg px-3 py-2"></div>
       <div class="space-y-4">
         <input id="loginUsername" type="text" placeholder="Username" autocomplete="username"
-          class="w-full bg-[#0a1628] border border-[#1a2d4a] text-white placeholder-slate-500 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" />
+          class="w-full bg-[#11140f] border border-[#2a3027] text-white placeholder-slate-500 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" />
         <div class="relative"><input id="loginPassword" type="password" placeholder="Password" autocomplete="current-password"
-          class="w-full bg-[#0a1628] border border-[#1a2d4a] text-white placeholder-slate-500 rounded-lg px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[#F5B800]/30" /><button type="button" tabindex="-1" onclick="togglePw(this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-base">👁</button></div>
+          class="w-full bg-[#11140f] border border-[#2a3027] text-white placeholder-slate-500 rounded-lg px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[#a9f894]/30" /><button type="button" tabindex="-1" onclick="togglePw(this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-base">👁</button></div>
         <button id="btnLogin" onclick="doLogin()"
-          class="w-full bg-[#F5B800] text-black py-2.5 rounded-lg text-sm font-semibold hover:bg-[#D4A000] transition">
+          class="w-full bg-[#a9f894] text-black py-2.5 rounded-lg text-sm font-semibold hover:bg-[#8fe078] transition">
           Sign In
         </button>
       </div>
