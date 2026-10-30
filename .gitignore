@@ -6,3 +6,7 @@ data/campaigns.csv
 data/protocol.txt
 data/telegram_updates.txt
 data/telegram_exports/
+
+.env.supabase
+*.dump
+railway_backup_*.sql
