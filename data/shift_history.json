@@ -1,0 +1,4 @@
+[
+  { "employee": "Atena",   "platform": "livechat", "start": 8,  "end": 16, "until": "2026-10-27", "note": "Hours on the shared 'ana' login before Atena and Alireza swapped shifts on 2026-10-28" },
+  { "employee": "Alireza", "platform": "livechat", "start": 16, "end": 24, "until": "2026-10-27", "note": "Hours on the shared 'ana' login before Atena and Alireza swapped shifts on 2026-10-28" }
+]

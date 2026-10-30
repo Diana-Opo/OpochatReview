@@ -1,6 +1,6 @@
 [
-  { "employee": "Atena",    "agentKey": "ana",       "start": 8,  "end": 16 },
-  { "employee": "Alireza",  "agentKey": "ana",       "start": 16, "end": 24 },
+  { "employee": "Atena",    "agentKey": "ana",       "start": 16, "end": 24 },
+  { "employee": "Alireza",  "agentKey": "ana",       "start": 8,  "end": 16 },
   { "employee": "Nazgol",   "agentKey": "raha",      "start": 8,  "end": 16 },
   { "employee": "Omid",     "agentKey": "omid",      "start": 17.5, "end": 1.5 },
   { "employee": "Mahyar",   "agentKey": "omid",      "start": 8,  "end": 16 },

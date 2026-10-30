@@ -4123,11 +4123,43 @@ app.post("/api/agent-shifts", authMiddleware, requirePermission("action:manage_s
 // tell "Ardalan working late on this Saturday" apart from "Mahdi's usual
 // evening slot" without knowing the actual date.
 async function loadWeekendOverrides() {
-  if (!pool) return [];
+  let overrides = [];
+  if (pool) {
+    try {
+      const r = await pool.query("SELECT shift_date, employee, platform, start_hour, end_hour FROM weekend_overrides");
+      overrides = r.rows.map(row => ({ date: row.shift_date, employee: row.employee, platform: row.platform, start: parseFloat(row.start_hour), end: parseFloat(row.end_hour) }));
+    } catch {}
+  }
+  return [...overrides, ...await expandShiftHistory(overrides)];
+}
+
+// ── Shift history ────────────────────────────────────────────────────────────
+// Employees only stores each person's CURRENT hours, so when two people on a
+// shared login swap shifts, re-computing an older day would hand their chats to
+// the wrong person. data/shift_history.json records the hours someone worked up
+// to (and including) a given date; it's expanded here into one override per day
+// so every report path that already honors weekend overrides picks it up. Real
+// weekend overrides win: a day that already has one for any of these employees
+// is left alone.
+const SHIFT_HISTORY_FLOOR = "2025-01-01";
+
+async function expandShiftHistory(realOverrides) {
+  let history;
   try {
-    const r = await pool.query("SELECT shift_date, employee, platform, start_hour, end_hour FROM weekend_overrides");
-    return r.rows.map(row => ({ date: row.shift_date, employee: row.employee, platform: row.platform, start: parseFloat(row.start_hour), end: parseFloat(row.end_hour) }));
+    history = JSON.parse(await fs.readFile(path.join(DATA_DIR, "shift_history.json"), "utf8"));
   } catch { return []; }
+  const historyEmployees = new Set(history.map(h => h.employee));
+  const taken = new Set(realOverrides.filter(o => historyEmployees.has(o.employee)).map(o => `${o.platform}|${o.date}`));
+  const out = [];
+  for (const h of history) {
+    const end = new Date(`${h.until}T00:00:00Z`);
+    for (let d = new Date(`${h.from || SHIFT_HISTORY_FLOOR}T00:00:00Z`); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+      const date = d.toISOString().slice(0, 10);
+      if (taken.has(`${h.platform}|${date}`)) continue;
+      out.push({ date, employee: h.employee, platform: h.platform, start: h.start, end: h.end });
+    }
+  }
+  return out;
 }
 
 // Given a chat's platform/date/hour, returns the employee an explicit override
