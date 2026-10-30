@@ -135,6 +135,7 @@ const REVIEWS_FILE = path.join(__dirname, "reviews.json");
 
 // PostgreSQL (Railway) or fallback to reviews.json
 let pool = null;
+let telegramTableReady = Promise.resolve();
 if (process.env.DATABASE_URL) {
   // Railway's managed Postgres requires SSL; a local/dev Postgres usually doesn't support
   // it at all, so allow opting out for local work without touching the production path.
@@ -379,6 +380,13 @@ if (process.env.DATABASE_URL) {
     date TEXT PRIMARY KEY,
     computed_at TIMESTAMPTZ DEFAULT NOW()
   )`).then(() => console.log("[db] department_totals_cached_days table ready")).catch(e => console.error("[db] department_totals_cached_days init:", e.message));
+
+  // ── telegram_updates table (one row per Telegram message; the container's
+  // filesystem is wiped on every deploy, so data/telegram_updates.txt can't hold them) ──
+  telegramTableReady = pool.query(`CREATE TABLE IF NOT EXISTS telegram_updates (
+    entry TEXT PRIMARY KEY,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`).then(() => console.log("[db] telegram_updates table ready")).catch(e => console.error("[db] telegram_updates init:", e.message));
 }
 const LC_API = "https://api.livechatinc.com/v3.6/agent/action";
 const LC_CONFIG_API = "https://api.livechatinc.com/v3.6/configuration/action";
@@ -929,7 +937,7 @@ async function loadKnowledge() {
   // Import historical Telegram exports (JSON files from Telegram Desktop)
   await importTelegramExport();
   // Load Telegram updates from file (auto-updated by pollTelegram)
-  kb.telegram = await fs.readFile(path.join(DATA_DIR, "telegram_updates.txt"), "utf8").catch(() => "");
+  await loadTelegramIntoKb();
 
   // Fetch protocol docs from Google Drive (by doc ID)
   await fetchProtocolDocs();
@@ -966,6 +974,48 @@ async function fetchProtocolDocs() {
   }
 }
 
+// ── Telegram updates storage — Postgres when available, data/telegram_updates.txt otherwise ──
+const TELEGRAM_FILE = path.join(DATA_DIR, "telegram_updates.txt");
+
+// Split the text file into messages: each starts with "[YYYY-MM-DD HH:MM]" and may span
+// several lines; the "#" header comments are skipped.
+function parseTelegramFile(text) {
+  const entries = [];
+  for (const line of text.split("\n")) {
+    if (/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]/.test(line)) entries.push(line);
+    else if (entries.length) entries[entries.length - 1] += "\n" + line;
+  }
+  return entries.map(e => e.trimEnd()).filter(Boolean);
+}
+
+async function readTelegramEntries() {
+  if (pool) {
+    try {
+      await telegramTableReady;
+      const r = await pool.query("SELECT entry FROM telegram_updates ORDER BY entry");
+      return r.rows.map(row => row.entry);
+    } catch (e) { console.error("[telegram] db read failed:", e.message); return []; }
+  }
+  return parseTelegramFile(await fs.readFile(TELEGRAM_FILE, "utf8").catch(() => ""));
+}
+
+async function saveTelegramEntries(entries) {
+  if (!entries.length) return;
+  if (pool) {
+    await telegramTableReady;
+    await pool.query(
+      "INSERT INTO telegram_updates (entry) SELECT unnest($1::text[]) ON CONFLICT (entry) DO NOTHING",
+      [entries]
+    );
+  } else {
+    await fs.appendFile(TELEGRAM_FILE, entries.join("\n") + "\n");
+  }
+}
+
+async function loadTelegramIntoKb() {
+  kb.telegram = (await readTelegramEntries()).join("\n");
+}
+
 async function importTelegramExport() {
   const exportDir = path.join(DATA_DIR, "telegram_exports");
   await fs.mkdir(exportDir, { recursive: true });
@@ -978,10 +1028,7 @@ async function importTelegramExport() {
   const jsonFiles = files.filter(f => f.endsWith(".json"));
   if (!jsonFiles.length) return;
 
-  const existingLines = new Set(
-    (await fs.readFile(path.join(DATA_DIR, "telegram_updates.txt"), "utf8").catch(() => ""))
-      .split("\n").filter(Boolean)
-  );
+  const existingLines = new Set(await readTelegramEntries());
 
   const newLines = [];
   for (const file of jsonFiles) {
@@ -1011,7 +1058,7 @@ async function importTelegramExport() {
 
   if (newLines.length) {
     newLines.sort();
-    await fs.appendFile(path.join(DATA_DIR, "telegram_updates.txt"), newLines.join("\n") + "\n");
+    await saveTelegramEntries(newLines);
     console.log(`[telegram-import] added ${newLines.length} new messages`);
   }
 }
@@ -1038,8 +1085,8 @@ async function pollTelegram() {
     }
 
     if (newLines.length) {
-      await fs.appendFile(path.join(DATA_DIR, "telegram_updates.txt"), newLines.join("\n") + "\n");
-      kb.telegram = await fs.readFile(path.join(DATA_DIR, "telegram_updates.txt"), "utf8").catch(() => "");
+      await saveTelegramEntries(newLines);
+      await loadTelegramIntoKb();
       console.log(`[telegram] saved ${newLines.length} new messages`);
     }
   } catch (e) {
@@ -4170,7 +4217,7 @@ app.post("/api/refresh-knowledge/:source", authMiddleware, async (req, res) => {
     } else if (source === "telegram") {
       await importTelegramExport();
       if (TELEGRAM_BOT_TOKEN) await pollTelegram();
-      kb.telegram = await fs.readFile(path.join(DATA_DIR, "telegram_updates.txt"), "utf8").catch(() => "");
+      await loadTelegramIntoKb();
     } else {
       return res.status(400).json({ error: "Unknown source: " + source });
     }
