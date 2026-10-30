@@ -4769,6 +4769,109 @@ app.get("/api/reports/monthly-summary/backfill/status", authMiddleware, requireP
   res.json({ running: job.running, days_total: job.daysTotal, days_done: job.daysDone });
 });
 
+// ── Management report (Monthly Summary + AI narrative + support lead's notes) ──
+
+// The comparison period: the previous calendar month when the range is exactly one
+// full month, otherwise the same number of days immediately before date_from.
+function previousPeriod(dateFrom, dateTo) {
+  const pad = (n) => String(n).padStart(2, "0");
+  const fmt = (d) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  const from = new Date(`${dateFrom}T00:00:00Z`);
+  const to = new Date(`${dateTo}T00:00:00Z`);
+  const monthEnd = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 0));
+  if (from.getUTCDate() === 1 && fmt(to) === fmt(monthEnd)) {
+    const pFrom = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() - 1, 1));
+    const pTo = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 0));
+    return { dateFrom: fmt(pFrom), dateTo: fmt(pTo) };
+  }
+  const days = Math.round((to - from) / 86400000) + 1;
+  const pTo = new Date(from.getTime() - 86400000);
+  const pFrom = new Date(pTo.getTime() - (days - 1) * 86400000);
+  return { dateFrom: fmt(pFrom), dateTo: fmt(pTo) };
+}
+
+async function writeManagementNarrative({ current, previous, notes }) {
+  const slim = (s) => s && ({
+    date_from: s.date_from, date_to: s.date_to, grand_total: s.grand_total, groups: s.groups,
+    employees: s.employees.map((e) => ({
+      name: e.name, departments: e.groups, totalChats: e.totalChats, chatHours: e.chatHours,
+      onlineHours: e.onlineHours, availabilityPct: +(((e.onlineHours || 0) / ((e.onlineHours || 0) + (e.closedHours || 0) || 1)) * 100).toFixed(1),
+      leaveDays: e.leaveDays,
+    })),
+  });
+
+  const prompt = `You are writing the narrative part of OPO's monthly customer-support team performance report, which the support lead sends to company management.
+
+DATA FOR THIS PERIOD (JSON):
+${JSON.stringify(slim(current))}
+
+DATA FOR THE PREVIOUS PERIOD, for comparison (JSON, may be null if unavailable):
+${JSON.stringify(slim(previous))}
+
+How to read the data:
+- grand_total and groups count each customer chat once, toward the department it ended in.
+- An employee's totalChats counts every chat they touched (transfers count for both agents), so the sum of employees is larger than grand_total. That is expected; never call it a discrepancy.
+- chatHours = time actually spent in chats. onlineHours = time online during scheduled shifts. availabilityPct = online share of scheduled shift time.
+- leaveDays explain lower numbers; someone on leave is not under-performing.
+
+SUPPORT LEAD'S NOTES (authoritative — may be empty):
+"""
+${notes || ""}
+"""
+Treat these notes as facts and instructions from the report's author. Every point in them must be reflected in the report: fold context into the relevant sections (e.g. an explanation for someone's low numbers), and put items that are standalone additions (events, incidents, projects, requests to management) into "additional_items", rewritten in clear professional English. If a note asks you to emphasize, soften, or leave something out, do so.
+
+Rules:
+- Professional, concise, factual English for senior management. No hype.
+- Use only numbers that are in the data (or computable from it). Never invent figures.
+- Mention employees by name only where it adds value (top contributors, follow-ups).
+- When previous-period data exists, describe meaningful changes with numbers (e.g. "+6.2% vs July").
+
+Return ONLY valid JSON:
+{"headline":"<one sentence, the single most important takeaway>","executive_summary":"<3-5 sentences>","highlights":["<2-4 positive points>"],"concerns":["<0-4 points needing attention>"],"recommendations":["<2-4 concrete actions>"],"additional_items":["<items from the support lead's notes; [] if none>"]}`;
+
+  const model = "claude-sonnet-4-6";
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 2500,
+      system: "You are a JSON-only output assistant. You must ALWAYS respond with a single valid JSON object and nothing else. No preamble, no explanation, no markdown — just the raw JSON starting with { and ending with }.",
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  if (!res.ok) throw new Error(`Claude API error: ${res.status} ${await res.text()}`);
+  const data = await res.json();
+  logClaudeUsage("monthly_report", model, data.usage?.input_tokens, data.usage?.output_tokens);
+  let text = data.content[0].text.trim();
+  if (text.startsWith("```")) text = text.replace(/```json?\n?/, "").replace(/```$/, "").trim();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error("Claude returned non-JSON response");
+  }
+}
+
+app.post("/api/reports/monthly-summary/management-report", authMiddleware, requirePermission("page:report-monthly-summary"), async (req, res) => {
+  try {
+    const { date_from, date_to, notes } = req.body || {};
+    if (!date_from || !date_to) return res.status(400).json({ error: "date_from and date_to required" });
+    const prev = previousPeriod(date_from, date_to);
+    const [current, previous] = await Promise.all([
+      computeMonthlySummary({ dateFrom: date_from, dateTo: date_to }),
+      computeMonthlySummary(prev).catch((e) => { console.error("[management-report] previous period:", e.message); return null; }),
+    ]);
+    const narrative = await writeManagementNarrative({ current, previous, notes: String(notes || "").slice(0, 8000) });
+    res.json({ current, previous, narrative });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Nightly auto-review disabled — enable by uncommenting below
 // ── Reports ───────────────────────────────────────────────────────────────────
 

@@ -2954,6 +2954,265 @@ function openMonthlySummaryReport() {
   if (content && !content.innerHTML.trim()) {
     content.innerHTML = `<div class="text-center py-16 text-slate-500 text-sm">Pick a date range and click Search.</div>`;
   }
+  loadMgmtReportNotes();
+}
+
+// ── Management Report (Monthly Summary + AI narrative + support lead's notes) ──
+let _activeManagementReport = null;
+
+// Notes are a per-viewer draft, kept per date range so last month's notes don't
+// leak into this month's report.
+function mgmtReportNotesKey() {
+  const from = document.getElementById("monthlySummaryFrom")?.value || "";
+  const to = document.getElementById("monthlySummaryTo")?.value || "";
+  return `mgmtReportNotes:${from}|${to}`;
+}
+
+function loadMgmtReportNotes() {
+  const el = document.getElementById("mgmtReportNotes");
+  if (!el) return;
+  try { el.value = localStorage.getItem(mgmtReportNotesKey()) || ""; } catch (_) {}
+}
+
+function saveMgmtReportNotes() {
+  const el = document.getElementById("mgmtReportNotes");
+  if (!el) return;
+  try {
+    if (el.value.trim()) localStorage.setItem(mgmtReportNotesKey(), el.value);
+    else localStorage.removeItem(mgmtReportNotesKey());
+  } catch (_) {}
+}
+
+async function generateManagementReport() {
+  const dateFrom = document.getElementById("monthlySummaryFrom")?.value;
+  const dateTo = document.getElementById("monthlySummaryTo")?.value;
+  if (!dateFrom || !dateTo) { showStatus("Pick a From and To date first", "error"); return; }
+  const notes = document.getElementById("mgmtReportNotes")?.value || "";
+  const btn = document.getElementById("btnGenerateMgmtReport");
+  const status = document.getElementById("mgmtReportStatus");
+  saveMgmtReportNotes();
+  btn.disabled = true;
+  status.innerHTML = `<span class="spinner"></span> Building the report — collecting both periods and writing the summary, this can take a minute...`;
+
+  try {
+    const res = await authFetch("/api/reports/monthly-summary/management-report", {
+      method: "POST",
+      body: JSON.stringify({ date_from: dateFrom, date_to: dateTo, notes }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || res.status);
+    _activeManagementReport = { dateFrom, dateTo, ...data };
+    const preview = document.getElementById("mgmtReportPreview");
+    preview.srcdoc = buildManagementReportHtml(_activeManagementReport);
+    preview.classList.remove("hidden");
+    document.getElementById("btnDownloadMgmtReport").disabled = false;
+    btn.textContent = "🔄 Regenerate Report";
+    status.textContent = `Generated ${new Date().toLocaleTimeString()} — edit the notes and regenerate if anything needs changing.`;
+  } catch (e) {
+    status.textContent = "";
+    showStatus("Report generation failed: " + e.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function downloadManagementReportPdf() {
+  if (!_activeManagementReport) { showStatus("Generate the report first", "error"); return; }
+  const win = window.open("", "_blank");
+  if (!win) { showStatus("Allow popups to download PDF", "error"); return; }
+  win.document.write(buildManagementReportHtml(_activeManagementReport, { autoPrint: true }));
+  win.document.close();
+}
+
+function reportPeriodLabel(dateFrom, dateTo) {
+  const from = new Date(`${dateFrom}T00:00:00`);
+  const to = new Date(`${dateTo}T00:00:00`);
+  const lastDay = new Date(from.getFullYear(), from.getMonth() + 1, 0).getDate();
+  if (from.getDate() === 1 && to.getFullYear() === from.getFullYear() && to.getMonth() === from.getMonth() && to.getDate() === lastDay) {
+    return from.toLocaleString("en-US", { month: "long", year: "numeric" });
+  }
+  return `${dateFrom} → ${dateTo}`;
+}
+
+// Team-level figures for the KPI row, so current and previous period compare like for like.
+function teamTotals(summary) {
+  const emps = summary?.employees || [];
+  const online = emps.reduce((s, e) => s + (e.onlineHours || 0), 0);
+  const closed = emps.reduce((s, e) => s + (e.closedHours || 0), 0);
+  return {
+    chats: summary?.grand_total || 0,
+    chatHours: emps.reduce((s, e) => s + (e.chatHours || 0), 0),
+    availability: online + closed ? (online / (online + closed)) * 100 : 0,
+    leaveDays: emps.reduce((s, e) => s + (e.leaveDays || 0), 0),
+    headcount: emps.filter(e => (e.totalChats || 0) > 0).length,
+  };
+}
+
+function buildManagementReportHtml({ dateFrom, dateTo, current, previous, narrative }, { autoPrint = false } = {}) {
+  const MINT = OPO_BRAND_BLUE, RED = "#ff8a80";
+  const n = narrative || {};
+  const period = reportPeriodLabel(dateFrom, dateTo);
+  const prevLabel = previous ? reportPeriodLabel(previous.date_from, previous.date_to) : null;
+  const cur = teamTotals(current), prev = previous ? teamTotals(previous) : null;
+  const prevByName = Object.fromEntries((previous?.employees || []).map(e => [e.name, e]));
+  const prevGroups = Object.fromEntries((previous?.groups || []).map(g => [g.name, g.totalChats]));
+
+  // Signed change vs the previous period: % for counts, percentage points for rates.
+  const delta = (now, before, { points = false, invert = false } = {}) => {
+    if (before == null || (!points && !before)) return "";
+    const d = points ? now - before : ((now - before) / before) * 100;
+    if (Math.abs(d) < 0.05) return `<span style="color:${PDF_TEXT_DIM}">±0${points ? " pts" : "%"}</span>`;
+    const good = invert ? d < 0 : d > 0;
+    return `<span style="color:${good ? MINT : RED}">${d > 0 ? "▲" : "▼"} ${Math.abs(d).toFixed(1)}${points ? " pts" : "%"}</span>`;
+  };
+  const list = (items) => (items || []).filter(Boolean).map(t => `<li>${escHtml(t)}</li>`).join("");
+
+  const kpis = [
+    ["Total chats", cur.chats.toLocaleString(), delta(cur.chats, prev?.chats)],
+    ["Chat hours", `${cur.chatHours.toFixed(0)}h`, delta(cur.chatHours, prev?.chatHours)],
+    ["Team availability", `${cur.availability.toFixed(1)}%`, delta(cur.availability, prev?.availability, { points: true })],
+    ["Active agents", cur.headcount, prev ? delta(cur.headcount, prev.headcount) : ""],
+    ["Leave days", cur.leaveDays, ""],
+  ];
+
+  const groups = current?.groups || [];
+  const maxGroup = Math.max(1, ...groups.map(g => g.totalChats));
+  const groupRows = groups.map(g => {
+    const share = cur.chats ? (g.totalChats / cur.chats) * 100 : 0;
+    return `<div class="bar-row">
+      <div class="bar-label">${escHtml(g.name)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(g.totalChats / maxGroup) * 100}%"></div></div>
+      <div class="bar-val">${g.totalChats.toLocaleString()} <span class="dim">· ${share.toFixed(1)}%</span></div>
+      <div class="bar-delta">${delta(g.totalChats, prevGroups[g.name])}</div>
+    </div>`;
+  }).join("");
+
+  const empTotal = (current?.employees || []).reduce((s, e) => s + (e.totalChats || 0), 0);
+  const rows = (current?.employees || []).map(e => {
+    const p = prevByName[e.name];
+    return `<tr>
+      <td class="name">${escHtml(e.name)}</td>
+      <td class="dim small">${(e.groups || []).map(escHtml).join(", ") || "—"}</td>
+      <td class="strong">${e.totalChats}</td>
+      <td class="dim">${empTotal ? ((e.totalChats / empTotal) * 100).toFixed(1) : "0.0"}%</td>
+      <td class="small">${p ? delta(e.totalChats, p.totalChats) : '<span class="dim">new</span>'}</td>
+      <td>${e.chatHours.toFixed(1)}h</td>
+      <td>${e.onlineHours.toFixed(1)}h</td>
+      <td>${availabilityPct(e).toFixed(1)}%</td>
+      <td class="${e.leaveDays ? "warn" : "dim"}">${e.leaveDays || 0}</td>
+    </tr>`;
+  }).join("");
+
+  const section = (title, body) => body ? `<section><h2>${title}</h2>${body}</section>` : "";
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>OPO Support Team Performance — ${escHtml(period)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4 portrait; margin: 14mm 14mm; background: ${PDF_BG}; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  ${PDF_FORCE_PRINT_COLORS_CSS}
+  html { background: ${PDF_BG}; }
+  body { font-family: "Instrument Sans", Arial, Helvetica, sans-serif; font-size: 10px; line-height: 1.55;
+         color: ${PDF_TEXT_BODY}; background: ${PDF_BG}; padding: ${autoPrint ? "0" : "28px"}; }
+  .dim { color: ${PDF_TEXT_DIM}; } .small { font-size: 8.5px; } .strong { font-weight: 700; color: ${PDF_TEXT}; }
+  .warn { color: ${RED}; font-weight: 700; }
+  header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 14px; border-bottom: 1px solid ${PDF_BORDER}; }
+  header img { height: 18px; display: block; }
+  .pill { border: 1px solid ${PDF_BORDER}; border-radius: 999px; padding: 4px 11px; font-size: 8px; font-weight: 600;
+          letter-spacing: .08em; text-transform: uppercase; color: ${PDF_TEXT_DIM}; }
+  .hero { padding: 26px 0 20px; }
+  .eyebrow { font-size: 8.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: ${MINT}; }
+  h1 { font-size: 30px; font-weight: 700; line-height: 1.05; letter-spacing: -.02em; color: ${PDF_TEXT}; margin-top: 8px; }
+  h1 span { color: ${MINT}; }
+  .meta { margin-top: 8px; color: ${PDF_TEXT_DIM}; font-size: 9.5px; }
+  .headline { margin-top: 16px; background: ${MINT}; color: #0a0c0a; border-radius: 14px; padding: 13px 16px;
+              font-size: 12px; font-weight: 600; line-height: 1.45; }
+  .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 14px; }
+  .kpi { background: ${PDF_CARD_BG}; border: 1px solid ${PDF_BORDER}; border-radius: 14px; padding: 11px 12px; }
+  .kpi .l { font-size: 7.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: ${PDF_TEXT_DIM}; }
+  .kpi .v { font-size: 19px; font-weight: 700; color: ${PDF_TEXT}; margin-top: 3px; letter-spacing: -.01em; }
+  .kpi .d { font-size: 8px; font-weight: 600; margin-top: 1px; min-height: 11px; }
+  section { margin-top: 22px; page-break-inside: avoid; }
+  section.breakable { page-break-inside: auto; }
+  h2 { font-size: 13px; font-weight: 700; color: ${PDF_TEXT}; margin-bottom: 9px; display: flex; align-items: center; gap: 8px; }
+  h2::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: ${MINT}; }
+  p.lead { font-size: 10.5px; color: ${PDF_TEXT_BODY}; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .card { background: ${PDF_CARD_BG}; border: 1px solid ${PDF_BORDER}; border-radius: 14px; padding: 13px 15px; }
+  .card h3 { font-size: 8.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 7px; }
+  ul { padding-left: 14px; } li { margin-bottom: 4px; } li::marker { color: ${MINT}; }
+  .card.concern li::marker { color: ${RED}; }
+  ol.recs { list-style: none; padding: 0; counter-reset: r; }
+  ol.recs li { counter-increment: r; position: relative; padding: 9px 12px 9px 38px; margin-bottom: 6px;
+               background: ${PDF_CARD_BG}; border: 1px solid ${PDF_BORDER}; border-radius: 12px; }
+  ol.recs li::before { content: counter(r, decimal-leading-zero); position: absolute; left: 12px; top: 9px;
+                       font-weight: 700; color: ${MINT}; }
+  .bar-row { display: grid; grid-template-columns: 90px 1fr 110px 62px; align-items: center; gap: 10px; margin-bottom: 7px; }
+  .bar-label { color: ${PDF_TEXT}; font-weight: 600; }
+  .bar-track { height: 9px; background: ${PDF_BORDER}; border-radius: 999px; overflow: hidden; }
+  .bar-fill { height: 100%; background: ${MINT}; border-radius: 999px; }
+  .bar-val { color: ${PDF_TEXT}; font-weight: 600; text-align: right; } .bar-delta { font-size: 8.5px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 7.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: ${PDF_TEXT_DIM};
+       text-align: center; padding: 7px 6px; border-bottom: 1px solid ${MINT}; }
+  td { text-align: center; padding: 6px; border-bottom: 1px solid ${PDF_BORDER}; font-size: 9.5px; }
+  td.name { text-align: left; color: ${PDF_TEXT}; font-weight: 600; } th:first-child { text-align: left; }
+  tr { page-break-inside: avoid; }
+  .notes li { margin-bottom: 5px; }
+  .glossary { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; font-size: 8.5px; color: ${PDF_TEXT_DIM}; }
+  .glossary b { color: ${PDF_TEXT_BODY}; font-weight: 600; }
+  footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid ${PDF_BORDER}; display: flex; justify-content: space-between;
+           font-size: 7.5px; color: ${PDF_TEXT_DIM}; letter-spacing: .04em; }
+</style>
+</head><body>
+<header>
+  <img src="${OPO_LOGO_DATA_URI}" alt="OPO" />
+  <div class="pill">Confidential · Management</div>
+</header>
+
+<div class="hero">
+  <div class="eyebrow">Customer Support · Monthly Report</div>
+  <h1>Team Performance<br><span>${escHtml(period)}</span></h1>
+  <div class="meta">${escHtml(dateFrom)} → ${escHtml(dateTo)}${prevLabel ? ` · compared with ${escHtml(prevLabel)}` : ""} · Generated ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</div>
+  ${n.headline ? `<div class="headline">${escHtml(n.headline)}</div>` : ""}
+  <div class="kpis">
+    ${kpis.map(([l, v, d]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div><div class="d">${d}</div></div>`).join("")}
+  </div>
+</div>
+
+${section("Executive summary", n.executive_summary ? `<p class="lead">${escHtml(n.executive_summary)}</p>` : "")}
+
+${(n.highlights?.length || n.concerns?.length) ? `<section><div class="cols">
+  <div class="card"><h3 style="color:${MINT}">Highlights</h3><ul>${list(n.highlights) || '<li class="dim">—</li>'}</ul></div>
+  <div class="card concern"><h3 style="color:${RED}">Needs attention</h3><ul>${list(n.concerns) || '<li class="dim">Nothing significant this period.</li>'}</ul></div>
+</div></section>` : ""}
+
+${section("Demand by department", `<div class="card">${groupRows}<div class="dim small" style="margin-top:4px">Each chat counted once, toward the department it ended in.${previous ? ` Change shown vs ${escHtml(prevLabel)}.` : ""}</div></div>`)}
+
+<section class="breakable"><h2>Individual performance</h2>
+<table>
+  <thead><tr>
+    <th>Employee</th><th>Department(s)</th><th>Chats</th><th>% Share</th><th>vs prev.</th>
+    <th>Chat hours</th><th>Online</th><th>Availability</th><th>Leave</th>
+  </tr></thead>
+  <tbody>${rows}</tbody>
+</table></section>
+
+${section("Recommendations", n.recommendations?.length ? `<ol class="recs">${list(n.recommendations)}</ol>` : "")}
+
+${section("Additional notes from the support lead", n.additional_items?.length ? `<div class="card notes"><ul>${list(n.additional_items)}</ul></div>` : "")}
+
+<section><h2>How to read this report</h2><div class="glossary">
+  <div><b>Chats / % Share</b> — every chat an agent handled, including transfers, so agent totals add up to more than the department total.</div>
+  <div><b>Chat hours</b> — time actually spent in conversations with customers.</div>
+  <div><b>Online / Availability</b> — time online during scheduled shifts, and its share of the scheduled time.</div>
+  <div><b>Leave</b> — days on leave; lower numbers for these agents reflect attendance, not performance.</div>
+</div></section>
+
+<footer><span>OPO · Customer Support Team Performance</span><span>${escHtml(period)}</span></footer>
+${autoPrint ? "<script>setTimeout(() => window.print(), 500)<\/script>" : ""}
+</body></html>`;
 }
 
 function availabilityPct(e) {
